@@ -44,7 +44,7 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     PrismaModule,
     StorageModule,
     MailModule,
-    QueueModule,
+    QueueModule.register(),
     AuditModule,
     AuthModule,
     UsersModule,

@@ -7,7 +7,7 @@
   },
   "scripts": {
     "build": "npm install --prefix workspace && npm run prisma:generate --prefix workspace/backend && npm run build --prefix workspace/backend",
-    "start": "node scripts/start.js",
+    "start": "node workspace/backend/scripts/start-railway.js",
     "build:frontend": "npm install --prefix workspace/frontend && npm run build --prefix workspace/frontend",
     "start:frontend": "npm run start --prefix workspace/frontend"
   }

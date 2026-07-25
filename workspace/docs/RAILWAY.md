@@ -32,6 +32,43 @@ TaskFlow API running on http://0.0.0.0:...
 
 ---
 
+## Fix: Frontend config set but still deploys backend
+
+**Config-as-code alone is not enough.**
+
+If Root Directory is empty, Railway still runs commands from the **repo root**.
+Root `package.json` / root `railway.toml` start the **backend**.
+
+Also: do **not** put a leading slash in the config path.
+
+| Wrong | Right |
+|-------|--------|
+| `/workspace/frontend/railway.toml` | `workspace/frontend/railway.toml` |
+
+### Frontend service — set ALL of these
+
+**Settings → Build / Source**
+
+| Setting | Exact value |
+|---------|-------------|
+| **Root Directory** | `workspace/frontend` |
+| **Config-as-code** | `workspace/frontend/railway.toml` |
+| **Build Command** | `npm install && npm run build` |
+| **Start Command** | `npx next start --hostname 0.0.0.0 --port $PORT` |
+
+**Variables**
+
+```env
+SERVICE_ROLE=frontend
+NEXT_PUBLIC_API_URL=https://YOUR-BACKEND.up.railway.app/api/v1
+```
+
+No `DATABASE_URL` on frontend.
+
+Redeploy. Logs must show Next.js, e.g. `Ready on http://0.0.0.0:...` — not Prisma / `start-railway`.
+
+---
+
 ## Fix: Frontend deploy shows `DATABASE_URL` / Prisma errors
 
 That means the **frontend** service is starting the **backend** script by mistake.
@@ -43,8 +80,9 @@ Frontend is Next.js. It must **never** run `start:railway` or Prisma.
 | Setting | Value |
 |---------|--------|
 | **Root Directory** | `workspace/frontend` |
+| **Config-as-code** | `workspace/frontend/railway.toml` (no leading `/`) |
 | **Build Command** | `npm install && npm run build` |
-| **Start Command** | `npm run start` |
+| **Start Command** | `npx next start --hostname 0.0.0.0 --port $PORT` |
 
 ### Or if Root Directory is empty / repo root
 
