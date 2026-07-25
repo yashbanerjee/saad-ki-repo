@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Patch,
   Delete,
   Body,
@@ -17,6 +18,7 @@ import {
   UpdateFormDto,
   CreateFormPageDto,
   CreateFormFieldDto,
+  SaveFormFieldsDto,
   SubmitFormDto,
 } from './dto/onboarding.dto';
 import { CurrentUser, AuthenticatedUser, Permissions, Public } from '../common/decorators';
@@ -62,6 +64,30 @@ export class OnboardingController {
     @Body() dto: UpdateFormDto,
   ) {
     return this.onboardingService.update(id, user.companyId!, dto);
+  }
+
+  @Put('forms/:id')
+  @ApiBearerAuth()
+  @UseGuards(PermissionsGuard)
+  @Permissions('onboarding:manage')
+  saveForm(
+    @Param('id', ParseCuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SaveFormFieldsDto,
+  ) {
+    return this.onboardingService.saveFields(id, user.companyId!, dto);
+  }
+
+  @Put('forms/:id/fields')
+  @ApiBearerAuth()
+  @UseGuards(PermissionsGuard)
+  @Permissions('onboarding:manage')
+  saveFields(
+    @Param('id', ParseCuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SaveFormFieldsDto,
+  ) {
+    return this.onboardingService.saveFields(id, user.companyId!, dto);
   }
 
   @Post('forms/:id/publish')

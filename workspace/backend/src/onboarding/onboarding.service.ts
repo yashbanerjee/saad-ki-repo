@@ -1,10 +1,13 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { randomBytes } from 'crypto';
+import { FieldType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateFormDto,
   UpdateFormDto,
   CreateFormPageDto,
   CreateFormFieldDto,
+  SaveFormFieldsDto,
   SubmitFormDto,
 } from './dto/onboarding.dto';
 
@@ -12,9 +15,18 @@ import {
 export class OnboardingService {
   constructor(private prisma: PrismaService) {}
 
+  private slugify(text: string): string {
+    const base = text
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 48);
+    return `${base || 'form'}-${randomBytes(3).toString('hex')}`;
+  }
+
   async findAll(companyId: string) {
     return this.prisma.onboardingForm.findMany({
-      where: { companyId },
+      where: { companyId, status: { not: 'ARCHIVED' } },
       include: { _count: { select: { submissions: true, fields: true } } },
       orderBy: { updatedAt: 'desc' },
     });
@@ -24,7 +36,10 @@ export class OnboardingService {
     const form = await this.prisma.onboardingForm.findFirst({
       where: { id, companyId },
       include: {
-        pages: { include: { fields: true, sections: { include: { fields: true } } }, orderBy: { order: 'asc' } },
+        pages: {
+          include: { fields: true, sections: { include: { fields: true } } },
+          orderBy: { order: 'asc' },
+        },
         fields: { orderBy: { order: 'asc' } },
       },
     });
@@ -36,7 +51,10 @@ export class OnboardingService {
     const form = await this.prisma.onboardingForm.findFirst({
       where: { secureToken, status: 'PUBLISHED' },
       include: {
-        pages: { include: { fields: true, sections: { include: { fields: true } } }, orderBy: { order: 'asc' } },
+        pages: {
+          include: { fields: true, sections: { include: { fields: true } } },
+          orderBy: { order: 'asc' },
+        },
         fields: { orderBy: { order: 'asc' } },
       },
     });
@@ -45,13 +63,18 @@ export class OnboardingService {
   }
 
   async create(companyId: string, createdById: string, dto: CreateFormDto) {
+    const slug = dto.slug?.trim() || this.slugify(dto.title);
     return this.prisma.onboardingForm.create({
       data: {
         companyId,
         createdById,
         title: dto.title,
-        slug: dto.slug,
+        slug,
         description: dto.description,
+      },
+      include: {
+        fields: true,
+        _count: { select: { submissions: true, fields: true } },
       },
     });
   }
@@ -65,7 +88,77 @@ export class OnboardingService {
         description: dto.description,
         settings: dto.settings as object | undefined,
       },
+      include: {
+        fields: { orderBy: { order: 'asc' } },
+        _count: { select: { submissions: true, fields: true } },
+      },
     });
+  }
+
+  async saveFields(id: string, companyId: string, dto: SaveFormFieldsDto) {
+    await this.findOne(id, companyId);
+
+    await this.prisma.$transaction(async (tx) => {
+      if (dto.title || dto.description !== undefined) {
+        await tx.onboardingForm.update({
+          where: { id },
+          data: {
+            ...(dto.title ? { title: dto.title } : {}),
+            ...(dto.description !== undefined ? { description: dto.description } : {}),
+          },
+        });
+      }
+
+      await tx.formField.deleteMany({ where: { formId: id } });
+
+      for (const [index, field] of dto.fields.entries()) {
+        const type = this.normalizeFieldType(field.type);
+        await tx.formField.create({
+          data: {
+            formId: id,
+            type,
+            label: field.label,
+            name: field.name || `field_${index + 1}`,
+            required: field.required ?? false,
+            order: field.order ?? index,
+            placeholder: field.placeholder,
+            options: (field.options ?? []) as object,
+            settings: (field.settings ?? {}) as object,
+          },
+        });
+      }
+
+      if (dto.publish) {
+        await tx.onboardingForm.update({
+          where: { id },
+          data: { status: 'PUBLISHED', publishedAt: new Date() },
+        });
+      }
+    });
+
+    return this.findOne(id, companyId);
+  }
+
+  private normalizeFieldType(type: string | FieldType): FieldType {
+    const upper = String(type).toUpperCase().replace(/-/g, '_');
+    if ((Object.values(FieldType) as string[]).includes(upper)) {
+      return upper as FieldType;
+    }
+    const map: Record<string, FieldType> = {
+      TEXT: FieldType.TEXT,
+      TEXTAREA: FieldType.TEXTAREA,
+      DROPDOWN: FieldType.DROPDOWN,
+      CHECKBOX: FieldType.CHECKBOX,
+      DATE: FieldType.DATE,
+      EMAIL: FieldType.EMAIL,
+      PHONE: FieldType.PHONE,
+      NUMBER: FieldType.CUSTOM,
+      IMAGE: FieldType.IMAGE_UPLOAD,
+      IMAGE_UPLOAD: FieldType.IMAGE_UPLOAD,
+      FILE: FieldType.FILE_UPLOAD,
+      FILE_UPLOAD: FieldType.FILE_UPLOAD,
+    };
+    return map[upper] ?? FieldType.TEXT;
   }
 
   async publish(id: string, companyId: string) {
@@ -73,6 +166,10 @@ export class OnboardingService {
     return this.prisma.onboardingForm.update({
       where: { id },
       data: { status: 'PUBLISHED', publishedAt: new Date() },
+      include: {
+        fields: { orderBy: { order: 'asc' } },
+        _count: { select: { submissions: true, fields: true } },
+      },
     });
   }
 
@@ -98,13 +195,14 @@ export class OnboardingService {
         formId,
         pageId: dto.pageId,
         sectionId: dto.sectionId,
-        type: dto.type,
+        type: this.normalizeFieldType(dto.type),
         label: dto.label,
         name: dto.name,
         required: dto.required ?? false,
         order: dto.order ?? 0,
         options: (dto.options ?? []) as object,
         placeholder: dto.placeholder,
+        settings: (dto.settings ?? {}) as object,
       },
     });
   }

@@ -10,6 +10,8 @@ import {
   Mail,
   Phone,
   Hash,
+  ImageIcon,
+  Upload,
   GripVertical,
   Trash2,
   Plus,
@@ -23,7 +25,17 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-export type FieldType = "text" | "textarea" | "dropdown" | "checkbox" | "date" | "email" | "phone" | "number";
+export type FieldType =
+  | "text"
+  | "textarea"
+  | "dropdown"
+  | "checkbox"
+  | "date"
+  | "email"
+  | "phone"
+  | "number"
+  | "image"
+  | "file";
 
 export interface FormField {
   id: string;
@@ -32,6 +44,8 @@ export interface FormField {
   placeholder?: string;
   required: boolean;
   options?: string[];
+  /** e.g. image/*, .pdf — used for file/image inputs */
+  accept?: string;
 }
 
 const fieldTypes: { type: FieldType; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -43,11 +57,74 @@ const fieldTypes: { type: FieldType; label: string; icon: React.ComponentType<{ 
   { type: "email", label: "Email", icon: Mail },
   { type: "phone", label: "Phone", icon: Phone },
   { type: "number", label: "Number", icon: Hash },
+  { type: "image", label: "Image", icon: ImageIcon },
+  { type: "file", label: "File upload", icon: Upload },
 ];
+
+/** Map builder types → Prisma FieldType enum values when saving to API */
+export function toApiFieldType(type: FieldType): string {
+  const map: Record<FieldType, string> = {
+    text: "TEXT",
+    textarea: "TEXTAREA",
+    dropdown: "DROPDOWN",
+    checkbox: "CHECKBOX",
+    date: "DATE",
+    email: "EMAIL",
+    phone: "PHONE",
+    number: "CUSTOM",
+    image: "IMAGE_UPLOAD",
+    file: "FILE_UPLOAD",
+  };
+  return map[type] ?? "TEXT";
+}
+
+export function fromApiFieldType(type: string): FieldType {
+  const normalized = type.toLowerCase();
+  const map: Record<string, FieldType> = {
+    text: "text",
+    textarea: "textarea",
+    dropdown: "dropdown",
+    checkbox: "checkbox",
+    date: "date",
+    email: "email",
+    phone: "phone",
+    number: "number",
+    image: "image",
+    file: "file",
+    file_upload: "file",
+    image_upload: "image",
+    custom: "text",
+  };
+  return map[normalized] ?? "text";
+}
 
 interface FormBuilderProps {
   initialFields?: FormField[];
   onSave?: (fields: FormField[]) => void;
+}
+
+function UploadPreview({
+  kind,
+  placeholder,
+}: {
+  kind: "image" | "file";
+  placeholder?: string;
+}) {
+  return (
+    <div className="mt-1.5 flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/40 px-4 py-8 text-center dark:border-white/15 dark:bg-white/[0.03]">
+      {kind === "image" ? (
+        <ImageIcon className="h-8 w-8 text-vedha-teal/70" />
+      ) : (
+        <Upload className="h-8 w-8 text-vedha-teal/70" />
+      )}
+      <p className="text-sm font-medium text-foreground">
+        {placeholder || (kind === "image" ? "Upload an image" : "Upload a file")}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        {kind === "image" ? "JPG, PNG, WebP, or GIF" : "PDF, DOC, or other documents"}
+      </p>
+    </div>
+  );
 }
 
 export function FormBuilder({ initialFields = [], onSave }: FormBuilderProps) {
@@ -55,12 +132,27 @@ export function FormBuilder({ initialFields = [], onSave }: FormBuilderProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const addField = (type: FieldType) => {
+    const defaults: Partial<FormField> = {};
+    if (type === "dropdown") defaults.options = ["Option 1", "Option 2"];
+    if (type === "image") {
+      defaults.label = "Image upload";
+      defaults.placeholder = "Click or drag an image here";
+      defaults.accept = "image/*";
+    }
+    if (type === "file") {
+      defaults.label = "File upload";
+      defaults.placeholder = "Click or drag a file here";
+      defaults.accept = "*/*";
+    }
+
     const newField: FormField = {
       id: `field-${Date.now()}`,
       type,
-      label: `New ${type} field`,
+      label: defaults.label ?? `New ${type} field`,
+      placeholder: defaults.placeholder,
       required: false,
-      options: type === "dropdown" ? ["Option 1", "Option 2"] : undefined,
+      options: defaults.options,
+      accept: defaults.accept,
     };
     setFields([...fields, newField]);
     setSelectedId(newField.id);
@@ -102,7 +194,9 @@ export function FormBuilder({ initialFields = [], onSave }: FormBuilderProps) {
       <Card className="lg:col-span-6">
         <CardHeader className="flex flex-row items-center justify-between pb-3">
           <CardTitle className="text-sm">Form Preview</CardTitle>
-          <Button size="sm" onClick={() => onSave?.(fields)}>Save Form</Button>
+          <Button size="sm" onClick={() => onSave?.(fields)}>
+            Save Form
+          </Button>
         </CardHeader>
         <CardContent className="space-y-4 min-h-[400px]">
           {fields.length === 0 ? (
@@ -117,7 +211,9 @@ export function FormBuilder({ initialFields = [], onSave }: FormBuilderProps) {
                 onClick={() => setSelectedId(field.id)}
                 className={cn(
                   "group relative rounded-lg border p-4 cursor-pointer transition-colors",
-                  selectedId === field.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+                  selectedId === field.id
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:border-primary/50"
                 )}
               >
                 <GripVertical className="absolute left-1 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100" />
@@ -131,22 +227,43 @@ export function FormBuilder({ initialFields = [], onSave }: FormBuilderProps) {
                   ) : field.type === "checkbox" ? (
                     <div className="mt-1.5 flex items-center gap-2">
                       <input type="checkbox" disabled />
-                      <span className="text-sm text-muted-foreground">{field.placeholder || "Checkbox option"}</span>
+                      <span className="text-sm text-muted-foreground">
+                        {field.placeholder || "Checkbox option"}
+                      </span>
                     </div>
                   ) : field.type === "dropdown" ? (
-                    <select disabled className="mt-1.5 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm">
-                      {field.options?.map((opt) => <option key={opt}>{opt}</option>)}
+                    <select
+                      disabled
+                      className="mt-1.5 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                    >
+                      {field.options?.map((opt) => (
+                        <option key={opt}>{opt}</option>
+                      ))}
                     </select>
+                  ) : field.type === "image" ? (
+                    <UploadPreview kind="image" placeholder={field.placeholder} />
+                  ) : field.type === "file" ? (
+                    <UploadPreview kind="file" placeholder={field.placeholder} />
                   ) : (
-                    <Input type={field.type} placeholder={field.placeholder} disabled className="mt-1.5" />
+                    <Input
+                      type={field.type === "phone" ? "tel" : field.type}
+                      placeholder={field.placeholder}
+                      disabled
+                      className="mt-1.5"
+                    />
                   )}
-                  <Badge variant="outline" className="mt-2 text-[10px]">{field.type}</Badge>
+                  <Badge variant="outline" className="mt-2 text-[10px]">
+                    {field.type}
+                  </Badge>
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="absolute right-2 top-2 h-7 w-7 opacity-0 group-hover:opacity-100"
-                  onClick={(e) => { e.stopPropagation(); removeField(field.id); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeField(field.id);
+                  }}
                 >
                   <Trash2 className="h-3 w-3 text-destructive" />
                 </Button>
@@ -171,19 +288,44 @@ export function FormBuilder({ initialFields = [], onSave }: FormBuilderProps) {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Placeholder</Label>
+                <Label>
+                  {selectedField.type === "image" || selectedField.type === "file"
+                    ? "Helper text"
+                    : "Placeholder"}
+                </Label>
                 <Input
                   value={selectedField.placeholder || ""}
-                  onChange={(e) => updateField(selectedField.id, { placeholder: e.target.value })}
+                  onChange={(e) =>
+                    updateField(selectedField.id, { placeholder: e.target.value })
+                  }
                 />
               </div>
               <div className="flex items-center justify-between">
                 <Label>Required</Label>
                 <Switch
                   checked={selectedField.required}
-                  onCheckedChange={(checked) => updateField(selectedField.id, { required: checked })}
+                  onCheckedChange={(checked) =>
+                    updateField(selectedField.id, { required: checked })
+                  }
                 />
               </div>
+              {(selectedField.type === "image" || selectedField.type === "file") && (
+                <div className="space-y-2">
+                  <Label>Accepted types</Label>
+                  <Input
+                    value={selectedField.accept || (selectedField.type === "image" ? "image/*" : "*/*")}
+                    onChange={(e) =>
+                      updateField(selectedField.id, { accept: e.target.value })
+                    }
+                    placeholder={selectedField.type === "image" ? "image/*" : ".pdf,.doc"}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    {selectedField.type === "image"
+                      ? "Default: image/* (JPG, PNG, WebP, GIF)"
+                      : "e.g. .pdf,.doc,application/pdf"}
+                  </p>
+                </div>
+              )}
               {selectedField.type === "dropdown" && (
                 <div className="space-y-2">
                   <Label>Options (comma separated)</Label>
@@ -191,7 +333,10 @@ export function FormBuilder({ initialFields = [], onSave }: FormBuilderProps) {
                     value={selectedField.options?.join(", ") || ""}
                     onChange={(e) =>
                       updateField(selectedField.id, {
-                        options: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                        options: e.target.value
+                          .split(",")
+                          .map((s) => s.trim())
+                          .filter(Boolean),
                       })
                     }
                   />

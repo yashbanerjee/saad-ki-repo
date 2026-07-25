@@ -143,14 +143,30 @@ export const clientsApi = {
 export const onboardingApi = {
   listForms: () => api.get("/onboarding/forms"),
   getForm: (id: string) => api.get(`/onboarding/forms/${id}`),
-  createForm: (data: Record<string, unknown>) =>
+  createForm: (data: { title: string; slug?: string; description?: string }) =>
     api.post("/onboarding/forms", data),
-  updateForm: (id: string, data: Record<string, unknown>) =>
-    api.put(`/onboarding/forms/${id}`, data),
-  getPublicForm: (token: string) =>
-    api.get(`/onboarding/public/${token}`),
+  updateForm: (
+    id: string,
+    data: {
+      title?: string;
+      description?: string;
+      fields?: Record<string, unknown>[];
+      publish?: boolean;
+    }
+  ) => api.put(`/onboarding/forms/${id}`, data),
+  saveFields: (
+    id: string,
+    data: {
+      title?: string;
+      description?: string;
+      fields: Record<string, unknown>[];
+      publish?: boolean;
+    }
+  ) => api.put(`/onboarding/forms/${id}/fields`, data),
+  publishForm: (id: string) => api.post(`/onboarding/forms/${id}/publish`),
+  getPublicForm: (token: string) => api.get(`/onboarding/public/${token}`),
   submitPublicForm: (token: string, data: Record<string, unknown>) =>
-    api.post(`/onboarding/public/${token}/submit`, data),
+    api.post(`/onboarding/public/${token}/submit`, { data }),
 };
 
 // NDA API

@@ -1,4 +1,13 @@
-import { IsString, IsOptional, IsEnum, IsBoolean, IsInt, IsObject } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsInt,
+  IsObject,
+  IsArray,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { FieldType } from '@prisma/client';
 
@@ -7,9 +16,10 @@ export class CreateFormDto {
   @IsString()
   title: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
-  slug: string;
+  slug?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -47,8 +57,8 @@ export class CreateFormPageDto {
 
 export class CreateFormFieldDto {
   @ApiProperty({ enum: FieldType })
-  @IsEnum(FieldType)
-  type: FieldType;
+  @IsString()
+  type: FieldType | string;
 
   @ApiProperty()
   @IsString()
@@ -80,13 +90,45 @@ export class CreateFormFieldDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsObject()
   options?: unknown;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   placeholder?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  settings?: Record<string, unknown>;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  id?: string;
+}
+
+export class SaveFormFieldsDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiProperty({ type: [CreateFormFieldDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateFormFieldDto)
+  fields: CreateFormFieldDto[];
+
+  @ApiPropertyOptional({ description: 'Publish form so the public client link works' })
+  @IsOptional()
+  @IsBoolean()
+  publish?: boolean;
 }
 
 export class SubmitFormDto {
