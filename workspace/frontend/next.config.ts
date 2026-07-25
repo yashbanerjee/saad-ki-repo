@@ -3,8 +3,8 @@ import path from "path";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  // standalone is for Docker; Railpack uses node_modules + .next directly
-  // Keeping it enabled is fine, but tracing root must stay this package.
+  // Required for Railway/Docker — start with node .next/standalone/server.js
+  // (see railway-start.js). Do not use `next start` with this setting.
   output: "standalone",
   outputFileTracingRoot: path.join(__dirname),
   eslint: {
