@@ -11,10 +11,9 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ProjectsService } from './projects.service';
-import { CreateProjectDto, UpdateProjectDto, AddProjectMemberDto } from './dto/project.dto';
+import { CreateProjectDto, UpdateProjectDto, AddProjectMemberDto, ListProjectsQueryDto } from './dto/project.dto';
 import { CurrentUser, AuthenticatedUser, Permissions } from '../common/decorators';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
-import { PaginationDto } from '../common/dto/pagination.dto';
 import { ParseCuidPipe } from '../common/pipes/parse-cuid.pipe';
 
 @ApiTags('projects')
@@ -28,10 +27,14 @@ export class ProjectsController {
   @Permissions('projects:read')
   findAll(
     @CurrentUser() user: AuthenticatedUser,
-    @Query() query: PaginationDto,
-    @Query('status') status?: string,
+    @Query() query: ListProjectsQueryDto,
   ) {
-    return this.projectsService.findAll(user.companyId!, query.page, query.limit, status);
+    return this.projectsService.findAll(
+      user.companyId!,
+      query.page,
+      query.limit,
+      query.status,
+    );
   }
 
   @Get(':id')

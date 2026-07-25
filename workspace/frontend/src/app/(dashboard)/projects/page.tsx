@@ -56,7 +56,15 @@ export default function ProjectsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (payload: { name: string; description: string }) => projectsApi.create(payload),
+    mutationFn: (payload: { name: string; description: string }) =>
+      projectsApi.create({
+        name: payload.name,
+        description: payload.description,
+        key: payload.name
+          .toUpperCase()
+          .replace(/[^A-Z0-9]+/g, "")
+          .slice(0, 6) || "PRJ",
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       toast.success("Project created");
@@ -64,10 +72,20 @@ export default function ProjectsPage() {
       setName("");
       setDescription("");
     },
-    onError: () => toast.error("Failed to create project"),
+    onError: (err: unknown) => {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Failed to create project";
+      toast.error(Array.isArray(message) ? message.join(", ") : message);
+    },
   });
 
-  const projects: Project[] = data?.data?.data ?? data?.data ?? [];
+  const raw = data?.data?.data ?? data?.data ?? [];
+  const projects: Project[] = Array.isArray(raw)
+    ? raw
+    : Array.isArray((raw as { data?: Project[] })?.data)
+      ? ((raw as { data: Project[] }).data)
+      : [];
 
   return (
     <div className="space-y-6">

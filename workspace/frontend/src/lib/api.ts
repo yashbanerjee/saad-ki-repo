@@ -142,7 +142,12 @@ export const clientsApi = {
 // Onboarding API
 export const onboardingApi = {
   listForms: () => api.get("/onboarding/forms"),
-  getForm: (id: string) => api.get(`/onboarding/forms/${id}`),
+  getForm: (id: string) => {
+    if (!id || id === "new") {
+      return Promise.reject(new Error("Invalid form id"));
+    }
+    return api.get(`/onboarding/forms/${id}`);
+  },
   createForm: (data: { title: string; slug?: string; description?: string }) =>
     api.post("/onboarding/forms", data),
   updateForm: (
@@ -153,7 +158,12 @@ export const onboardingApi = {
       fields?: Record<string, unknown>[];
       publish?: boolean;
     }
-  ) => api.put(`/onboarding/forms/${id}`, data),
+  ) => {
+    if (!id || id === "new") {
+      return Promise.reject(new Error("Create the form before updating"));
+    }
+    return api.put(`/onboarding/forms/${id}`, data);
+  },
   saveFields: (
     id: string,
     data: {
@@ -162,7 +172,12 @@ export const onboardingApi = {
       fields: Record<string, unknown>[];
       publish?: boolean;
     }
-  ) => api.put(`/onboarding/forms/${id}/fields`, data),
+  ) => {
+    if (!id || id === "new") {
+      return Promise.reject(new Error("Create the form before saving fields"));
+    }
+    return api.put(`/onboarding/forms/${id}/fields`, data);
+  },
   publishForm: (id: string) => api.post(`/onboarding/forms/${id}/publish`),
   getPublicForm: (token: string) => api.get(`/onboarding/public/${token}`),
   submitPublicForm: (token: string, data: Record<string, unknown>) =>
@@ -182,10 +197,84 @@ export const teamApi = {
     api.post("/team/invite", { email, role }),
 };
 
-// Dashboard API
+// Dashboard API — prefers dedicated endpoints, falls back to /overview
+// (older Railway deploys only expose overview)
+function mapOverviewToStatsPayload(overview: Record<string, unknown>) {
+  const rawStats = (overview.stats ?? {}) as Record<string, unknown>;
+  const activeProjects = String(rawStats.activeProjects ?? rawStats.totalProjects ?? 0);
+  const openTasks = String(rawStats.openIssues ?? rawStats.totalIssues ?? 0);
+  const data = [
+    { label: "Active Projects", value: activeProjects },
+    { label: "Open Tasks", value: openTasks },
+    { label: "Open Bugs", value: "0" },
+    { label: "Avg. Velocity", value: "0" },
+  ];
+
+  const issuesByStatus = Array.isArray(overview.issuesByStatus)
+    ? (overview.issuesByStatus as { status: string; count: number }[])
+    : [];
+  const colors: Record<string, string> = {
+    TODO: "#64748b",
+    IN_PROGRESS: "#a1c8cf",
+    DONE: "#10b981",
+  };
+  const distribution = issuesByStatus.map((g) => ({
+    name: g.status,
+    value: g.count,
+    color: colors[g.status] ?? "#64748b",
+  }));
+
+  const recent = Array.isArray(overview.recentActivity)
+    ? (overview.recentActivity as Record<string, unknown>[])
+    : Array.isArray(overview.data)
+      ? (overview.data as Record<string, unknown>[])
+      : [];
+
+  return {
+    data,
+    velocity: Array.isArray(overview.velocity) ? overview.velocity : [],
+    distribution: Array.isArray(overview.distribution) ? overview.distribution : distribution,
+    activity: recent.map((row, i) => {
+      if (row.action && row.user && row.time) return row;
+      const user = row.user as { firstName?: string; lastName?: string } | string | undefined;
+      const userName =
+        typeof user === "string"
+          ? user
+          : user
+            ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || "System"
+            : "System";
+      return {
+        id: String(row.id ?? i),
+        action: String(row.action ?? row.message ?? "updated"),
+        target: String(row.target ?? row.message ?? row.entityType ?? "item"),
+        user: userName,
+        time: String(row.time ?? row.createdAt ?? new Date().toISOString()),
+      };
+    }),
+  };
+}
+
 export const dashboardApi = {
-  stats: () => api.get("/dashboard/stats"),
-  activity: () => api.get("/dashboard/activity"),
+  overview: () => api.get("/dashboard/overview"),
+  stats: async () => {
+    try {
+      return await api.get("/dashboard/stats");
+    } catch {
+      const res = await api.get("/dashboard/overview");
+      const body = res.data?.data ?? res.data;
+      return { ...res, data: mapOverviewToStatsPayload(body ?? {}) };
+    }
+  },
+  activity: async () => {
+    try {
+      return await api.get("/dashboard/activity");
+    } catch {
+      const res = await api.get("/dashboard/overview");
+      const body = res.data?.data ?? res.data;
+      const mapped = mapOverviewToStatsPayload(body ?? {});
+      return { ...res, data: mapped.activity };
+    }
+  },
 };
 
 // Notifications API

@@ -107,7 +107,11 @@ export default function DashboardPage() {
   const activity: ActivityItem[] = Array.isArray(rawActivity) ? rawActivity : [];
   const projects: DashboardProject[] = (() => {
     const raw = projectsData?.data?.data ?? projectsData?.data ?? [];
-    return Array.isArray(raw) ? raw : [];
+    if (Array.isArray(raw)) return raw;
+    if (Array.isArray((raw as { data?: DashboardProject[] })?.data)) {
+      return (raw as { data: DashboardProject[] }).data;
+    }
+    return [];
   })();
 
   const velocityData: { week: string; tasks: number; bugs: number }[] =

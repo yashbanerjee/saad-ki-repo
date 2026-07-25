@@ -1,8 +1,6 @@
 import {
   Injectable,
   NotFoundException,
-  ConflictException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProjectDto, UpdateProjectDto, AddProjectMemberDto } from './dto/project.dto';
@@ -36,7 +34,13 @@ export class ProjectsService {
       where: { id, companyId },
       include: {
         client: true,
-        members: { include: { user: { select: { id: true, firstName: true, lastName: true, email: true, avatar: true } } } },
+        members: {
+          include: {
+            user: {
+              select: { id: true, firstName: true, lastName: true, email: true, avatar: true },
+            },
+          },
+        },
         _count: { select: { issues: true, sprints: true } },
       },
     });
@@ -45,11 +49,29 @@ export class ProjectsService {
   }
 
   async create(companyId: string, userId: string, dto: CreateProjectDto) {
-    const key = dto.key.toUpperCase();
-    const existing = await this.prisma.project.findFirst({
-      where: { companyId, key },
-    });
-    if (existing) throw new ConflictException('Project key already exists');
+    const baseKey = (dto.key || dto.name)
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '')
+      .slice(0, 6);
+    let key = baseKey.length >= 2 ? baseKey : 'PRJ';
+    let suffix = 0;
+    // Find a unique key for this company
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const candidate = suffix === 0 ? key : `${key}${suffix}`;
+      const existing = await this.prisma.project.findFirst({
+        where: { companyId, key: candidate },
+      });
+      if (!existing) {
+        key = candidate;
+        break;
+      }
+      suffix += 1;
+      if (suffix > 99) {
+        key = `P${Date.now().toString().slice(-5)}`;
+        break;
+      }
+    }
 
     return this.prisma.project.create({
       data: {
