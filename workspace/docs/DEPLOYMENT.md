@@ -38,7 +38,11 @@ bash scripts/deploy.sh   # Linux/macOS
 3. Set `NEXT_PUBLIC_API_URL`  
 4. Enable `output: 'standalone'` if using Docker runner  
 
-## Railway / DigitalOcean / VPS
+## Railway
+
+Full step-by-step guide: **[RAILWAY.md](./RAILWAY.md)**
+
+## DigitalOcean / VPS
 
 1. Deploy Postgres + Redis managed services  
 2. Build backend from `docker/Dockerfile.backend`  

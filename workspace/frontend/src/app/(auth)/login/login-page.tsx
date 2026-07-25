@@ -52,13 +52,13 @@ export default function LoginPage() {
   };
 
   return (
-    <Card className="border-border/50 shadow-xl">
+    <Card className="shadow-float">
       <CardHeader className="text-center">
-        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl gradient-teal">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl gradient-vedha glow-vedha">
           <Sparkles className="h-6 w-6 text-white" />
         </div>
         <CardTitle className="text-2xl">Welcome back</CardTitle>
-        <CardDescription>Sign in to your TaskFlow workspace</CardDescription>
+        <CardDescription>Sign in to your Vedha TaskFlow workspace</CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit(onSubmit)}>
         <CardContent className="space-y-4">

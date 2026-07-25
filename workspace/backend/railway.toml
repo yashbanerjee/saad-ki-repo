@@ -1,0 +1,12 @@
+# Use this when Root Directory = workspace/backend
+# Note: also set watch paths / ensure prisma is available via ../prisma
+# Prefer Root Directory = workspace (see workspace/railway.toml)
+
+[build]
+builder = "RAILPACK"
+buildCommand = "npm install && npx prisma generate --schema=../prisma/schema.prisma && npm run build"
+
+[deploy]
+startCommand = "npx prisma migrate deploy --schema=../prisma/schema.prisma && node dist/main.js"
+healthcheckPath = "/api/v1/health"
+healthcheckTimeout = 30

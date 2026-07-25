@@ -1,0 +1,15 @@
+{
+  "name": "saad-ki-repo",
+  "private": true,
+  "description": "TaskFlow Enterprise monorepo — app lives in /workspace",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "install:app": "npm install --prefix workspace",
+    "build": "npm install --prefix workspace && npm run prisma:generate --prefix workspace/backend && npm run build --prefix workspace/backend",
+    "start": "npm run start:railway --prefix workspace",
+    "build:frontend": "npm install --prefix workspace && npm run build --prefix workspace/frontend",
+    "start:frontend": "npm run start --prefix workspace/frontend"
+  }
+}
