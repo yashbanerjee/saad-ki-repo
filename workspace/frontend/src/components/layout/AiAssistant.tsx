@@ -78,11 +78,11 @@ export function AiAssistant() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 16, scale: 0.96 }}
             transition={{ type: "spring", stiffness: 380, damping: 28 }}
-            className="fixed bottom-6 right-6 z-50 flex h-[min(560px,80vh)] w-[min(400px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-white/10 glass shadow-float"
+            className="fixed bottom-6 right-6 z-50 flex h-[min(560px,80vh)] w-[min(400px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-border glass shadow-float"
             role="dialog"
             aria-label="AI Assistant"
           >
-            <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <div className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-xl gradient-vedha">
                   <Sparkles className="h-4 w-4 text-white" />
@@ -97,13 +97,13 @@ export function AiAssistant() {
               </Button>
             </div>
 
-            <div className="flex flex-wrap gap-1.5 border-b border-white/5 px-3 py-2">
+            <div className="flex flex-wrap gap-1.5 border-b border-border px-3 py-2">
               {quickActions.map((a) => (
                 <button
                   key={a.label}
                   type="button"
                   onClick={() => setMessage(a.label)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-white/8 bg-white/[0.03] px-2 py-1 text-[10px] text-muted-foreground transition hover:border-vedha-cyan/30 hover:text-foreground"
+                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-muted/50 px-2 py-1 text-[10px] text-muted-foreground transition hover:border-vedha-teal/30 hover:text-foreground dark:border-white/8 dark:bg-white/[0.03] dark:hover:border-vedha-cyan/30"
                 >
                   <a.icon className="h-3 w-3" />
                   {a.label}
@@ -118,8 +118,8 @@ export function AiAssistant() {
                   className={cn(
                     "max-w-[90%] rounded-2xl px-3 py-2 text-sm",
                     m.role === "assistant"
-                      ? "bg-white/[0.05] border border-white/8 text-foreground"
-                      : "ml-auto bg-vedha-teal/30 border border-vedha-teal/40 text-white"
+                      ? "bg-muted border border-border text-foreground dark:bg-white/[0.05] dark:border-white/8"
+                      : "ml-auto bg-vedha-teal/20 border border-vedha-teal/40 text-foreground dark:bg-vedha-teal/30 dark:text-white"
                   )}
                 >
                   {m.text}
@@ -127,7 +127,7 @@ export function AiAssistant() {
               ))}
             </div>
 
-            <div className="border-t border-white/8 p-3">
+            <div className="border-t border-border p-3">
               <div className="flex gap-2">
                 <Input
                   value={message}

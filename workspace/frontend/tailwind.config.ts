@@ -55,13 +55,13 @@ const config: Config = {
           border: "hsl(var(--sidebar-border) / <alpha-value>)",
         },
         vedha: {
-          bg: "#09090B",
-          secondary: "#111827",
+          bg: "hsl(var(--background))",
+          secondary: "hsl(var(--secondary))",
           teal: "#0f6661",
           mid: "#2f5d5a",
-          cyan: "#a1c8cf",
-          gold: "#d4a574",
-          champagne: "#e0c49a",
+          cyan: "var(--vedha-cyan)",
+          gold: "var(--vedha-gold)",
+          champagne: "var(--vedha-champagne)",
         },
       },
       borderRadius: {

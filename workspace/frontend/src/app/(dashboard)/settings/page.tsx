@@ -93,13 +93,15 @@ export default function SettingsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <Label>Theme</Label>
-                  <p className="text-xs text-muted-foreground">Select light, dark, or system</p>
+                  <p className="text-xs text-muted-foreground">
+                    Light by default — switch to dark anytime
+                  </p>
                 </div>
                 <div className="flex gap-2">
-                  {(["light", "dark", "system"] as const).map((t) => (
+                  {(["light", "dark"] as const).map((t) => (
                     <Button
                       key={t}
-                      variant={theme === t ? "default" : "outline"}
+                      variant={(theme ?? "light") === t ? "default" : "outline"}
                       size="sm"
                       onClick={() => setTheme(t)}
                       className="capitalize"

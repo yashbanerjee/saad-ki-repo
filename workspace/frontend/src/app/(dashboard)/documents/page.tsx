@@ -15,6 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,16 +26,14 @@ import {
 import { formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
-const documents = [
-  { id: "1", name: "Project Requirements.pdf", type: "pdf", size: "2.4 MB", folder: "Requirements", updatedAt: "2026-02-20" },
-  { id: "2", name: "Design Mockups.fig", type: "design", size: "15.8 MB", folder: "Design", updatedAt: "2026-02-18" },
-  { id: "3", name: "Sprint 5 Report.docx", type: "doc", size: "890 KB", folder: "Reports", updatedAt: "2026-02-17" },
-  { id: "4", name: "API Specification.md", type: "doc", size: "124 KB", folder: "Technical", updatedAt: "2026-02-15" },
-  { id: "5", name: "Client Contract.pdf", type: "pdf", size: "1.2 MB", folder: "Legal", updatedAt: "2026-02-10" },
-  { id: "6", name: "Brand Assets.zip", type: "archive", size: "45.2 MB", folder: "Design", updatedAt: "2026-02-08" },
-];
-
-const folders = ["All", "Requirements", "Design", "Reports", "Technical", "Legal"];
+interface Document {
+  id: string;
+  name: string;
+  type: string;
+  size: string;
+  folder: string;
+  updatedAt: string;
+}
 
 const typeColors: Record<string, string> = {
   pdf: "text-red-500",
@@ -46,6 +46,10 @@ export default function DocumentsPage() {
   const [view, setView] = useState<"grid" | "list">("list");
   const [search, setSearch] = useState("");
   const [activeFolder, setActiveFolder] = useState("All");
+  const [isLoading] = useState(false);
+
+  const documents: Document[] = [];
+  const folders = ["All", ...Array.from(new Set(documents.map((d) => d.folder)))];
 
   const filtered = documents.filter(
     (doc) =>
@@ -74,21 +78,32 @@ export default function DocumentsPage() {
         </div>
       </div>
 
-      <div className="flex gap-2 flex-wrap">
-        {folders.map((folder) => (
-          <Button
-            key={folder}
-            variant={activeFolder === folder ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => setActiveFolder(folder)}
-          >
-            {folder !== "All" && <Folder className="h-3.5 w-3.5 mr-1" />}
-            {folder}
-          </Button>
-        ))}
-      </div>
+      {folders.length > 1 && (
+        <div className="flex gap-2 flex-wrap">
+          {folders.map((folder) => (
+            <Button
+              key={folder}
+              variant={activeFolder === folder ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setActiveFolder(folder)}
+            >
+              {folder !== "All" && <Folder className="h-3.5 w-3.5 mr-1" />}
+              {folder}
+            </Button>
+          ))}
+        </div>
+      )}
 
-      {view === "list" ? (
+      {isLoading ? (
+        <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={FileText}
+          title="No documents"
+          description="Upload files to share with your team and clients."
+          actionLabel="Upload"
+        />
+      ) : view === "list" ? (
         <Card>
           <CardContent className="p-0">
             <div className="divide-y divide-border">

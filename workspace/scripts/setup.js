@@ -48,5 +48,5 @@ API:      http://localhost:4000/api/v1
 Swagger:  http://localhost:4000/api/docs
 App:      http://localhost:3000
 
-Demo login after seed: admin@acme.demo / Password123!
+Demo login after seed: info@vedha.ae / S@ad1002
 `);

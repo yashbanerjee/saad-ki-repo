@@ -93,7 +93,8 @@ export const authApi = {
     api.post("/auth/login", { email, password }),
   register: (data: {
     companyName: string;
-    name: string;
+    firstName: string;
+    lastName: string;
     email: string;
     password: string;
   }) => api.post("/auth/register", data),

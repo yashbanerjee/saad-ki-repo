@@ -58,4 +58,4 @@ If you still see `start-railway`, Prisma, or `DATABASE_URL`, the Start Command i
 
 ## Login
 `https://YOUR-FRONTEND.up.railway.app/login`  
-`admin@acme.demo` / `Password123!`
+`info@vedha.ae` / `S@ad1002`

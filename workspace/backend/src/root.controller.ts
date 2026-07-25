@@ -40,7 +40,7 @@ export class RootController {
       <li><a href="/api/v1/health">Health check</a></li>
     </ul>
     <p>Open your <strong>frontend</strong> Railway URL and go to <code>/login</code> to sign in.</p>
-    <p>Demo: <code>admin@acme.demo</code> / <code>Password123!</code></p>
+    <p>Sign in from the <strong>frontend</strong> app at <code>/login</code>.</p>
   </div>
 </body>
 </html>`;

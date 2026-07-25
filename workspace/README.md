@@ -38,11 +38,7 @@ npm run dev:frontend  # :3000
 
 | Email | Role | Password |
 |-------|------|----------|
-| admin@acme.demo | Company Admin | Password123! |
-| pm@acme.demo | Project Manager | Password123! |
-| dev@acme.demo | Developer | Password123! |
-| qa@acme.demo | QA | Password123! |
-| client@acme.demo | Client | Password123! |
+| info@vedha.ae | Super Admin | S@ad1002 |
 
 ## Structure
 

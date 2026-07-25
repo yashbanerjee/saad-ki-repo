@@ -10,18 +10,18 @@ const badgeVariants = cva(
         default:
           "border-transparent bg-gradient-to-r from-vedha-teal/80 to-vedha-mid/80 text-white shadow-sm",
         secondary:
-          "border-white/10 bg-white/[0.06] text-foreground",
+          "border-border bg-muted text-foreground dark:border-white/10 dark:bg-white/[0.06]",
         destructive:
-          "border-transparent bg-destructive/20 text-red-300 border-red-500/20",
-        outline: "border-white/15 text-foreground bg-transparent",
+          "border-transparent bg-destructive/15 text-destructive dark:bg-destructive/20 dark:text-red-300 dark:border-red-500/20",
+        outline: "border-border text-foreground bg-transparent dark:border-white/15",
         success:
-          "border-vedha-teal/30 bg-vedha-teal/15 text-vedha-cyan",
+          "border-vedha-teal/30 bg-vedha-teal/15 text-vedha-teal dark:text-vedha-cyan",
         warning:
-          "border-vedha-gold/30 bg-vedha-gold/15 text-vedha-champagne",
+          "border-vedha-gold/30 bg-vedha-gold/15 text-vedha-gold dark:text-vedha-champagne",
         info:
-          "border-vedha-cyan/30 bg-vedha-cyan/10 text-vedha-cyan",
+          "border-vedha-teal/30 bg-vedha-teal/10 text-vedha-teal dark:border-vedha-cyan/30 dark:bg-vedha-cyan/10 dark:text-vedha-cyan",
         gold:
-          "border-vedha-gold/40 bg-vedha-gold/20 text-vedha-champagne",
+          "border-vedha-gold/40 bg-vedha-gold/20 text-vedha-gold dark:text-vedha-champagne",
       },
     },
     defaultVariants: { variant: "default" },

@@ -6,18 +6,21 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { notificationsApi } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/utils";
 import { toast } from "sonner";
 
-const mockNotifications = [
-  { id: "1", type: "issue", title: "New bug assigned to you", message: "Login redirect loop on Safari", read: false, time: new Date(Date.now() - 1800000).toISOString() },
-  { id: "2", type: "project", title: "Sprint 5 started", message: "Website Redesign sprint has begun", read: false, time: new Date(Date.now() - 3600000).toISOString() },
-  { id: "3", type: "team", title: "New team member", message: "Emily Chen joined the workspace", read: true, time: new Date(Date.now() - 86400000).toISOString() },
-  { id: "4", type: "issue", title: "Issue resolved", message: "Mobile nav menu overlap fixed", read: true, time: new Date(Date.now() - 172800000).toISOString() },
-];
-
 const typeIcons = { issue: Bug, project: FolderKanban, team: UserPlus };
+
+interface Notification {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  read: boolean;
+  time: string;
+}
 
 export default function NotificationsPage() {
   const queryClient = useQueryClient();
@@ -36,10 +39,8 @@ export default function NotificationsPage() {
     },
   });
 
-  const notifications = data?.data?.data ?? data?.data ?? mockNotifications;
-  const unreadCount = (Array.isArray(notifications) ? notifications : mockNotifications).filter(
-    (n: { read: boolean }) => !n.read
-  ).length;
+  const notifications: Notification[] = data?.data?.data ?? data?.data ?? [];
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   return (
     <div className="space-y-6">
@@ -55,11 +56,17 @@ export default function NotificationsPage() {
 
       {isLoading ? (
         <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-16" />)}</div>
+      ) : notifications.length === 0 ? (
+        <EmptyState
+          icon={Bell}
+          title="No notifications"
+          description="You're all caught up. New activity will appear here."
+        />
       ) : (
         <Card>
           <CardContent className="p-0">
             <div className="divide-y divide-border">
-              {(Array.isArray(notifications) ? notifications : mockNotifications).map((notif: typeof mockNotifications[0]) => {
+              {notifications.map((notif) => {
                 const Icon = typeIcons[notif.type as keyof typeof typeIcons] || Bell;
                 return (
                   <div

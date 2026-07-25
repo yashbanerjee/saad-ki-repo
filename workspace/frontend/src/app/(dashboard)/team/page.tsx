@@ -7,18 +7,20 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { teamApi } from "@/lib/api";
 import { getInitials } from "@/lib/utils";
 
-const mockTeam = [
-  { id: "1", name: "Alex Morgan", email: "alex@company.com", role: "admin", status: "active", projects: 5 },
-  { id: "2", name: "Sarah Kim", email: "sarah@company.com", role: "manager", status: "active", projects: 3 },
-  { id: "3", name: "James Liu", email: "james@company.com", role: "member", status: "active", projects: 4 },
-  { id: "4", name: "Emily Chen", email: "emily@company.com", role: "member", status: "active", projects: 2 },
-  { id: "5", name: "Mike Johnson", email: "mike@client.com", role: "client", status: "active", projects: 1 },
-];
-
 const roleVariant = { admin: "destructive" as const, manager: "warning" as const, member: "info" as const, client: "secondary" as const };
+
+interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  status: string;
+  projects?: number;
+}
 
 export default function TeamPage() {
   const { data, isLoading } = useQuery({
@@ -27,7 +29,7 @@ export default function TeamPage() {
     retry: false,
   });
 
-  const team = data?.data?.data ?? data?.data ?? mockTeam;
+  const team: TeamMember[] = data?.data?.data ?? data?.data ?? [];
 
   return (
     <div className="space-y-6">
@@ -41,11 +43,18 @@ export default function TeamPage() {
 
       {isLoading ? (
         <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16" />)}</div>
+      ) : team.length === 0 ? (
+        <EmptyState
+          icon={Users}
+          title="No team members"
+          description="Invite colleagues to collaborate in your workspace."
+          actionLabel="Invite Member"
+        />
       ) : (
         <Card>
           <CardContent className="p-0">
             <div className="divide-y divide-border">
-              {(Array.isArray(team) ? team : mockTeam).map((member: typeof mockTeam[0]) => (
+              {team.map((member) => (
                 <div key={member.id} className="flex items-center gap-4 px-6 py-4 hover:bg-muted/50 transition-colors">
                   <Avatar className="h-10 w-10">
                     <AvatarFallback className="bg-primary/10 text-primary">{getInitials(member.name)}</AvatarFallback>
@@ -58,7 +67,7 @@ export default function TeamPage() {
                     <Shield className="h-3 w-3 mr-1" />{member.role}
                   </Badge>
                   <Badge variant="success">{member.status}</Badge>
-                  <span className="text-xs text-muted-foreground hidden sm:block">{member.projects} projects</span>
+                  <span className="text-xs text-muted-foreground hidden sm:block">{member.projects ?? 0} projects</span>
                 </div>
               ))}
             </div>

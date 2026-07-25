@@ -55,6 +55,13 @@ const priorityBar = {
   high: "bg-red-400",
 };
 
+export const defaultColumns: KanbanColumn[] = [
+  { id: "todo", title: "Todo", tasks: [] },
+  { id: "in-progress", title: "In Progress", tasks: [] },
+  { id: "review", title: "Review", tasks: [] },
+  { id: "done", title: "Done", tasks: [] },
+];
+
 function SortableTask({ task }: { task: KanbanTask }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
@@ -150,83 +157,6 @@ interface KanbanBoardProps {
   initialColumns?: KanbanColumn[];
   onTaskMove?: (taskId: string, fromColumn: string, toColumn: string) => void;
 }
-
-const defaultColumns: KanbanColumn[] = [
-  {
-    id: "todo",
-    title: "Todo",
-    tasks: [
-      {
-        id: "1",
-        title: "Design system audit",
-        priority: "high",
-        assignee: "Alex M.",
-        labels: ["Design"],
-        dueDate: "Jul 28",
-        progress: 10,
-      },
-      {
-        id: "2",
-        title: "API documentation",
-        priority: "medium",
-        assignee: "Sarah K.",
-        labels: ["Docs"],
-        dueDate: "Aug 2",
-      },
-    ],
-  },
-  {
-    id: "in-progress",
-    title: "In Progress",
-    tasks: [
-      {
-        id: "3",
-        title: "Implement auth flow",
-        priority: "high",
-        assignee: "James L.",
-        labels: ["Backend"],
-        progress: 64,
-        dueDate: "Jul 25",
-      },
-      {
-        id: "4",
-        title: "Dashboard wireframes",
-        priority: "medium",
-        assignee: "Alex M.",
-        labels: ["Design"],
-        progress: 40,
-      },
-    ],
-  },
-  {
-    id: "review",
-    title: "Review",
-    tasks: [
-      {
-        id: "5",
-        title: "Client portal mockups",
-        priority: "medium",
-        assignee: "Sarah K.",
-        labels: ["Frontend"],
-        progress: 90,
-      },
-    ],
-  },
-  {
-    id: "done",
-    title: "Done",
-    tasks: [
-      {
-        id: "6",
-        title: "Project setup & CI/CD",
-        priority: "low",
-        assignee: "James L.",
-        labels: ["DevOps"],
-        progress: 100,
-      },
-    ],
-  },
-];
 
 function DroppableColumn({
   column,

@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { authApi } from "@/lib/api";
-import { useAuthStore } from "@/lib/auth-store";
+import { normalizeAuthUser, useAuthStore } from "@/lib/auth-store";
 import { toast } from "sonner";
 
 const registerSchema = z.object({
@@ -40,15 +40,22 @@ export default function RegisterPage() {
   const onSubmit = async (data: RegisterForm) => {
     setLoading(true);
     try {
+      const [firstName, ...rest] = data.name.trim().split(/\s+/);
+      const lastName = rest.join(" ") || firstName;
       const res = await authApi.register({
         companyName: data.companyName,
-        name: data.name,
+        firstName,
+        lastName,
         email: data.email,
         password: data.password,
       });
       const payload = res.data.data ?? res.data;
-      const { user, accessToken, refreshToken } = payload;
-      setAuth(user, accessToken, refreshToken);
+      const { user, accessToken, refreshToken, company } = payload;
+      setAuth(
+        normalizeAuthUser(user, company?.name ?? data.companyName),
+        accessToken,
+        refreshToken
+      );
       document.cookie = `taskflow-auth-token=${accessToken}; path=/; max-age=604800; SameSite=Lax`;
       toast.success("Company registered successfully!");
       router.push("/dashboard");
@@ -73,7 +80,7 @@ export default function RegisterPage() {
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="companyName">Company Name</Label>
-            <Input id="companyName" placeholder="Acme Corp" {...register("companyName")} />
+            <Input id="companyName" placeholder="Your company" {...register("companyName")} />
             {errors.companyName && <p className="text-xs text-destructive">{errors.companyName.message}</p>}
           </div>
           <div className="space-y-2">

@@ -37,7 +37,7 @@ interface TopNavbarProps {
 }
 
 export function TopNavbar({ onOpenCommand }: TopNavbarProps) {
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const setMobileOpen = useSidebarStore((s) => s.setMobileOpen);
@@ -56,7 +56,7 @@ export function TopNavbar({ onOpenCommand }: TopNavbarProps) {
   };
 
   return (
-    <header className="sticky top-0 z-40 flex h-16 items-center gap-3 border-b border-white/[0.06] bg-[#09090B]/70 px-4 backdrop-blur-[20px] lg:px-6">
+    <header className="chrome-bar sticky top-0 z-40 flex h-16 items-center gap-3 px-4 lg:px-6">
       <Button
         variant="ghost"
         size="icon"
@@ -73,12 +73,12 @@ export function TopNavbar({ onOpenCommand }: TopNavbarProps) {
           onClick={onOpenCommand}
           whileHover={{ scale: 1.01 }}
           whileTap={{ scale: 0.99 }}
-          className="group flex w-full max-w-xl items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-2.5 text-left text-sm text-muted-foreground shadow-glass transition-all hover:border-vedha-cyan/25 hover:bg-white/[0.05] hover:shadow-glow"
+          className="soft-panel group flex w-full max-w-xl items-center gap-3 rounded-2xl px-4 py-2.5 text-left text-sm text-muted-foreground shadow-sm transition-all hover:border-vedha-teal/30 hover:shadow-glow dark:hover:border-vedha-cyan/25"
           aria-label="Open command palette"
         >
           <Search className="h-4 w-4 text-vedha-cyan/80" />
           <span className="flex-1 truncate">Search projects, issues, clients…</span>
-          <kbd className="hidden items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-medium sm:inline-flex">
+          <kbd className="hidden items-center gap-1 rounded-lg border border-border bg-background px-2 py-0.5 text-[10px] font-medium sm:inline-flex dark:border-white/10 dark:bg-white/[0.04]">
             <Command className="h-3 w-3" />K
           </kbd>
         </motion.button>
@@ -88,10 +88,11 @@ export function TopNavbar({ onOpenCommand }: TopNavbarProps) {
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          aria-label="Toggle theme"
+          onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+          aria-label={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
           className="relative"
         >
+          {/* Sun visible in light (click → dark); Moon visible in dark (click → light) */}
           <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
           <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
         </Button>
@@ -108,7 +109,7 @@ export function TopNavbar({ onOpenCommand }: TopNavbarProps) {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0">
-              <Avatar className="h-9 w-9 ring-1 ring-white/10 ring-offset-2 ring-offset-[#09090B]">
+              <Avatar className="h-9 w-9 ring-1 ring-border ring-offset-2 ring-offset-background">
                 <AvatarImage src={user?.avatar} alt={user?.name} />
                 <AvatarFallback className="bg-vedha-teal/30 text-vedha-cyan text-xs">
                   {user?.name ? getInitials(user.name) : "U"}
@@ -116,7 +117,7 @@ export function TopNavbar({ onOpenCommand }: TopNavbarProps) {
               </Avatar>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-56 glass border-white/10" align="end" forceMount>
+          <DropdownMenuContent className="w-56 glass border-border" align="end" forceMount>
             <DropdownMenuLabel className="font-normal">
               <div className="flex flex-col space-y-1">
                 <p className="text-sm font-medium leading-none">{user?.name}</p>
@@ -126,7 +127,7 @@ export function TopNavbar({ onOpenCommand }: TopNavbarProps) {
                 )}
               </div>
             </DropdownMenuLabel>
-            <DropdownMenuSeparator className="bg-white/8" />
+            <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link href="/settings">
                 <User className="mr-2 h-4 w-4" />
@@ -139,7 +140,7 @@ export function TopNavbar({ onOpenCommand }: TopNavbarProps) {
                 Settings
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuSeparator className="bg-white/8" />
+            <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={handleLogout}
               className="text-destructive focus:text-destructive"

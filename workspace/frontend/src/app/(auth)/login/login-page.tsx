@@ -11,8 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { authApi } from "@/lib/api";
-import { useAuthStore } from "@/lib/auth-store";
+import { api, authApi } from "@/lib/api";
+import { normalizeAuthUser, useAuthStore } from "@/lib/auth-store";
 import { toast } from "sonner";
 
 const loginSchema = z.object({
@@ -39,8 +39,23 @@ export default function LoginPage() {
       const res = await authApi.login(data.email, data.password);
       const payload = res.data.data ?? res.data;
       const { user, accessToken, refreshToken } = payload;
-      setAuth(user, accessToken, refreshToken);
+      let normalized = normalizeAuthUser(user);
+      setAuth(normalized, accessToken, refreshToken);
       document.cookie = `taskflow-auth-token=${accessToken}; path=/; max-age=604800; SameSite=Lax`;
+
+      if (!normalized.companyName) {
+        try {
+          const companyRes = await api.get("/companies/me");
+          const company = companyRes.data.data ?? companyRes.data;
+          if (company?.name) {
+            normalized = { ...normalized, companyName: company.name };
+            useAuthStore.getState().updateUser({ companyName: company.name });
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
       toast.success("Welcome back!");
       router.push(redirect);
     } catch (err: unknown) {

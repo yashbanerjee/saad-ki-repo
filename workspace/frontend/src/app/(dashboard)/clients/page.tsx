@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Dialog,
   DialogContent,
@@ -20,11 +21,15 @@ import {
 import { clientsApi } from "@/lib/api";
 import { toast } from "sonner";
 
-const mockClients = [
-  { id: "1", name: "Acme Corp", contact: "John Doe", email: "john@acme.com", phone: "+1 555-0100", status: "active", projects: 3 },
-  { id: "2", name: "TechStart Inc", contact: "Jane Smith", email: "jane@techstart.io", phone: "+1 555-0200", status: "active", projects: 1 },
-  { id: "3", name: "Global Systems", contact: "Mike Chen", email: "mike@globalsys.com", phone: "+1 555-0300", status: "prospect", projects: 0 },
-];
+interface Client {
+  id: string;
+  name: string;
+  contact?: string;
+  email?: string;
+  phone?: string;
+  status: string;
+  projects?: number;
+}
 
 export default function ClientsPage() {
   const [open, setOpen] = useState(false);
@@ -35,7 +40,7 @@ export default function ClientsPage() {
     retry: false,
   });
 
-  const clients = data?.data?.data ?? data?.data ?? mockClients;
+  const clients: Client[] = data?.data?.data ?? data?.data ?? [];
 
   return (
     <div className="space-y-6">
@@ -51,9 +56,9 @@ export default function ClientsPage() {
           <DialogContent>
             <DialogHeader><DialogTitle>Add Client</DialogTitle></DialogHeader>
             <div className="space-y-4 py-4">
-              <div className="space-y-2"><Label>Company Name</Label><Input placeholder="Acme Corp" /></div>
-              <div className="space-y-2"><Label>Contact Name</Label><Input placeholder="John Doe" /></div>
-              <div className="space-y-2"><Label>Email</Label><Input type="email" placeholder="john@acme.com" /></div>
+              <div className="space-y-2"><Label>Company Name</Label><Input placeholder="Company name" /></div>
+              <div className="space-y-2"><Label>Contact Name</Label><Input placeholder="Contact name" /></div>
+              <div className="space-y-2"><Label>Email</Label><Input type="email" placeholder="contact@company.com" /></div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
@@ -67,9 +72,17 @@ export default function ClientsPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40" />)}
         </div>
+      ) : clients.length === 0 ? (
+        <EmptyState
+          icon={Building2}
+          title="No clients yet"
+          description="Add your first client to start managing relationships."
+          actionLabel="Add Client"
+          onAction={() => setOpen(true)}
+        />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {(Array.isArray(clients) ? clients : mockClients).map((client: typeof mockClients[0]) => (
+          {clients.map((client) => (
             <Card key={client.id} className="glass-subtle hover:shadow-md transition-shadow">
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-3">
@@ -78,16 +91,20 @@ export default function ClientsPage() {
                   </div>
                   <div>
                     <CardTitle className="text-base">{client.name}</CardTitle>
-                    <p className="text-xs text-muted-foreground">{client.contact}</p>
+                    {client.contact && <p className="text-xs text-muted-foreground">{client.contact}</p>}
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
-                <div className="flex items-center gap-2 text-muted-foreground"><Mail className="h-3.5 w-3.5" />{client.email}</div>
-                <div className="flex items-center gap-2 text-muted-foreground"><Phone className="h-3.5 w-3.5" />{client.phone}</div>
+                {client.email && (
+                  <div className="flex items-center gap-2 text-muted-foreground"><Mail className="h-3.5 w-3.5" />{client.email}</div>
+                )}
+                {client.phone && (
+                  <div className="flex items-center gap-2 text-muted-foreground"><Phone className="h-3.5 w-3.5" />{client.phone}</div>
+                )}
                 <div className="flex items-center justify-between pt-2">
                   <Badge variant={client.status === "active" ? "success" : "warning"}>{client.status}</Badge>
-                  <span className="text-xs text-muted-foreground">{client.projects} projects</span>
+                  <span className="text-xs text-muted-foreground">{client.projects ?? 0} projects</span>
                 </div>
               </CardContent>
             </Card>

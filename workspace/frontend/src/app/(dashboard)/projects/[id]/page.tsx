@@ -9,20 +9,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { EmptyState } from "@/components/ui/empty-state";
 import { projectsApi } from "@/lib/api";
 import { formatDate, getInitials } from "@/lib/utils";
-
-const mockProject = {
-  id: "1",
-  name: "Website Redesign",
-  description: "Complete redesign of the corporate website with modern UI/UX, responsive design, and CMS integration.",
-  status: "active",
-  client: "Acme Corp",
-  progress: 68,
-  startDate: "2026-01-15",
-  dueDate: "2026-03-15",
-  team: [{ name: "Alex M." }, { name: "Sarah K." }, { name: "James L." }],
-};
 
 export default function ProjectDetailPage() {
   const params = useParams();
@@ -34,7 +23,7 @@ export default function ProjectDetailPage() {
     retry: false,
   });
 
-  const project = data?.data?.data ?? data?.data ?? { ...mockProject, id };
+  const project = data?.data?.data ?? data?.data ?? null;
 
   if (isLoading) {
     return (
@@ -42,6 +31,17 @@ export default function ProjectDetailPage() {
         <Skeleton className="h-10 w-64" />
         <Skeleton className="h-48 w-full" />
       </div>
+    );
+  }
+
+  if (!project) {
+    return (
+      <EmptyState
+        title="Project not found"
+        description="This project doesn't exist or you don't have access to it."
+        actionLabel="Back to projects"
+        actionHref="/projects"
+      />
     );
   }
 
@@ -57,37 +57,43 @@ export default function ProjectDetailPage() {
         <div>
           <div className="flex items-center gap-3 mb-1">
             <h1 className="font-display text-2xl font-bold">{project.name}</h1>
-            <Badge variant="success">{project.status}</Badge>
+            {project.status && <Badge variant="success">{project.status}</Badge>}
           </div>
-          <p className="text-muted-foreground">{project.client}</p>
+          {project.client && <p className="text-muted-foreground">{project.client}</p>}
         </div>
-        <div className="flex -space-x-2">
-          {project.team?.map((member: { name: string }) => (
-            <Avatar key={member.name} className="h-8 w-8 border-2 border-background">
-              <AvatarFallback className="text-xs bg-primary/10 text-primary">{getInitials(member.name)}</AvatarFallback>
-            </Avatar>
-          ))}
-        </div>
+        {project.team?.length > 0 && (
+          <div className="flex -space-x-2">
+            {project.team.map((member: { name: string }) => (
+              <Avatar key={member.name} className="h-8 w-8 border-2 border-background">
+                <AvatarFallback className="text-xs bg-primary/10 text-primary">{getInitials(member.name)}</AvatarFallback>
+              </Avatar>
+            ))}
+          </div>
+        )}
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Overview</CardTitle>
-          <CardDescription>{project.description}</CardDescription>
+          {project.description && <CardDescription>{project.description}</CardDescription>}
         </CardHeader>
         <CardContent>
           <div className="grid sm:grid-cols-3 gap-6">
             <div>
               <p className="text-sm text-muted-foreground">Progress</p>
-              <p className="text-2xl font-bold font-display text-primary">{project.progress}%</p>
+              <p className="text-2xl font-bold font-display text-primary">{project.progress ?? 0}%</p>
               <div className="h-2 rounded-full bg-muted mt-2 overflow-hidden">
-                <div className="h-full bg-primary rounded-full" style={{ width: `${project.progress}%` }} />
+                <div className="h-full bg-primary rounded-full" style={{ width: `${project.progress ?? 0}%` }} />
               </div>
             </div>
-            <div>
-              <p className="text-sm text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3" /> Timeline</p>
-              <p className="text-sm mt-1">{formatDate(project.startDate)} — {formatDate(project.dueDate)}</p>
-            </div>
+            {(project.startDate || project.dueDate) && (
+              <div>
+                <p className="text-sm text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3" /> Timeline</p>
+                <p className="text-sm mt-1">
+                  {project.startDate ? formatDate(project.startDate) : "—"} — {project.dueDate ? formatDate(project.dueDate) : "—"}
+                </p>
+              </div>
+            )}
             <div>
               <p className="text-sm text-muted-foreground flex items-center gap-1"><Users className="h-3 w-3" /> Team</p>
               <p className="text-sm mt-1">{project.team?.length || 0} members</p>

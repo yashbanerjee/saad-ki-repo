@@ -4,55 +4,56 @@
 
 /* ─────────────────────────────────────────────
    TaskFlow × Vedha Design System
-   Luxury enterprise SaaS — dark by default
+   Supports light + dark themes via class strategy
    Accent: Vedha teal → champagne gold gradient
 ───────────────────────────────────────────── */
 
 @layer base {
   :root {
-    /* Light (optional) */
-    --background: 40 10% 97%;
-    --foreground: 240 6% 6%;
+    --background: 40 14% 97%;
+    --foreground: 240 10% 8%;
     --card: 0 0% 100%;
-    --card-foreground: 240 6% 6%;
+    --card-foreground: 240 10% 8%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 6% 6%;
+    --popover-foreground: 240 10% 8%;
     --primary: 177 74% 23%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 240 6% 10%;
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 40%;
-    --accent: 177 30% 94%;
+    --secondary: 40 12% 94%;
+    --secondary-foreground: 240 10% 12%;
+    --muted: 40 10% 93%;
+    --muted-foreground: 220 10% 38%;
+    --accent: 177 28% 94%;
     --accent-foreground: 177 74% 18%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 90%;
-    --input: 220 13% 90%;
+    --border: 30 10% 88%;
+    --input: 30 10% 88%;
     --ring: 177 74% 23%;
-    --radius: 1.125rem; /* 18px */
+    --radius: 1.125rem;
 
     --sidebar: 0 0% 100%;
-    --sidebar-foreground: 240 6% 20%;
-    --sidebar-accent: 177 30% 95%;
-    --sidebar-border: 220 13% 92%;
+    --sidebar-foreground: 240 10% 18%;
+    --sidebar-accent: 177 28% 95%;
+    --sidebar-border: 30 10% 90%;
 
     --surface: 0 0% 100%;
-    --surface-alpha: 0.7;
+    --chrome: 0 0% 100%;
+    --chrome-fg-muted: 220 10% 38%;
     --vedha-teal: #0f6661;
     --vedha-teal-mid: #2f5d5a;
-    --vedha-cyan: #a1c8cf;
-    --vedha-gold: #d4a574;
-    --vedha-champagne: #e0c49a;
+    --vedha-cyan: #0f6661;
+    --vedha-gold: #b8844f;
+    --vedha-champagne: #c9a66b;
     --glow: 177 74% 23%;
+    --overlay: 0 0% 0%;
   }
 
   .dark {
-    --background: 240 6% 4%; /* #09090B */
+    --background: 240 6% 4%;
     --foreground: 0 0% 96%;
-    --card: 0 0% 100%;
+    --card: 222 30% 9%;
     --card-foreground: 0 0% 96%;
-    --popover: 222 47% 7%; /* near #111827 */
+    --popover: 222 47% 7%;
     --popover-foreground: 0 0% 96%;
     --primary: 177 74% 28%;
     --primary-foreground: 0 0% 100%;
@@ -64,14 +65,18 @@
     --accent-foreground: 177 45% 72%;
     --destructive: 0 62% 50%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 100%;
-    --input: 0 0% 100%;
+    --border: 222 20% 16%;
+    --input: 222 20% 16%;
     --ring: 177 60% 45%;
     --sidebar: 240 6% 4%;
     --sidebar-foreground: 0 0% 90%;
     --sidebar-accent: 222 30% 10%;
-    --sidebar-border: 0 0% 100%;
-    --surface: 0 0% 100%;
+    --sidebar-border: 222 20% 14%;
+    --surface: 222 30% 9%;
+    --chrome: 240 6% 4%;
+    --vedha-cyan: #a1c8cf;
+    --vedha-gold: #d4a574;
+    --vedha-champagne: #e0c49a;
     --glow: 177 60% 40%;
   }
 }
@@ -88,6 +93,10 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(15, 102, 97, 0.08), transparent),
+      radial-gradient(ellipse 60% 40% at 100% 0%, rgba(184, 132, 79, 0.06), transparent);
+    background-attachment: fixed;
   }
 
   .dark body {
@@ -95,11 +104,10 @@
     background-image:
       radial-gradient(ellipse 80% 50% at 50% -20%, rgba(15, 102, 97, 0.18), transparent),
       radial-gradient(ellipse 60% 40% at 100% 0%, rgba(212, 165, 116, 0.08), transparent);
-    background-attachment: fixed;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    @apply font-sans font-bold tracking-tight;
+    @apply font-sans font-bold tracking-tight text-foreground;
   }
 
   ::selection {
@@ -113,33 +121,49 @@
 }
 
 @layer components {
+  /* Light defaults; .dark overrides */
   .glass {
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(255, 255, 255, 0.78);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24);
-  }
-
-  .light .glass {
-    background: rgba(255, 255, 255, 0.72);
     border: 1px solid rgba(15, 23, 42, 0.08);
     box-shadow: 0 8px 32px rgba(15, 23, 42, 0.06);
   }
 
+  .dark .glass {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24);
+  }
+
   .glass-card {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.92);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(15, 23, 42, 0.08);
     border-radius: 18px;
     box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.02) inset,
-      0 12px 40px rgba(0, 0, 0, 0.28);
+      0 0 0 1px rgba(15, 23, 42, 0.02) inset,
+      0 12px 40px rgba(15, 23, 42, 0.06);
     transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
   }
 
   .glass-card:hover {
+    border-color: rgba(15, 102, 97, 0.28);
+    box-shadow:
+      0 0 0 1px rgba(15, 102, 97, 0.04) inset,
+      0 16px 48px rgba(15, 23, 42, 0.1);
+  }
+
+  .dark .glass-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.02) inset,
+      0 12px 40px rgba(0, 0, 0, 0.28);
+  }
+
+  .dark .glass-card:hover {
     border-color: rgba(161, 200, 207, 0.22);
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.04) inset,
@@ -147,24 +171,63 @@
       0 0 40px rgba(15, 102, 97, 0.12);
   }
 
-  .light .glass-card {
-    background: rgba(255, 255, 255, 0.85);
-    border: 1px solid rgba(15, 23, 42, 0.08);
-    box-shadow: 0 12px 40px rgba(15, 23, 42, 0.06);
-  }
-
   .surface {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(15, 23, 42, 0.08);
     border-radius: 18px;
   }
 
-  .light .surface {
-    background: rgba(255, 255, 255, 0.9);
-    border: 1px solid rgba(15, 23, 42, 0.08);
+  .dark .surface {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
   }
 
-  /* Vedha brand gradient */
+  .chrome-bar {
+    @apply border-b border-border bg-background/80 backdrop-blur-[20px];
+  }
+
+  .dark .chrome-bar {
+    border-color: rgba(255, 255, 255, 0.06);
+    background: rgba(9, 9, 11, 0.7);
+  }
+
+  .chrome-sidebar {
+    @apply border-r border-border bg-sidebar/95 backdrop-blur-[20px];
+  }
+
+  .dark .chrome-sidebar {
+    border-color: rgba(255, 255, 255, 0.06);
+    background: rgba(9, 9, 11, 0.8);
+  }
+
+  .nav-hover {
+    @apply hover:bg-accent hover:text-accent-foreground;
+  }
+
+  .dark .nav-hover:hover {
+    background: rgba(255, 255, 255, 0.04);
+    color: hsl(var(--foreground));
+  }
+
+  .nav-active {
+    @apply bg-accent text-accent-foreground shadow-[inset_0_0_0_1px_rgba(15,102,97,0.15)];
+  }
+
+  .dark .nav-active {
+    background: rgba(255, 255, 255, 0.06);
+    color: hsl(var(--foreground));
+    box-shadow: inset 0 0 0 1px rgba(161, 200, 207, 0.2);
+  }
+
+  .soft-panel {
+    @apply border border-border bg-muted/60;
+  }
+
+  .dark .soft-panel {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+  }
+
   .gradient-vedha {
     background: linear-gradient(
       135deg,
@@ -189,10 +252,16 @@
   }
 
   .text-gradient-vedha {
-    background: linear-gradient(135deg, #a1c8cf 0%, #d4a574 100%);
+    background: linear-gradient(135deg, #0f6661 0%, #b8844f 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+  }
+
+  .dark .text-gradient-vedha {
+    background: linear-gradient(135deg, #a1c8cf 0%, #d4a574 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
   }
 
   .glow-vedha {
@@ -227,6 +296,13 @@
 
   .mesh-vedha {
     background:
+      radial-gradient(at 15% 20%, rgba(15, 102, 97, 0.14) 0px, transparent 50%),
+      radial-gradient(at 85% 15%, rgba(184, 132, 79, 0.1) 0px, transparent 45%),
+      radial-gradient(at 50% 90%, rgba(15, 102, 97, 0.06) 0px, transparent 50%);
+  }
+
+  .dark .mesh-vedha {
+    background:
       radial-gradient(at 15% 20%, rgba(15, 102, 97, 0.22) 0px, transparent 50%),
       radial-gradient(at 85% 15%, rgba(212, 165, 116, 0.12) 0px, transparent 45%),
       radial-gradient(at 50% 90%, rgba(161, 200, 207, 0.08) 0px, transparent 50%);
@@ -240,6 +316,10 @@
 @layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;
+    scrollbar-color: rgba(15, 23, 42, 0.2) transparent;
+  }
+
+  .dark .scrollbar-thin {
     scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
   }
 
@@ -249,11 +329,19 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(15, 23, 42, 0.18);
     border-radius: 999px;
   }
 
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+  }
+
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: rgba(15, 102, 97, 0.4);
+  }
+
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background: rgba(161, 200, 207, 0.35);
   }
 }
@@ -281,10 +369,20 @@
 .skeleton-shimmer {
   background: linear-gradient(
     90deg,
+    rgba(15, 23, 42, 0.04) 25%,
+    rgba(15, 23, 42, 0.1) 50%,
+    rgba(15, 23, 42, 0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s infinite;
+}
+
+.dark .skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
     rgba(255, 255, 255, 0.04) 25%,
     rgba(255, 255, 255, 0.1) 50%,
     rgba(255, 255, 255, 0.04) 75%
   );
   background-size: 200% 100%;
-  animation: shimmer 1.6s infinite;
 }

@@ -3,7 +3,7 @@ import { Sparkles } from "lucide-react";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen bg-vedha-bg">
+    <div className="flex min-h-screen bg-background">
       <div className="relative hidden overflow-hidden lg:flex lg:w-[46%]">
         <div className="absolute inset-0 gradient-vedha opacity-90" />
         <div className="absolute inset-0 mesh-vedha" />

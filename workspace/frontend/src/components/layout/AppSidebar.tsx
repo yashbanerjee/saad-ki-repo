@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -22,7 +21,6 @@ import {
   FileSignature,
   Globe,
   Plus,
-  Star,
   ChevronsUpDown,
   Search,
 } from "lucide-react";
@@ -38,7 +36,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -68,11 +65,6 @@ const secondaryNav: NavItem[] = [
   { title: "Settings", href: "/settings", icon: Settings },
 ];
 
-const favorites = [
-  { name: "TaskFlow Platform", href: "/projects" },
-  { name: "Client Onboarding", href: "/onboarding" },
-];
-
 function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
   const pathname = usePathname();
   const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -84,8 +76,8 @@ function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
       className={cn(
         "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-300",
         isActive
-          ? "bg-white/[0.06] text-foreground shadow-[inset_0_0_0_1px_rgba(161,200,207,0.2)]"
-          : "text-muted-foreground hover:bg-white/[0.04] hover:text-foreground",
+          ? "nav-active"
+          : "text-muted-foreground nav-hover",
         collapsed && "justify-center px-2"
       )}
     >
@@ -118,7 +110,7 @@ function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
 export function AppSidebar() {
   const { collapsed, toggle } = useSidebarStore();
   const user = useAuthStore((s) => s.user);
-  const [workspace] = useState("Acme Corporation");
+  const workspace = user?.companyName ?? "Workspace";
 
   const filterByRole = (items: NavItem[]) =>
     items.filter((item) => !item.roles || hasRole(user, item.roles));
@@ -129,11 +121,11 @@ export function AppSidebar() {
         initial={false}
         animate={{ width: collapsed ? 76 : 272 }}
         transition={{ type: "spring", stiffness: 320, damping: 32 }}
-        className="hidden md:flex flex-col h-full shrink-0 border-r border-white/[0.06] bg-[#09090B]/80 backdrop-blur-[20px]"
+        className="chrome-sidebar hidden md:flex flex-col h-full shrink-0"
       >
         <div
           className={cn(
-            "flex h-16 items-center border-b border-white/[0.06] px-4",
+            "flex h-16 items-center border-b border-border px-4 dark:border-white/[0.06]",
             collapsed && "justify-center px-2"
           )}
         >
@@ -165,7 +157,7 @@ export function AppSidebar() {
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="flex w-full items-center justify-between rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-left text-sm transition hover:border-vedha-cyan/25"
+                  className="flex w-full items-center justify-between rounded-xl border border-border bg-muted/40 px-3 py-2.5 text-left text-sm transition hover:border-vedha-teal/30 dark:border-white/8 dark:bg-white/[0.03] dark:hover:border-vedha-cyan/25"
                 >
                   <div className="min-w-0">
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -178,10 +170,7 @@ export function AppSidebar() {
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-56 glass border-white/10" align="start">
                 <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
-                <DropdownMenuItem>Acme Corporation</DropdownMenuItem>
-                <DropdownMenuItem>Vedha Studio</DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>Create workspace</DropdownMenuItem>
+                <DropdownMenuItem disabled>{workspace}</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -199,26 +188,6 @@ export function AppSidebar() {
         </div>
 
         <ScrollArea className="flex-1 py-4">
-          {!collapsed && (
-            <div className="mb-4 px-3">
-              <p className="mb-2 px-3 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                Favorites
-              </p>
-              <div className="space-y-0.5">
-                {favorites.map((f) => (
-                  <Link
-                    key={f.href}
-                    href={f.href}
-                    className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-muted-foreground transition hover:bg-white/[0.04] hover:text-foreground"
-                  >
-                    <Star className="h-3.5 w-3.5 text-vedha-gold" />
-                    {f.name}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-
           <nav className={cn("space-y-0.5 px-3", collapsed && "px-2")}>
             {!collapsed && (
               <p className="mb-2 px-3 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
@@ -230,7 +199,7 @@ export function AppSidebar() {
             ))}
           </nav>
 
-          <Separator className="my-4 mx-3 bg-white/[0.06]" />
+          <Separator className="my-4 mx-3 bg-border dark:bg-white/[0.06]" />
 
           <nav className={cn("space-y-0.5 px-3", collapsed && "px-2")}>
             {filterByRole(secondaryNav).map((item) => (
@@ -239,11 +208,11 @@ export function AppSidebar() {
           </nav>
         </ScrollArea>
 
-        <div className="border-t border-white/[0.06] p-3 space-y-2">
+        <div className="border-t border-border p-3 space-y-2 dark:border-white/[0.06]">
           {!collapsed && (
             <Link
               href="/search"
-              className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-muted-foreground hover:bg-white/[0.04] hover:text-foreground"
+              className="nav-hover flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-muted-foreground"
             >
               <Search className="h-4 w-4" />
               Search workspace

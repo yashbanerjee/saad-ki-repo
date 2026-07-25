@@ -144,7 +144,7 @@ export class AuthService {
 
     return {
       company: { id: result.company.id, name: result.company.name, slug: result.company.slug },
-      user: this.sanitizeUser(result.user),
+      user: this.sanitizeUser({ ...result.user, company: result.company }),
       ...tokens,
     };
   }
@@ -152,7 +152,10 @@ export class AuthService {
   async login(dto: LoginDto, ip?: string, userAgent?: string) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
-      include: { roles: { include: { role: true } } },
+      include: {
+        roles: { include: { role: true } },
+        company: true,
+      },
     });
 
     if (!user) throw new UnauthorizedException('Invalid credentials');
@@ -354,13 +357,41 @@ export class AuthService {
     status: string;
     emailVerified: boolean;
     companyId?: string | null;
-    roles?: unknown;
-    company?: unknown;
+    roles?: { role?: { slug?: string; name?: string } }[];
+    company?: { name?: string } | null;
   }) {
-    const { passwordHash, twoFactorSecret, ...safe } = user as Record<string, unknown> & {
+    const { passwordHash, twoFactorSecret, roles, company, ...rest } = user as Record<
+      string,
+      unknown
+    > & {
       passwordHash?: string;
       twoFactorSecret?: string;
+      roles?: { role?: { slug?: string } }[];
+      company?: { name?: string } | null;
     };
-    return safe;
+
+    const roleSlugs = (roles ?? [])
+      .map((r) => r.role?.slug)
+      .filter(Boolean) as string[];
+
+    let role: 'admin' | 'manager' | 'member' | 'client' = 'member';
+    if (roleSlugs.includes('super_admin') || roleSlugs.includes('company_admin')) {
+      role = 'admin';
+    } else if (roleSlugs.includes('project_manager') || roleSlugs.includes('team_lead')) {
+      role = 'manager';
+    } else if (roleSlugs.includes('client')) {
+      role = 'client';
+    }
+
+    return {
+      ...rest,
+      name: `${user.firstName} ${user.lastName}`.trim(),
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role,
+      roles: roleSlugs,
+      companyName: company?.name ?? null,
+      companyId: user.companyId,
+    };
   }
 }

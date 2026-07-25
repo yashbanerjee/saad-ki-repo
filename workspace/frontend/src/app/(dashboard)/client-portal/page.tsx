@@ -1,29 +1,28 @@
 "use client";
 
-import Link from "next/link";
 import {
   FolderKanban,
   CheckCircle2,
   FileText,
-  Receipt,
   MessageCircle,
   ArrowRight,
+  Receipt,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-
-const projects = [
-  { id: "1", name: "Website Redesign", progress: 68, status: "active", tasks: { done: 16, total: 24 } },
-  { id: "2", name: "Mobile App v2", progress: 35, status: "active", tasks: { done: 15, total: 42 } },
-];
-
-const recentDocs = [
-  { name: "Sprint 5 Report.pdf", date: "Feb 17" },
-  { name: "Design Review Notes.docx", date: "Feb 15" },
-];
+import { EmptyState } from "@/components/ui/empty-state";
 
 export default function ClientPortalPage() {
+  const projects: { id: string; name: string; progress: number; status: string; tasks: { done: number; total: number } }[] = [];
+  const recentDocs: { name: string; date: string }[] = [];
+
+  const stats = [
+    { label: "Active Projects", value: "0", icon: FolderKanban },
+    { label: "Completed Tasks", value: "0", icon: CheckCircle2 },
+    { label: "Documents", value: "0", icon: FileText },
+    { label: "Open Tickets", value: "0", icon: MessageCircle },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
@@ -32,12 +31,7 @@ export default function ClientPortalPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          { label: "Active Projects", value: "2", icon: FolderKanban },
-          { label: "Completed Tasks", value: "31", icon: CheckCircle2 },
-          { label: "Documents", value: "8", icon: FileText },
-          { label: "Open Tickets", value: "1", icon: MessageCircle },
-        ].map((stat) => (
+        {stats.map((stat) => (
           <Card key={stat.label} className="glass-subtle">
             <CardContent className="p-4 flex items-center gap-3">
               <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -58,19 +52,29 @@ export default function ClientPortalPage() {
             <CardTitle className="text-base">Your Projects</CardTitle>
             <CardDescription>Track progress on active engagements</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {projects.map((project) => (
-              <div key={project.id} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{project.name}</span>
-                  <Badge variant="success">{project.status}</Badge>
-                </div>
-                <div className="h-2 rounded-full bg-muted overflow-hidden">
-                  <div className="h-full bg-primary rounded-full" style={{ width: `${project.progress}%` }} />
-                </div>
-                <p className="text-xs text-muted-foreground">{project.tasks.done}/{project.tasks.total} tasks completed</p>
+          <CardContent>
+            {projects.length === 0 ? (
+              <EmptyState
+                icon={FolderKanban}
+                title="No projects"
+                description="Your assigned projects will appear here."
+                className="py-10"
+              />
+            ) : (
+              <div className="space-y-4">
+                {projects.map((project) => (
+                  <div key={project.id} className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">{project.name}</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+                      <div className="h-full bg-primary rounded-full" style={{ width: `${project.progress}%` }} />
+                    </div>
+                    <p className="text-xs text-muted-foreground">{project.tasks.done}/{project.tasks.total} tasks completed</p>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </CardContent>
         </Card>
 
@@ -79,13 +83,19 @@ export default function ClientPortalPage() {
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4" /> Recent Documents</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {recentDocs.map((doc) => (
-                <div key={doc.name} className="flex items-center justify-between text-sm py-1">
-                  <span>{doc.name}</span>
-                  <span className="text-xs text-muted-foreground">{doc.date}</span>
+            <CardContent>
+              {recentDocs.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No documents shared yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {recentDocs.map((doc) => (
+                    <div key={doc.name} className="flex items-center justify-between text-sm py-1">
+                      <span>{doc.name}</span>
+                      <span className="text-xs text-muted-foreground">{doc.date}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </CardContent>
           </Card>
 

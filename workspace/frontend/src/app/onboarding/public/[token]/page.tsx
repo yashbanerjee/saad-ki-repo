@@ -11,20 +11,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { onboardingApi } from "@/lib/api";
 import { toast } from "sonner";
-
-const mockForm = {
-  name: "Client Intake Form",
-  description: "Please fill out this form to help us get started on your project.",
-  fields: [
-    { id: "1", type: "text", label: "Company Name", required: true, placeholder: "Your company" },
-    { id: "2", type: "email", label: "Contact Email", required: true, placeholder: "you@company.com" },
-    { id: "3", type: "textarea", label: "Project Description", required: true, placeholder: "Tell us about your project..." },
-    { id: "4", type: "dropdown", label: "Budget Range", required: false, options: ["<$10k", "$10k-$50k", "$50k-$100k", "$100k+"] },
-    { id: "5", type: "checkbox", label: "I agree to the terms and conditions", required: true },
-  ],
-};
 
 export default function PublicOnboardingPage() {
   const params = useParams();
@@ -39,7 +28,7 @@ export default function PublicOnboardingPage() {
     retry: false,
   });
 
-  const form = data?.data?.data ?? data?.data ?? mockForm;
+  const form = data?.data?.data ?? data?.data ?? null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,6 +49,17 @@ export default function PublicOnboardingPage() {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
         <Skeleton className="h-96 w-full max-w-lg" />
+      </div>
+    );
+  }
+
+  if (!form) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 bg-background">
+        <EmptyState
+          title="Form not found"
+          description="This onboarding form link is invalid or has expired."
+        />
       </div>
     );
   }
@@ -89,51 +89,55 @@ export default function PublicOnboardingPage() {
             <Sparkles className="h-6 w-6 text-white" />
           </div>
           <h1 className="font-display text-2xl font-bold">{form.name}</h1>
-          <p className="text-muted-foreground mt-2">{form.description}</p>
+          {form.description && <p className="text-muted-foreground mt-2">{form.description}</p>}
         </div>
 
         <Card className="glass">
           <CardContent className="p-6">
             <form onSubmit={handleSubmit} className="space-y-5">
-              {form.fields?.map((field: { id: string; type: string; label: string; required?: boolean; placeholder?: string; options?: string[] }) => (
-                <div key={field.id} className="space-y-2">
-                  <Label>
-                    {field.label}
-                    {field.required && <span className="text-destructive ml-1">*</span>}
-                  </Label>
-                  {field.type === "textarea" ? (
-                    <Textarea
-                      placeholder={field.placeholder}
-                      required={field.required}
-                      onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
-                    />
-                  ) : field.type === "checkbox" ? (
-                    <div className="flex items-center gap-2">
-                      <Checkbox
+              {form.fields?.length > 0 ? (
+                form.fields.map((field: { id: string; type: string; label: string; required?: boolean; placeholder?: string; options?: string[] }) => (
+                  <div key={field.id} className="space-y-2">
+                    <Label>
+                      {field.label}
+                      {field.required && <span className="text-destructive ml-1">*</span>}
+                    </Label>
+                    {field.type === "textarea" ? (
+                      <Textarea
+                        placeholder={field.placeholder}
                         required={field.required}
-                        onCheckedChange={(checked) => setFormData({ ...formData, [field.id]: !!checked })}
+                        onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
                       />
-                      <span className="text-sm">{field.placeholder || field.label}</span>
-                    </div>
-                  ) : field.type === "dropdown" ? (
-                    <select
-                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
-                      required={field.required}
-                      onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
-                    >
-                      <option value="">Select...</option>
-                      {field.options?.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
-                    </select>
-                  ) : (
-                    <Input
-                      type={field.type}
-                      placeholder={field.placeholder}
-                      required={field.required}
-                      onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
-                    />
-                  )}
-                </div>
-              ))}
+                    ) : field.type === "checkbox" ? (
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          required={field.required}
+                          onCheckedChange={(checked) => setFormData({ ...formData, [field.id]: !!checked })}
+                        />
+                        <span className="text-sm">{field.placeholder || field.label}</span>
+                      </div>
+                    ) : field.type === "dropdown" ? (
+                      <select
+                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                        required={field.required}
+                        onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
+                      >
+                        <option value="">Select...</option>
+                        {field.options?.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
+                      </select>
+                    ) : (
+                      <Input
+                        type={field.type}
+                        placeholder={field.placeholder}
+                        required={field.required}
+                        onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
+                      />
+                    )}
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">This form has no fields configured.</p>
+              )}
               <Button type="submit" className="w-full" disabled={submitting}>
                 {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                 Submit Form

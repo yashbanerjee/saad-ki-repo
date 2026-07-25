@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Dialog,
   DialogContent,
@@ -30,14 +31,17 @@ import { projectsApi } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 
-const mockProjects = [
-  { id: "1", name: "Website Redesign", status: "active", client: "Acme Corp", tasks: 24, progress: 68, dueDate: "2026-03-15" },
-  { id: "2", name: "Mobile App v2", status: "active", client: "TechStart Inc", tasks: 42, progress: 35, dueDate: "2026-04-01" },
-  { id: "3", name: "CRM Integration", status: "planning", client: "Global Systems", tasks: 8, progress: 10, dueDate: "2026-05-20" },
-  { id: "4", name: "Brand Guidelines", status: "completed", client: "Creative Co", tasks: 15, progress: 100, dueDate: "2026-01-30" },
-];
-
 const statusVariant = { active: "success" as const, planning: "info" as const, completed: "secondary" as const, on_hold: "warning" as const };
+
+interface Project {
+  id: string;
+  name: string;
+  status: string;
+  client?: string;
+  tasks?: number;
+  progress?: number;
+  dueDate?: string;
+}
 
 export default function ProjectsPage() {
   const [open, setOpen] = useState(false);
@@ -63,7 +67,7 @@ export default function ProjectsPage() {
     onError: () => toast.error("Failed to create project"),
   });
 
-  const projects = data?.data?.data ?? data?.data ?? mockProjects;
+  const projects: Project[] = data?.data?.data ?? data?.data ?? [];
 
   return (
     <div className="space-y-6">
@@ -105,9 +109,17 @@ export default function ProjectsPage() {
             <Card key={i}><CardContent className="p-6"><Skeleton className="h-32 w-full" /></CardContent></Card>
           ))}
         </div>
+      ) : projects.length === 0 ? (
+        <EmptyState
+          icon={FolderKanban}
+          title="No projects yet"
+          description="Create your first project to start tracking work."
+          actionLabel="New Project"
+          onAction={() => setOpen(true)}
+        />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {(Array.isArray(projects) ? projects : mockProjects).map((project: typeof mockProjects[0]) => (
+          {projects.map((project) => (
             <Card key={project.id} className="group hover:shadow-md transition-shadow glass-subtle">
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
@@ -121,7 +133,7 @@ export default function ProjectsPage() {
                           {project.name}
                         </Link>
                       </CardTitle>
-                      <CardDescription className="text-xs">{project.client}</CardDescription>
+                      {project.client && <CardDescription className="text-xs">{project.client}</CardDescription>}
                     </div>
                   </div>
                   <DropdownMenu>
@@ -143,17 +155,19 @@ export default function ProjectsPage() {
                   <Badge variant={statusVariant[project.status as keyof typeof statusVariant] || "secondary"}>
                     {project.status}
                   </Badge>
-                  <span className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Calendar className="h-3 w-3" /> {formatDate(project.dueDate)}
-                  </span>
+                  {project.dueDate && (
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Calendar className="h-3 w-3" /> {formatDate(project.dueDate)}
+                    </span>
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <div className="flex justify-between text-xs">
-                    <span className="text-muted-foreground">{project.tasks} tasks</span>
-                    <span className="font-medium">{project.progress}%</span>
+                    <span className="text-muted-foreground">{project.tasks ?? 0} tasks</span>
+                    <span className="font-medium">{project.progress ?? 0}%</span>
                   </div>
                   <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                    <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${project.progress}%` }} />
+                    <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${project.progress ?? 0}%` }} />
                   </div>
                 </div>
               </CardContent>

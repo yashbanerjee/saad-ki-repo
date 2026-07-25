@@ -31,7 +31,7 @@ Interactive docs: `/api/docs` (Swagger)
 | Documents | `/documents` | Upload metadata |
 | NDA | `/nda` | Templates + signing |
 | Notifications | `/notifications` | List / mark read |
-| Dashboard | `/dashboard` | Overview stats |
+| Dashboard | `/dashboard/stats`, `/dashboard/activity`, `/dashboard/overview` | KPI cards, activity feed, full overview |
 | Search | `/search` | Global search |
 | Workflows | `/workflows` | Custom statuses |
 | Teams | `/teams` | Departments & teams |

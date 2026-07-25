@@ -25,10 +25,32 @@ async function bootstrap() {
 
   app.use(helmet());
   app.use(cookieParser());
+
+  // Comma-separated list, e.g.
+  // CORS_ORIGIN=http://localhost:3000,https://wonderful-love-production-24ff.up.railway.app
+  const corsOriginRaw = configService.get<string>(
+    'CORS_ORIGIN',
+    'http://localhost:3000',
+  );
+  const allowedOrigins = corsOriginRaw
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
   app.enableCors({
-    origin: configService.get<string>('CORS_ORIGIN', 'http://localhost:3000'),
+    origin: (origin, callback) => {
+      // Allow non-browser clients (no Origin header) and listed frontends
+      if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`CORS blocked for origin: ${origin}`), false);
+    },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   });
+  console.log(`CORS allowed origins: ${allowedOrigins.join(', ')}`);
 
   app.setGlobalPrefix('api/v1', {
     exclude: [{ path: '/', method: RequestMethod.GET }],

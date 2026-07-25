@@ -22,21 +22,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthGuard>
-      <div className="flex h-screen overflow-hidden bg-vedha-bg">
+      <div className="flex h-screen overflow-hidden bg-background">
         <AppSidebar />
 
         {mobileOpen && (
           <div className="fixed inset-0 z-50 md:hidden">
             <div
-              className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm dark:bg-black/70"
               onClick={() => setMobileOpen(false)}
             />
             <motion.div
               initial={{ x: -280 }}
               animate={{ x: 0 }}
-              className="absolute left-0 top-0 h-full w-72 border-r border-white/8 bg-[#09090B]"
+              className="chrome-sidebar absolute left-0 top-0 h-full w-72"
             >
-              <div className="flex h-16 items-center justify-between border-b border-white/8 px-4">
+              <div className="flex h-16 items-center justify-between border-b border-border px-4">
                 <Link
                   href="/dashboard"
                   className="flex items-center gap-2"
@@ -46,7 +46,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     <Sparkles className="h-4 w-4 text-white" />
                   </div>
                   <div>
-                    <span className="text-lg font-bold">TaskFlow</span>
+                    <span className="text-lg font-bold text-foreground">TaskFlow</span>
                     <p className="text-[10px] uppercase tracking-widest text-vedha-gold/80">
                       by Vedha
                     </p>
@@ -114,8 +114,8 @@ function MobileNav({
           className={cn(
             "block rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
             pathname.startsWith(link.href)
-              ? "bg-white/[0.06] text-vedha-cyan"
-              : "text-muted-foreground hover:bg-white/[0.04] hover:text-foreground"
+              ? "nav-active text-vedha-teal dark:text-vedha-cyan"
+              : "text-muted-foreground nav-hover"
           )}
         >
           {link.label}

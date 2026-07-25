@@ -6,27 +6,15 @@ import { Search, FolderKanban, Bug, FileText, Users } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { EmptyState } from "@/components/ui/empty-state";
 
-const allResults = {
-  projects: [
-    { id: "1", title: "Website Redesign", subtitle: "Acme Corp · 68% complete" },
-    { id: "2", title: "Mobile App v2", subtitle: "TechStart Inc · 35% complete" },
-  ],
-  issues: [
-    { id: "1", title: "Login redirect loop on Safari", subtitle: "Bug · High priority" },
-    { id: "2", title: "Add export to CSV", subtitle: "Feature · Medium priority" },
-  ],
-  documents: [
-    { id: "1", title: "Project Requirements.pdf", subtitle: "Requirements · 2.4 MB" },
-    { id: "2", title: "API Specification.md", subtitle: "Technical · 124 KB" },
-  ],
-  people: [
-    { id: "1", title: "Alex Morgan", subtitle: "alex@company.com · Admin" },
-    { id: "2", title: "Sarah Kim", subtitle: "sarah@company.com · Manager" },
-  ],
-};
+type Category = "projects" | "issues" | "documents" | "people";
 
-type Category = keyof typeof allResults;
+interface SearchResult {
+  id: string;
+  title: string;
+  subtitle: string;
+}
 
 const categoryIcons = { projects: FolderKanban, issues: Bug, documents: FileText, people: Users };
 const categoryRoutes: Record<Category, (id: string) => string> = {
@@ -36,16 +24,11 @@ const categoryRoutes: Record<Category, (id: string) => string> = {
   people: () => `/team`,
 };
 
-function ResultList({ category, query }: { category: Category; query: string }) {
+function ResultList({ category, results }: { category: Category; results: SearchResult[] }) {
   const router = useRouter();
   const Icon = categoryIcons[category];
-  const filtered = allResults[category].filter(
-    (item) =>
-      item.title.toLowerCase().includes(query.toLowerCase()) ||
-      item.subtitle.toLowerCase().includes(query.toLowerCase())
-  );
 
-  if (filtered.length === 0) {
+  if (results.length === 0) {
     return <p className="text-sm text-muted-foreground py-8 text-center">No {category} found</p>;
   }
 
@@ -53,7 +36,7 @@ function ResultList({ category, query }: { category: Category; query: string }) 
     <Card>
       <CardContent className="p-0">
         <div className="divide-y divide-border">
-          {filtered.map((item) => (
+          {results.map((item) => (
             <button
               key={item.id}
               className="w-full flex items-center gap-4 px-6 py-3 hover:bg-muted/50 transition-colors text-left"
@@ -75,11 +58,14 @@ function ResultList({ category, query }: { category: Category; query: string }) 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
 
-  const totalResults = Object.values(allResults).flat().filter(
-    (item) =>
-      item.title.toLowerCase().includes(query.toLowerCase()) ||
-      item.subtitle.toLowerCase().includes(query.toLowerCase())
-  ).length;
+  const emptyResults: Record<Category, SearchResult[]> = {
+    projects: [],
+    issues: [],
+    documents: [],
+    people: [],
+  };
+
+  const totalResults = 0;
 
   return (
     <div className="space-y-6">
@@ -99,37 +85,55 @@ export default function SearchPage() {
         />
       </div>
 
-      {query && (
-        <p className="text-sm text-muted-foreground">{totalResults} results for &ldquo;{query}&rdquo;</p>
+      {!query ? (
+        <EmptyState
+          icon={Search}
+          title="Search your workspace"
+          description="Enter a query above to find projects, issues, documents, and team members."
+        />
+      ) : (
+        <>
+          <p className="text-sm text-muted-foreground">{totalResults} results for &ldquo;{query}&rdquo;</p>
+
+          {totalResults === 0 && (
+            <EmptyState
+              icon={Search}
+              title="No results found"
+              description={`Nothing matched "${query}". Try a different search term.`}
+            />
+          )}
+
+          {totalResults > 0 && (
+            <Tabs defaultValue="all">
+              <TabsList>
+                <TabsTrigger value="all">All</TabsTrigger>
+                <TabsTrigger value="projects">Projects</TabsTrigger>
+                <TabsTrigger value="issues">Issues</TabsTrigger>
+                <TabsTrigger value="documents">Documents</TabsTrigger>
+                <TabsTrigger value="people">People</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="all" className="mt-4 space-y-6">
+                {(Object.keys(emptyResults) as Category[]).map((category) => (
+                  <div key={category}>
+                    <h3 className="text-sm font-medium text-muted-foreground mb-2 capitalize flex items-center gap-2">
+                      {(() => { const Icon = categoryIcons[category]; return <Icon className="h-4 w-4" />; })()}
+                      {category}
+                    </h3>
+                    <ResultList category={category} results={emptyResults[category]} />
+                  </div>
+                ))}
+              </TabsContent>
+
+              {(Object.keys(emptyResults) as Category[]).map((category) => (
+                <TabsContent key={category} value={category} className="mt-4">
+                  <ResultList category={category} results={emptyResults[category]} />
+                </TabsContent>
+              ))}
+            </Tabs>
+          )}
+        </>
       )}
-
-      <Tabs defaultValue="all">
-        <TabsList>
-          <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="projects">Projects</TabsTrigger>
-          <TabsTrigger value="issues">Issues</TabsTrigger>
-          <TabsTrigger value="documents">Documents</TabsTrigger>
-          <TabsTrigger value="people">People</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="all" className="mt-4 space-y-6">
-          {(Object.keys(allResults) as Category[]).map((category) => (
-            <div key={category}>
-              <h3 className="text-sm font-medium text-muted-foreground mb-2 capitalize flex items-center gap-2">
-                {(() => { const Icon = categoryIcons[category]; return <Icon className="h-4 w-4" />; })()}
-                {category}
-              </h3>
-              <ResultList category={category} query={query} />
-            </div>
-          ))}
-        </TabsContent>
-
-        {(Object.keys(allResults) as Category[]).map((category) => (
-          <TabsContent key={category} value={category} className="mt-4">
-            <ResultList category={category} query={query} />
-          </TabsContent>
-        ))}
-      </Tabs>
     </div>
   );
 }

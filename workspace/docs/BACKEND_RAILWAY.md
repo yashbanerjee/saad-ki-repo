@@ -119,7 +119,7 @@ NEXT_PUBLIC_API_URL=https://YOUR-BACKEND.up.railway.app/api/v1
 ```
 
 Open: `https://YOUR-FRONTEND.up.railway.app/login`  
-Demo: `admin@acme.demo` / `Password123!`
+Super admin: `info@vedha.ae` / `S@ad1002`
 
 ---
 

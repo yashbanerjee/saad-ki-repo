@@ -13,16 +13,16 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
         outline:
-          "border border-white/10 bg-white/[0.03] text-foreground hover:bg-white/[0.06] hover:border-vedha-cyan/30 hover:shadow-glow",
+          "border border-border bg-background text-foreground hover:bg-accent hover:border-vedha-teal/30 hover:shadow-sm dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.06] dark:hover:border-vedha-cyan/30 dark:hover:shadow-glow",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-white/5",
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border dark:border-white/5",
         ghost:
-          "hover:bg-white/[0.06] hover:text-foreground text-muted-foreground",
-        link: "text-vedha-cyan underline-offset-4 hover:underline",
+          "hover:bg-accent hover:text-accent-foreground text-muted-foreground dark:hover:bg-white/[0.06] dark:hover:text-foreground",
+        link: "text-vedha-teal underline-offset-4 hover:underline dark:text-vedha-cyan",
         glass:
-          "glass text-foreground hover:border-vedha-cyan/25 hover:shadow-glow",
+          "glass text-foreground hover:border-vedha-teal/25 hover:shadow-glow dark:hover:border-vedha-cyan/25",
         gold:
-          "bg-gradient-to-r from-vedha-gold to-vedha-champagne text-vedha-bg font-semibold hover:shadow-glow-gold",
+          "bg-gradient-to-r from-vedha-gold to-vedha-champagne text-white font-semibold hover:shadow-glow-gold dark:text-[#09090B]",
       },
       size: {
         default: "h-10 px-5 py-2",

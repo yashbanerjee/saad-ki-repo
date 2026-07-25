@@ -203,12 +203,12 @@ CORS_ORIGIN=https://<your-frontend>.up.railway.app
 
 Redeploy backend after changing CORS.
 
-### Demo admin login
+### Super admin login
 
 | Field | Value |
 |-------|--------|
-| Email | `admin@acme.demo` |
-| Password | `Password123!` |
+| Email | `info@vedha.ae` |
+| Password | `S@ad1002` |
 
 ---
 
@@ -374,15 +374,11 @@ npm run prisma:seed
 
 ---
 
-## 6. Demo logins (after seed)
+## 6. Super admin login (after seed)
 
-Password: `Password123!`
-
-| Email | Role |
-|-------|------|
-| `admin@acme.demo` | Company Admin |
-| `pm@acme.demo` | Project Manager |
-| `dev@acme.demo` | Developer |
+| Email | Role | Password |
+|-------|------|----------|
+| `info@vedha.ae` | Super Admin | `S@ad1002` |
 
 ---
 

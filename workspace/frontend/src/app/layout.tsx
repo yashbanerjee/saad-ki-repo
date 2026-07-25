@@ -26,9 +26,9 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: [
     { media: "(prefers-color-scheme: dark)", color: "#09090B" },
-    { media: "(prefers-color-scheme: light)", color: "#f4f4f2" },
+    { media: "(prefers-color-scheme: light)", color: "#f7f5f1" },
   ],
-  colorScheme: "dark",
+  colorScheme: "light dark",
 };
 
 export default function RootLayout({
@@ -37,17 +37,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
-      <body className={`${inter.variable} ${manrope.variable} font-sans antialiased`}>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${inter.variable} ${manrope.variable} font-sans antialiased bg-background text-foreground`}>
         <ThemeProvider>
           <QueryProvider>
             {children}
             <Toaster
-              theme="dark"
               position="top-right"
               toastOptions={{
                 classNames: {
-                  toast: "glass-card border border-white/10",
+                  toast: "glass-card border border-border",
                 },
               }}
             />
