@@ -1,0 +1,11 @@
+# Optional config if Root Directory is left as repo root (not recommended).
+# Prefer Root Directory = workspace and workspace/railway.toml
+
+[build]
+builder = "RAILPACK"
+buildCommand = "npm install --prefix workspace && npm run prisma:generate --prefix workspace/backend && npm run build --prefix workspace/backend"
+
+[deploy]
+startCommand = "node workspace/backend/scripts/start-railway.js"
+healthcheckPath = "/api/v1/health"
+healthcheckTimeout = 100

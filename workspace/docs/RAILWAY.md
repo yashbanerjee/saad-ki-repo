@@ -1,5 +1,37 @@
 # Deploy TaskFlow on Railway
 
+## Backend crash: `Cannot find module '.../scripts/workspace/backend/...'`
+
+Railway was using a bad start path. **Do not use** `npm start` from the repo root.
+
+### Backend service — set these EXACTLY
+
+| Setting | Value |
+|---------|--------|
+| **Root Directory** | `workspace` |
+| **Build Command** | `npm install && npm run prisma:generate --workspace=backend && npm run build --workspace=backend` |
+| **Start Command** | `node backend/scripts/start-railway.js` |
+
+**Variables:**
+```env
+SERVICE_ROLE=backend
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+JWT_SECRET=<long-random>
+JWT_REFRESH_SECRET=<long-random>
+CORS_ORIGIN=https://<frontend>.up.railway.app
+```
+
+Then **Redeploy** (clear build cache if Railway offers it).
+
+You should see logs like:
+```text
+[start-railway] Using schema ...
+[start-railway] DATABASE_URL is set
+TaskFlow API running on http://0.0.0.0:...
+```
+
+---
+
 ## Fix: Frontend deploy shows `DATABASE_URL` / Prisma errors
 
 That means the **frontend** service is starting the **backend** script by mistake.

@@ -1,16 +1,14 @@
-# Railway config for the BACKEND service
-# In Railway dashboard set: Root Directory = workspace
-#
-# If you create a separate frontend service, override Start/Build
-# commands in the dashboard (see docs/RAILWAY.md).
+# Backend service on Railway
+# Recommended Root Directory: workspace
 
 [build]
 builder = "RAILPACK"
 buildCommand = "npm install && npm run prisma:generate --workspace=backend && npm run build --workspace=backend"
 
 [deploy]
+# Explicit path — do not rely on repo-root npm start
 startCommand = "node backend/scripts/start-railway.js"
 healthcheckPath = "/api/v1/health"
-healthcheckTimeout = 30
+healthcheckTimeout = 100
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5

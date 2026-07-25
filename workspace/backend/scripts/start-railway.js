@@ -71,6 +71,24 @@ function run(cmd, args, cwd) {
   }
 }
 
-const schema = path.join(workspaceDir, 'prisma', 'schema.prisma');
+const schemaCandidates = [
+  path.join(workspaceDir, 'prisma', 'schema.prisma'),
+  path.join(backendDir, 'prisma', 'schema.prisma'),
+  path.join(backendDir, '..', 'prisma', 'schema.prisma'),
+];
+const schema = schemaCandidates.find((p) => fs.existsSync(p));
+if (!schema) {
+  console.error('[start-railway] Prisma schema not found. Tried:\n' + schemaCandidates.join('\n'));
+  process.exit(1);
+}
+
+console.log('[start-railway] Using schema', schema);
+console.log('[start-railway] DATABASE_URL is set');
 run('npx', ['prisma', 'migrate', 'deploy', `--schema=${schema}`], backendDir);
-run('node', ['dist/main.js'], backendDir);
+
+const mainJs = path.join(backendDir, 'dist', 'main.js');
+if (!fs.existsSync(mainJs)) {
+  console.error('[start-railway] Missing dist/main.js — build failed or Root Directory wrong.');
+  process.exit(1);
+}
+run('node', [mainJs], backendDir);
