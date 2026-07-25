@@ -1,20 +1,19 @@
-# Frontend service (Next.js)
+# Frontend (Next.js) — TaskFlow
 #
-# Railway Settings (BOTH required):
-#   1. Root Directory:        workspace/frontend
-#   2. Config-as-code path:   workspace/frontend/railway.toml
-#      (NO leading slash — not /workspace/...)
+# Railway service settings:
+#   Config-as-code:  workspace/frontend/railway.toml
+#   Root Directory:  LEAVE EMPTY (blank)
 #
-# Frontend does NOT need DATABASE_URL.
+# These commands always target the frontend folder from the repo root,
+# so they cannot accidentally start the Nest backend.
 
 [build]
 builder = "RAILPACK"
-buildCommand = "npm install && npm run build"
+buildCommand = "node workspace/frontend/railway-build.js"
 
 [deploy]
-# Explicit Next.js start — never call repo-root npm start
-startCommand = "npx next start --hostname 0.0.0.0 --port ${PORT:-3000}"
+startCommand = "node workspace/frontend/railway-start.js"
 healthcheckPath = "/"
-healthcheckTimeout = 100
+healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
