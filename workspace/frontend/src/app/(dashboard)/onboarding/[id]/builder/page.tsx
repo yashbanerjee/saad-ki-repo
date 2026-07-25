@@ -125,8 +125,16 @@ export default function FormBuilderPage() {
         publish: true,
       });
 
-      const savedForm = saved.data?.data ?? saved.data;
+      let savedForm = saved.data?.data ?? saved.data;
+      // Older publish responses may omit fields/token — refetch
+      if (!savedForm?.secureToken && id) {
+        const fresh = await onboardingApi.getForm(id);
+        savedForm = fresh.data?.data ?? fresh.data;
+      }
       const token = savedForm.secureToken as string;
+      if (!token) {
+        throw new Error("Form saved but no public link token was returned");
+      }
       const url = publicFormUrl(token);
       setShareUrl(url);
       await queryClient.invalidateQueries({ queryKey: ["onboarding-forms"] });

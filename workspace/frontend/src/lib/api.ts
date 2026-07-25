@@ -148,9 +148,18 @@ export const onboardingApi = {
     }
     return api.get(`/onboarding/forms/${id}`);
   },
-  createForm: (data: { title: string; slug?: string; description?: string }) =>
-    api.post("/onboarding/forms", data),
-  updateForm: (
+  createForm: (data: { title: string; slug?: string; description?: string }) => {
+    const title = data.title?.trim() || "Client onboarding form";
+    const slug =
+      data.slug ||
+      `${title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 40)}-${Date.now().toString(36)}`;
+    return api.post("/onboarding/forms", { ...data, title, slug });
+  },
+  updateForm: async (
     id: string,
     data: {
       title?: string;
@@ -162,7 +171,35 @@ export const onboardingApi = {
     if (!id || id === "new") {
       return Promise.reject(new Error("Create the form before updating"));
     }
-    return api.put(`/onboarding/forms/${id}`, data);
+
+    // Prefer bulk PUT (new backend). Fall back to PATCH + POST fields + publish
+    // for older Railway deploys that only expose those routes.
+    try {
+      return await api.put(`/onboarding/forms/${id}`, data);
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status !== 404 && status !== 405) throw err;
+
+      if (data.title || data.description !== undefined) {
+        await api.patch(`/onboarding/forms/${id}`, {
+          title: data.title,
+          description: data.description,
+        });
+      }
+
+      for (const [order, field] of (data.fields ?? []).entries()) {
+        await api.post(`/onboarding/forms/${id}/fields`, {
+          ...field,
+          order: (field as { order?: number }).order ?? order,
+        });
+      }
+
+      if (data.publish !== false) {
+        await api.post(`/onboarding/forms/${id}/publish`);
+      }
+
+      return api.get(`/onboarding/forms/${id}`);
+    }
   },
   saveFields: (
     id: string,
@@ -172,12 +209,7 @@ export const onboardingApi = {
       fields: Record<string, unknown>[];
       publish?: boolean;
     }
-  ) => {
-    if (!id || id === "new") {
-      return Promise.reject(new Error("Create the form before saving fields"));
-    }
-    return api.put(`/onboarding/forms/${id}/fields`, data);
-  },
+  ) => onboardingApi.updateForm(id, data),
   publishForm: (id: string) => api.post(`/onboarding/forms/${id}/publish`),
   getPublicForm: (token: string) => api.get(`/onboarding/public/${token}`),
   submitPublicForm: (token: string, data: Record<string, unknown>) =>

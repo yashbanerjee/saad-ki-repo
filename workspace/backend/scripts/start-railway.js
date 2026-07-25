@@ -86,9 +86,15 @@ console.log('[start-railway] Using schema', schema);
 console.log('[start-railway] DATABASE_URL is set');
 run('npx', ['prisma', 'migrate', 'deploy', `--schema=${schema}`], backendDir);
 
+// Always rebuild so Railway never starts a stale dist/ from a previous image layer
+console.log('[start-railway] Building NestJS app...');
+run('npx', ['prisma', 'generate', `--schema=${schema}`], backendDir);
+run('npm', ['run', 'build'], backendDir);
+
 const mainJs = path.join(backendDir, 'dist', 'main.js');
 if (!fs.existsSync(mainJs)) {
   console.error('[start-railway] Missing dist/main.js — build failed or Root Directory wrong.');
   process.exit(1);
 }
+console.log('[start-railway] Starting API (buildId=2026-07-25-verify)');
 run('node', [mainJs], backendDir);
