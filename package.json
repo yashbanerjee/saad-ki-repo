@@ -7,9 +7,9 @@
   },
   "scripts": {
     "install:app": "npm install --prefix workspace",
-    "build": "npm install --prefix workspace && npm run prisma:generate --prefix workspace/backend && npm run build --prefix workspace/backend",
-    "start": "node scripts/railway-dispatch.js",
-    "build:frontend": "npm install --prefix workspace/frontend && npm run build --prefix workspace/frontend",
-    "start:frontend": "npm run start --prefix workspace/frontend"
+    "build": "node scripts/railway-dispatch.js build",
+    "start": "node scripts/railway-dispatch.js start",
+    "build:frontend": "node scripts/railway-dispatch.js build",
+    "start:frontend": "node scripts/railway-dispatch.js start"
   }
 }

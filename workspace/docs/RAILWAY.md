@@ -6,7 +6,7 @@ That means the **frontend** service is starting the **backend** script by mistak
 
 Frontend is Next.js. It must **never** run `start:railway` or Prisma.
 
-### Correct frontend service settings
+### Correct frontend service settings (recommended)
 
 | Setting | Value |
 |---------|--------|
@@ -14,20 +14,34 @@ Frontend is Next.js. It must **never** run `start:railway` or Prisma.
 | **Build Command** | `npm install && npm run build` |
 | **Start Command** | `npm run start` |
 
-### Frontend variables (only this)
+### Or if Root Directory is empty / repo root
+
+Add this variable on the **frontend** service:
+
+```env
+SERVICE_ROLE=frontend
+NEXT_PUBLIC_API_URL=https://saad-ki-repo-production.up.railway.app/api/v1
+```
+
+On the **backend** service:
+
+```env
+SERVICE_ROLE=backend
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+```
+
+### Frontend variables (only this for UI)
 
 ```env
 NEXT_PUBLIC_API_URL=https://saad-ki-repo-production.up.railway.app/api/v1
+SERVICE_ROLE=frontend
 ```
 
 Do **not** add `DATABASE_URL` to the frontend.
 
 ### Also rename the service
 
-Name the Railway service **`frontend`** (Settings → name).  
-If Root Directory is wrong, the dispatcher uses the service name to pick Next.js.
-
-Then **Redeploy**.
+Name the Railway service **`frontend`**. Then **Redeploy**.
 
 Login URL after deploy:
 
