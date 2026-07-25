@@ -8,8 +8,8 @@
   "scripts": {
     "install:app": "npm install --prefix workspace",
     "build": "npm install --prefix workspace && npm run prisma:generate --prefix workspace/backend && npm run build --prefix workspace/backend",
-    "start": "npm run start:railway --prefix workspace",
-    "build:frontend": "npm install --prefix workspace && npm run build --prefix workspace/frontend",
+    "start": "node scripts/railway-dispatch.js",
+    "build:frontend": "npm install --prefix workspace/frontend && npm run build --prefix workspace/frontend",
     "start:frontend": "npm run start --prefix workspace/frontend"
   }
 }

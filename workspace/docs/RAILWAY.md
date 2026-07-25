@@ -1,5 +1,133 @@
 # Deploy TaskFlow on Railway
 
+## Fix: Frontend deploy shows `DATABASE_URL` / Prisma errors
+
+That means the **frontend** service is starting the **backend** script by mistake.
+
+Frontend is Next.js. It must **never** run `start:railway` or Prisma.
+
+### Correct frontend service settings
+
+| Setting | Value |
+|---------|--------|
+| **Root Directory** | `workspace/frontend` |
+| **Build Command** | `npm install && npm run build` |
+| **Start Command** | `npm run start` |
+
+### Frontend variables (only this)
+
+```env
+NEXT_PUBLIC_API_URL=https://saad-ki-repo-production.up.railway.app/api/v1
+```
+
+Do **not** add `DATABASE_URL` to the frontend.
+
+### Also rename the service
+
+Name the Railway service **`frontend`** (Settings → name).  
+If Root Directory is wrong, the dispatcher uses the service name to pick Next.js.
+
+Then **Redeploy**.
+
+Login URL after deploy:
+
+```text
+https://<frontend-domain>.up.railway.app/login
+```
+
+---
+
+## Fix: `Environment variable not found: DATABASE_URL` (backend only)
+
+Your **backend** is crashing because **DATABASE_URL is not set on the backend Railway service**.
+
+Postgres having a URL is not enough — the **backend service** must receive it.
+
+### Steps (Railway dashboard)
+
+1. Open your project → click the **backend** service (the Node app, not Postgres).
+2. Open the **Variables** tab.
+3. Click **+ New Variable** → **Add Reference** (or “Shared Variable” / variable reference).
+4. Select your **Postgres** plugin/service.
+5. Choose **`DATABASE_URL`**.
+6. Save.
+7. Also add (Raw / Shared):
+
+```env
+JWT_SECRET=<long-random-string>
+JWT_REFRESH_SECRET=<another-long-random-string>
+CORS_ORIGIN=https://<your-frontend>.up.railway.app
+REDIS_URL=${{Redis.REDIS_URL}}
+NODE_ENV=production
+```
+
+8. **Redeploy** the backend.
+
+### Check it worked
+
+In backend → Variables you should see something like:
+
+```text
+DATABASE_URL  ${{Postgres.DATABASE_URL}}
+```
+
+Deploy logs should then show `No pending migrations` / `TaskFlow API running…` — not `P1012`.
+
+---
+
+## Login page not showing / JSON 404 on `/`
+
+`https://…up.railway.app` for the **backend** service is the **API only**.  
+There is no login UI on that service. Nest responds with JSON (`Cannot GET /`) unless you open:
+
+| URL | What it is |
+|-----|------------|
+| `https://<backend>/api/docs` | Swagger API docs |
+| `https://<backend>/api/v1/health` | Health check |
+| `https://<frontend>/login` | **Login page (UI)** |
+
+### Deploy the frontend (required for login UI)
+
+1. In the same Railway project: **+ New** → **GitHub Repo** (same repo) → name it `frontend`.
+2. Settings:
+
+| Setting | Value |
+|---------|--------|
+| **Root Directory** | `workspace/frontend` |
+| **Build Command** | `npm install && npm run build` |
+| **Start Command** | `npm run start` |
+
+3. Variables on frontend:
+
+```env
+NEXT_PUBLIC_API_URL=https://saad-ki-repo-production.up.railway.app/api/v1
+```
+
+(Use your real backend domain.)
+
+4. Generate a public domain for **frontend**, then open:
+
+```text
+https://<your-frontend>.up.railway.app/login
+```
+
+5. On **backend**, set:
+
+```env
+CORS_ORIGIN=https://<your-frontend>.up.railway.app
+```
+
+Redeploy backend after changing CORS.
+
+### Demo admin login
+
+| Field | Value |
+|-------|--------|
+| Email | `admin@acme.demo` |
+| Password | `Password123!` |
+
+---
+
 ## Fix: "Railpack could not determine how to build the app"
 
 That error means Railway is building from the **repo root** (`README.md` + `workspace/`) where there was no Node app detected.

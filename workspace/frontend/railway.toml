@@ -1,4 +1,8 @@
-# Use when Root Directory = workspace/frontend
+# IMPORTANT: In Railway, set this service Root Directory to:
+#   workspace/frontend
+#
+# Do NOT use the repo root for the frontend service.
+# Frontend does NOT need DATABASE_URL.
 
 [build]
 builder = "RAILPACK"
@@ -6,3 +10,5 @@ buildCommand = "npm install && npm run build"
 
 [deploy]
 startCommand = "npm run start"
+healthcheckPath = "/"
+healthcheckTimeout = 30

@@ -9,7 +9,7 @@ builder = "RAILPACK"
 buildCommand = "npm install && npm run prisma:generate --workspace=backend && npm run build --workspace=backend"
 
 [deploy]
-startCommand = "cd backend && npx prisma migrate deploy --schema=../prisma/schema.prisma && node dist/main.js"
+startCommand = "node backend/scripts/start-railway.js"
 healthcheckPath = "/api/v1/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
