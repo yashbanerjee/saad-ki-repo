@@ -4,9 +4,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-
 const prisma = new PrismaClient();
-
 const PERMISSION_DEFINITIONS = [
   { name: 'Manage Users', slug: 'users:manage', module: 'users' },
   { name: 'View Users', slug: 'users:read', module: 'users' },
