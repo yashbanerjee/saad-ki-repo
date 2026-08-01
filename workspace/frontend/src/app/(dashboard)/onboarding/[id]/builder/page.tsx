@@ -111,7 +111,7 @@ export default function FormBuilderPage() {
       const payload = fields.map((f, order) => ({
         type: toApiFieldType(f.type),
         label: f.label,
-        name: f.name || f.id || `field_${order + 1}`,
+        name: f.id || `field_${order + 1}`,
         required: f.required,
         order,
         placeholder: f.placeholder,
