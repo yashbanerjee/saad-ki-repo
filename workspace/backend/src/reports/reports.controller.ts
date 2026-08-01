@@ -44,4 +44,10 @@ export class ReportsController {
   ) {
     return this.reportsService.userActivity(user.companyId!, days ? parseInt(days, 10) : 30);
   }
+
+  @Get('crm')
+  @Permissions('reports:read')
+  crmSummary(@CurrentUser() user: AuthenticatedUser) {
+    return this.reportsService.crmSummary(user.companyId!);
+  }
 }

@@ -23,6 +23,11 @@ import {
   Plus,
   ChevronsUpDown,
   Search,
+  Target,
+  Handshake,
+  Contact,
+  CheckSquare,
+  StickyNote,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSidebarStore } from "@/lib/sidebar-store";
@@ -50,7 +55,6 @@ const mainNav: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { title: "Projects", href: "/projects", icon: FolderKanban },
   { title: "Issues", href: "/issues", icon: Bug },
-  { title: "Clients", href: "/clients", icon: Building2, roles: ["admin", "manager", "member"] },
   { title: "Onboarding", href: "/onboarding", icon: ClipboardList, roles: ["admin", "manager"] },
   { title: "NDA", href: "/nda", icon: FileSignature, roles: ["admin", "manager"] },
   { title: "Documents", href: "/documents", icon: FileText },
@@ -58,9 +62,21 @@ const mainNav: NavItem[] = [
   { title: "Reports", href: "/reports", icon: BarChart3, roles: ["admin", "manager"] },
 ];
 
+const crmNav: NavItem[] = [
+  { title: "CRM Home", href: "/crm", icon: Sparkles, roles: ["admin", "manager", "member"] },
+  { title: "Leads", href: "/leads", icon: Target, roles: ["admin", "manager", "member"] },
+  { title: "Deals", href: "/deals", icon: Handshake, roles: ["admin", "manager", "member"] },
+  { title: "Contacts", href: "/contacts", icon: Contact, roles: ["admin", "manager", "member"] },
+  { title: "Organizations", href: "/organizations", icon: Building2, roles: ["admin", "manager", "member"] },
+  { title: "Clients", href: "/clients", icon: Users, roles: ["admin", "manager", "member"] },
+  { title: "Tasks", href: "/crm/tasks", icon: CheckSquare, roles: ["admin", "manager", "member"] },
+  { title: "Notes", href: "/crm/notes", icon: StickyNote, roles: ["admin", "manager", "member"] },
+];
+
 const secondaryNav: NavItem[] = [
   { title: "Client Portal", href: "/client-portal", icon: Globe, roles: ["client", "admin"] },
   { title: "Admin", href: "/admin", icon: Shield, roles: ["admin"] },
+  { title: "Integrations", href: "/settings/integrations", icon: Settings, roles: ["admin", "manager"] },
   { title: "Notifications", href: "/notifications", icon: Bell },
   { title: "Settings", href: "/settings", icon: Settings },
 ];
@@ -202,8 +218,21 @@ export function AppSidebar() {
           <Separator className="my-4 mx-3 bg-border dark:bg-white/[0.06]" />
 
           <nav className={cn("space-y-0.5 px-3", collapsed && "px-2")}>
-            {filterByRole(secondaryNav).map((item) => (
+            {!collapsed && (
+              <p className="mb-2 px-3 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                CRM
+              </p>
+            )}
+            {filterByRole(crmNav).map((item) => (
               <NavLink key={item.href} item={item} collapsed={collapsed} />
+            ))}
+          </nav>
+
+          <Separator className="my-4 mx-3 bg-border dark:bg-white/[0.06]" />
+
+          <nav className={cn("space-y-0.5 px-3", collapsed && "px-2")}>
+            {filterByRole(secondaryNav).map((item) => (
+              <NavLink key={`${item.href}-${item.title}`} item={item} collapsed={collapsed} />
             ))}
           </nav>
         </ScrollArea>

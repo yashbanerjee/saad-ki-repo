@@ -134,9 +134,106 @@ export const issuesApi = {
 
 // Clients API
 export const clientsApi = {
-  list: () => api.get("/clients"),
+  list: (params?: { type?: string; search?: string; page?: number; limit?: number }) =>
+    api.get("/clients", { params }),
   get: (id: string) => api.get(`/clients/${id}`),
   create: (data: Record<string, unknown>) => api.post("/clients", data),
+  update: (id: string, data: Record<string, unknown>) => api.patch(`/clients/${id}`, data),
+};
+
+// Leads API
+export const leadsApi = {
+  list: (params?: {
+    status?: string;
+    ownerId?: string;
+    source?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) => api.get("/leads", { params }),
+  stats: () => api.get("/leads/stats"),
+  get: (id: string) => api.get(`/leads/${id}`),
+  create: (data: Record<string, unknown>) => api.post("/leads", data),
+  update: (id: string, data: Record<string, unknown>) => api.patch(`/leads/${id}`, data),
+  remove: (id: string) => api.delete(`/leads/${id}`),
+  addActivity: (id: string, data: { type: string; body: string }) =>
+    api.post(`/leads/${id}/activities`, data),
+  convert: (id: string, data?: Record<string, unknown>) =>
+    api.post(`/leads/${id}/convert`, data ?? {}),
+  convertToDeal: (id: string, data?: Record<string, unknown>) =>
+    api.post(`/leads/${id}/convert-to-deal`, data ?? {}),
+};
+
+// Deals API
+export const dealsApi = {
+  list: (params?: {
+    status?: string;
+    clientId?: string;
+    leadId?: string;
+    page?: number;
+    limit?: number;
+  }) => api.get("/deals", { params }),
+  pipeline: () => api.get("/deals/pipeline"),
+  get: (id: string) => api.get(`/deals/${id}`),
+  create: (data: Record<string, unknown>) => api.post("/deals", data),
+  update: (id: string, data: Record<string, unknown>) => api.patch(`/deals/${id}`, data),
+  remove: (id: string) => api.delete(`/deals/${id}`),
+};
+
+export const contactsApi = {
+  list: (params?: { search?: string; organizationId?: string; page?: number; limit?: number }) =>
+    api.get("/contacts", { params }),
+  get: (id: string) => api.get(`/contacts/${id}`),
+  create: (data: Record<string, unknown>) => api.post("/contacts", data),
+  update: (id: string, data: Record<string, unknown>) => api.patch(`/contacts/${id}`, data),
+  remove: (id: string) => api.delete(`/contacts/${id}`),
+};
+
+export const organizationsApi = {
+  list: (params?: { search?: string; page?: number; limit?: number }) =>
+    api.get("/organizations", { params }),
+  get: (id: string) => api.get(`/organizations/${id}`),
+  create: (data: Record<string, unknown>) => api.post("/organizations", data),
+  update: (id: string, data: Record<string, unknown>) =>
+    api.patch(`/organizations/${id}`, data),
+  remove: (id: string) => api.delete(`/organizations/${id}`),
+};
+
+export const crmTasksApi = {
+  list: (params?: Record<string, unknown>) => api.get("/crm/tasks", { params }),
+  create: (data: Record<string, unknown>) => api.post("/crm/tasks", data),
+  update: (id: string, data: Record<string, unknown>) => api.patch(`/crm/tasks/${id}`, data),
+  remove: (id: string) => api.delete(`/crm/tasks/${id}`),
+};
+
+export const crmNotesApi = {
+  list: (params?: Record<string, unknown>) => api.get("/crm/notes", { params }),
+  create: (data: Record<string, unknown>) => api.post("/crm/notes", data),
+  update: (id: string, data: Record<string, unknown>) => api.patch(`/crm/notes/${id}`, data),
+  remove: (id: string) => api.delete(`/crm/notes/${id}`),
+};
+
+export const crmCommsApi = {
+  listEmails: (params?: Record<string, unknown>) => api.get("/crm/emails", { params }),
+  createEmail: (data: Record<string, unknown>) => api.post("/crm/emails", data),
+  listCalls: (params?: Record<string, unknown>) => api.get("/crm/calls", { params }),
+  createCall: (data: Record<string, unknown>) => api.post("/crm/calls", data),
+  listWhatsApp: (params?: Record<string, unknown>) => api.get("/crm/whatsapp", { params }),
+  createWhatsApp: (data: Record<string, unknown>) => api.post("/crm/whatsapp", data),
+  listAttachments: (params?: Record<string, unknown>) =>
+    api.get("/crm/attachments", { params }),
+  createAttachment: (data: Record<string, unknown>) => api.post("/crm/attachments", data),
+};
+
+export const integrationsApi = {
+  status: () => api.get("/integrations/status"),
+};
+
+// Reports API
+export const reportsApi = {
+  projects: () => api.get("/reports/projects"),
+  issues: (projectId?: string) => api.get("/reports/issues", { params: { projectId } }),
+  crm: () => api.get("/reports/crm"),
 };
 
 // Onboarding API

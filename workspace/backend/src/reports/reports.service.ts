@@ -80,4 +80,57 @@ export class ReportsService {
       take: 20,
     });
   }
+
+  async crmSummary(companyId: string) {
+    const [leadGroups, dealGroups, clientGroups, wonLeads, totalLeads] =
+      await Promise.all([
+        this.prisma.lead.groupBy({
+          by: ['status'],
+          where: { companyId, archived: false },
+          _count: true,
+        }),
+        this.prisma.deal.groupBy({
+          by: ['status'],
+          where: { companyId },
+          _count: true,
+          _sum: { amount: true },
+        }),
+        this.prisma.client.groupBy({
+          by: ['type'],
+          where: { companyId, status: 'active' },
+          _count: true,
+        }),
+        this.prisma.lead.count({
+          where: { companyId, archived: false, status: 'WON' },
+        }),
+        this.prisma.lead.count({ where: { companyId, archived: false } }),
+      ]);
+
+    const leadsByStatus = Object.fromEntries(
+      leadGroups.map((g) => [g.status, g._count]),
+    );
+    const dealsByStatus = Object.fromEntries(
+      dealGroups.map((g) => [
+        g.status,
+        { count: g._count, amount: Number(g._sum.amount ?? 0) },
+      ]),
+    );
+    const openDealStatuses = ['OPEN', 'QUALIFICATION', 'PROPOSAL', 'NEGOTIATION'];
+    const pipelineValue = dealGroups
+      .filter((g) => openDealStatuses.includes(g.status))
+      .reduce((sum, g) => sum + Number(g._sum.amount ?? 0), 0);
+
+    return {
+      leadsByStatus,
+      totalLeads,
+      convertedLeads: wonLeads,
+      conversionRate:
+        totalLeads > 0 ? Math.round((wonLeads / totalLeads) * 1000) / 10 : 0,
+      dealsByStatus,
+      pipelineValue,
+      clientsByType: Object.fromEntries(
+        clientGroups.map((g) => [g.type, g._count]),
+      ),
+    };
+  }
 }

@@ -11,10 +11,9 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ClientsService } from './clients.service';
-import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
+import { CreateClientDto, ListClientsQueryDto, UpdateClientDto } from './dto/client.dto';
 import { CurrentUser, AuthenticatedUser, Permissions } from '../common/decorators';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
-import { PaginationDto } from '../common/dto/pagination.dto';
 import { ParseCuidPipe } from '../common/pipes/parse-cuid.pipe';
 
 @ApiTags('clients')
@@ -26,8 +25,8 @@ export class ClientsController {
 
   @Get()
   @Permissions('clients:read')
-  findAll(@CurrentUser() user: AuthenticatedUser, @Query() query: PaginationDto) {
-    return this.clientsService.findAll(user.companyId!, query.page, query.limit);
+  findAll(@CurrentUser() user: AuthenticatedUser, @Query() query: ListClientsQueryDto) {
+    return this.clientsService.findAll(user.companyId!, query);
   }
 
   @Get(':id')

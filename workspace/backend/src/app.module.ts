@@ -15,6 +15,14 @@ import { OnboardingModule } from './onboarding/onboarding.module';
 import { DocumentsModule } from './documents/documents.module';
 import { NdaModule } from './nda/nda.module';
 import { ClientsModule } from './clients/clients.module';
+import { LeadsModule } from './leads/leads.module';
+import { DealsModule } from './deals/deals.module';
+import { ContactsModule } from './contacts/contacts.module';
+import { OrganizationsModule } from './organizations/organizations.module';
+import { CrmTasksModule } from './crm-tasks/crm-tasks.module';
+import { CrmNotesModule } from './crm-notes/crm-notes.module';
+import { CrmCommsModule } from './crm-comms/crm-comms.module';
+import { IntegrationsModule } from './integrations/integrations.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { AuditModule } from './audit/audit.module';
 import { ActivityModule } from './activity/activity.module';
@@ -57,6 +65,14 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     DocumentsModule,
     NdaModule,
     ClientsModule,
+    LeadsModule,
+    DealsModule,
+    ContactsModule,
+    OrganizationsModule,
+    CrmTasksModule,
+    CrmNotesModule,
+    CrmCommsModule,
+    IntegrationsModule,
     NotificationsModule,
     ActivityModule,
     DashboardModule,

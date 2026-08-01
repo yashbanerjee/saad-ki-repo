@@ -120,6 +120,93 @@ enum FieldType {
   SECTION
 }
 
+enum ClientType {
+  COMPANY
+  INDIVIDUAL
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL
+  WON
+  LOST
+}
+
+enum LeadSource {
+  WEBSITE
+  REFERRAL
+  COLD_CALL
+  EMAIL
+  SOCIAL
+  EVENT
+  PARTNER
+  OTHER
+}
+
+enum DealStatus {
+  OPEN
+  QUALIFICATION
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum CrmActivityType {
+  NOTE
+  CALL
+  EMAIL
+  MEETING
+  STATUS_CHANGE
+  COMMENT
+  WHATSAPP
+  TASK
+}
+
+enum CrmTaskStatus {
+  BACKLOG
+  TODO
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum CrmTaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum CrmCommDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum CrmCallStatus {
+  QUEUED
+  RINGING
+  IN_PROGRESS
+  COMPLETED
+  BUSY
+  NO_ANSWER
+  FAILED
+  CANCELED
+  LOGGED
+}
+
+enum CrmMessageStatus {
+  DRAFT
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  LOGGED
+}
+
 enum NdaStatus {
   PENDING
   PREVIEWED
@@ -246,6 +333,17 @@ model Company {
   teams             Team[]
   projects          Project[]
   clients           Client[]
+  organizations     Organization[]
+  contacts          Contact[]
+  leads             Lead[]
+  deals             Deal[]
+  crmActivities     CrmActivity[]
+  crmTasks          CrmTask[]
+  crmNotes          CrmNote[]
+  crmCallLogs       CrmCallLog[]
+  crmEmails         CrmEmail[]
+  crmWhatsAppMessages CrmWhatsAppMessage[]
+  crmAttachments    CrmAttachment[]
   onboardingForms   OnboardingForm[]
   documents         Document[]
   ndaTemplates      NdaTemplate[]
@@ -336,6 +434,16 @@ model User {
   invitationsSent      Invitation[]          @relation("InvitationSender")
   passwordResetTokens  PasswordResetToken[]
   emailVerifyTokens    EmailVerificationToken[]
+  ownedLeads           Lead[]                @relation("LeadOwner")
+  ownedDeals           Deal[]                @relation("DealOwner")
+  ownedContacts        Contact[]             @relation("ContactOwner")
+  crmActivities        CrmActivity[]         @relation("CrmActivityAuthor")
+  assignedCrmTasks     CrmTask[]             @relation("CrmTaskAssignee")
+  createdCrmNotes      CrmNote[]             @relation("CrmNoteAuthor")
+  crmCallLogs          CrmCallLog[]          @relation("CrmCallLogAuthor")
+  crmEmails            CrmEmail[]            @relation("CrmEmailAuthor")
+  crmWhatsAppMessages  CrmWhatsAppMessage[]  @relation("CrmWhatsAppAuthor")
+  crmAttachments       CrmAttachment[]       @relation("CrmAttachmentUploader")
 
   @@index([companyId])
   @@index([email])
@@ -552,39 +660,416 @@ model Leave {
 // CLIENTS & ONBOARDING
 // ─────────────────────────────────────────────
 
-model Client {
+model Organization {
+  id        String   @id @default(cuid())
+  companyId String
+  name      String
+  website   String?
+  industry  String?
+  phone     String?
+  email     String?
+  address   String?
+  city      String?
+  country   String?
+  logo      String?
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  clients   Client[]
+  contacts  Contact[]
+  leads     Lead[]
+  deals     Deal[]
+  crmNotes  CrmNote[]
+
+  @@index([companyId])
+  @@map("organizations")
+}
+
+model Contact {
   id             String   @id @default(cuid())
   companyId      String
-  name           String
-  email          String
+  organizationId String?
+  ownerId        String?
+  firstName      String
+  lastName       String?
+  email          String?
   phone          String?
-  companyName    String?
-  website        String?
-  address        String?
-  city           String?
-  state          String?
-  country        String?
-  postalCode     String?
-  gstNumber      String?
-  panNumber      String?
-  registrationNo String?
-  logo           String?
-  status         String   @default("active")
+  mobile         String?
+  jobTitle       String?
+  image          String?
+  notes          String?
   metadata       Json     @default("{}")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  owner        User?         @relation("ContactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  leads        Lead[]
+  deals        Deal[]
+  crmTasks     CrmTask[]
+  crmNotes     CrmNote[]
+  callLogs     CrmCallLog[]
+  emails       CrmEmail[]
+  whatsappMessages CrmWhatsAppMessage[]
+  attachments  CrmAttachment[]
+  activities   CrmActivity[]
+
+  @@index([companyId])
+  @@index([email])
+  @@index([organizationId])
+  @@map("contacts")
+}
+
+model Client {
+  id                  String     @id @default(cuid())
+  companyId           String
+  organizationId      String?
+  type                ClientType @default(COMPANY)
+  name                String
+  firstName           String?
+  lastName            String?
+  email               String
+  phone               String?
+  companyName         String?
+  website             String?
+  address             String?
+  city                String?
+  state               String?
+  country             String?
+  postalCode          String?
+  gstNumber           String?
+  panNumber           String?
+  registrationNo      String?
+  logo           String?
+  status         String     @default("active")
+  metadata       Json       @default("{}")
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
   company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  organization    Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  convertedFromLead Lead?          @relation("LeadConvertedClient")
   projects        Project[]
   formSubmissions FormSubmission[]
   documents       Document[]
   ndaSignatures   DigitalSignature[]
   invoices        Invoice[]
   supportTickets  SupportTicket[]
+  deals           Deal[]
+  crmActivities   CrmActivity[]
 
   @@index([companyId])
   @@index([email])
+  @@index([type])
   @@map("clients")
+}
+
+model Lead {
+  id                String     @id @default(cuid())
+  companyId         String
+  organizationId    String?
+  contactId         String?
+  ownerId           String?
+  title             String
+  name              String
+  firstName         String?
+  lastName          String?
+  email             String?
+  phone             String?
+  mobile            String?
+  website           String?
+  jobTitle          String?
+  image             String?
+  organizationName  String?
+  type              ClientType @default(COMPANY)
+  status            LeadStatus @default(NEW)
+  source            LeadSource @default(OTHER)
+  estimatedValue    Decimal?   @db.Decimal(12, 2)
+  notes             String?
+  lostReason        String?
+  lostNotes         String?
+  convertedClientId String?    @unique
+  convertedAt       DateTime?
+  archived          Boolean    @default(false)
+  metadata          Json       @default("{}")
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  company         Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  contact         Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  owner           User?         @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  convertedClient Client?       @relation("LeadConvertedClient", fields: [convertedClientId], references: [id], onDelete: SetNull)
+  deals           Deal[]
+  activities      CrmActivity[]
+  crmTasks        CrmTask[]
+  crmNotes        CrmNote[]
+  callLogs        CrmCallLog[]
+  emails          CrmEmail[]
+  whatsappMessages CrmWhatsAppMessage[]
+  attachments     CrmAttachment[]
+
+  @@index([companyId])
+  @@index([status])
+  @@index([ownerId])
+  @@index([email])
+  @@index([contactId])
+  @@map("leads")
+}
+
+model Deal {
+  id                String     @id @default(cuid())
+  companyId         String
+  leadId            String?
+  clientId          String?
+  organizationId    String?
+  contactId         String?
+  ownerId           String?
+  title             String
+  amount            Decimal?   @db.Decimal(12, 2)
+  status            DealStatus @default(OPEN)
+  expectedCloseDate DateTime?
+  notes             String?
+  lostReason        String?
+  lostNotes         String?
+  website           String?
+  image             String?
+  metadata          Json       @default("{}")
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lead         Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  client       Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  contact      Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  owner        User?         @relation("DealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  activities   CrmActivity[]
+  crmTasks     CrmTask[]
+  crmNotes     CrmNote[]
+  callLogs     CrmCallLog[]
+  emails       CrmEmail[]
+  whatsappMessages CrmWhatsAppMessage[]
+  attachments  CrmAttachment[]
+
+  @@index([companyId])
+  @@index([status])
+  @@index([leadId])
+  @@index([clientId])
+  @@index([contactId])
+  @@map("deals")
+}
+
+model CrmActivity {
+  id          String          @id @default(cuid())
+  companyId   String
+  leadId      String?
+  clientId    String?
+  dealId      String?
+  contactId   String?
+  createdById String?
+  type        CrmActivityType @default(NOTE)
+  body        String
+  metadata    Json            @default("{}")
+  createdAt   DateTime        @default(now())
+
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lead      Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  client    Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  deal      Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  createdBy User?    @relation("CrmActivityAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([leadId])
+  @@index([clientId])
+  @@index([dealId])
+  @@index([contactId])
+  @@map("crm_activities")
+}
+
+model CrmTask {
+  id           String          @id @default(cuid())
+  companyId    String
+  leadId       String?
+  dealId       String?
+  contactId    String?
+  assignedToId String?
+  title        String
+  description  String?
+  status       CrmTaskStatus   @default(TODO)
+  priority     CrmTaskPriority @default(MEDIUM)
+  dueDate      DateTime?
+  metadata     Json            @default("{}")
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lead       Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  deal       Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  contact    Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  assignedTo User?    @relation("CrmTaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([leadId])
+  @@index([dealId])
+  @@map("crm_tasks")
+}
+
+model CrmNote {
+  id             String   @id @default(cuid())
+  companyId      String
+  leadId         String?
+  dealId         String?
+  contactId      String?
+  organizationId String?
+  createdById    String?
+  title          String?
+  body           String
+  metadata       Json     @default("{}")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lead         Lead?         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  deal         Deal?         @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  contact      Contact?      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?         @relation("CrmNoteAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([leadId])
+  @@index([dealId])
+  @@map("crm_notes")
+}
+
+model CrmCallLog {
+  id           String           @id @default(cuid())
+  companyId    String
+  leadId       String?
+  dealId       String?
+  contactId    String?
+  createdById  String?
+  direction    CrmCommDirection @default(OUTBOUND)
+  status       CrmCallStatus    @default(LOGGED)
+  fromNumber   String?
+  toNumber     String?
+  durationSec  Int?
+  recordingUrl String?
+  provider     String?          // twilio | exotel | manual
+  externalId   String?
+  notes        String?
+  metadata     Json             @default("{}")
+  startedAt    DateTime?
+  endedAt      DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lead      Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  deal      Deal?    @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  createdBy User?    @relation("CrmCallLogAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([leadId])
+  @@index([dealId])
+  @@index([externalId])
+  @@map("crm_call_logs")
+}
+
+model CrmEmail {
+  id          String           @id @default(cuid())
+  companyId   String
+  leadId      String?
+  dealId      String?
+  contactId   String?
+  createdById String?
+  direction   CrmCommDirection @default(OUTBOUND)
+  status      CrmMessageStatus @default(LOGGED)
+  subject     String
+  body        String
+  fromAddress String?
+  toAddress   String?
+  messageId   String?
+  metadata    Json             @default("{}")
+  sentAt      DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lead      Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  deal      Deal?    @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  createdBy User?    @relation("CrmEmailAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([leadId])
+  @@index([dealId])
+  @@map("crm_emails")
+}
+
+model CrmWhatsAppMessage {
+  id          String           @id @default(cuid())
+  companyId   String
+  leadId      String?
+  dealId      String?
+  contactId   String?
+  createdById String?
+  direction   CrmCommDirection @default(OUTBOUND)
+  status      CrmMessageStatus @default(LOGGED)
+  body        String
+  mediaUrl    String?
+  fromNumber  String?
+  toNumber    String?
+  externalId  String?
+  metadata    Json             @default("{}")
+  sentAt      DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lead      Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  deal      Deal?    @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  createdBy User?    @relation("CrmWhatsAppAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([leadId])
+  @@index([dealId])
+  @@index([externalId])
+  @@map("crm_whatsapp_messages")
+}
+
+model CrmAttachment {
+  id           String   @id @default(cuid())
+  companyId    String
+  leadId       String?
+  dealId       String?
+  contactId    String?
+  uploadedById String?
+  fileName     String
+  fileUrl      String
+  mimeType     String?
+  sizeBytes    Int?
+  metadata     Json     @default("{}")
+  createdAt    DateTime @default(now())
+
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lead       Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  deal       Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  contact    Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  uploadedBy User?    @relation("CrmAttachmentUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([leadId])
+  @@index([dealId])
+  @@map("crm_attachments")
 }
 
 model OnboardingForm {

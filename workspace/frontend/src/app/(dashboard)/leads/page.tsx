@@ -1,0 +1,264 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus, Target } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { EmptyState } from "@/components/ui/empty-state";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Card, CardContent } from "@/components/ui/card";
+import { CrmViewControls } from "@/components/crm/CrmViewControls";
+import { CrmKanbanBoard } from "@/components/crm/CrmKanbanBoard";
+import { LEAD_SOURCES, LEAD_STATUSES } from "@/components/crm/crm-constants";
+import { leadsApi } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+
+interface Lead {
+  id: string;
+  title: string;
+  name: string;
+  email?: string | null;
+  organizationName?: string | null;
+  type: string;
+  status: string;
+  source: string;
+  estimatedValue?: string | number | null;
+  _count?: { emails?: number; crmNotes?: number; crmTasks?: number; activities?: number };
+}
+
+export default function LeadsPage() {
+  const [view, setView] = useState<"board" | "list">("board");
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({
+    title: "",
+    name: "",
+    email: "",
+    phone: "",
+    organizationName: "",
+    type: "COMPANY",
+    source: "OTHER",
+    estimatedValue: "",
+    notes: "",
+  });
+  const queryClient = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["leads", search],
+    queryFn: () => leadsApi.list({ limit: 100, search: search || undefined }),
+    retry: false,
+  });
+
+  const leads: Lead[] = useMemo(() => {
+    const raw = data?.data?.data ?? data?.data ?? [];
+    return Array.isArray(raw) ? raw : [];
+  }, [data]);
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      leadsApi.create({
+        title: form.title || form.name,
+        name: form.name,
+        email: form.email || undefined,
+        phone: form.phone || undefined,
+        organizationName: form.organizationName || undefined,
+        type: form.type,
+        source: form.source,
+        estimatedValue: form.estimatedValue ? Number(form.estimatedValue) : undefined,
+        notes: form.notes || undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      toast.success("Lead created");
+      setOpen(false);
+    },
+    onError: (err: unknown) => {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+        "Failed to create lead";
+      toast.error(Array.isArray(message) ? message.join(", ") : message);
+    },
+  });
+
+  const moveMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      leadsApi.update(id, { status }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["leads"] }),
+    onError: () => toast.error("Could not update status"),
+  });
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground mb-1">CRM</p>
+          <h1 className="font-display text-2xl font-bold">Leads</h1>
+          <p className="text-muted-foreground text-sm">Qualify inbound interest and convert to deals or clients</p>
+        </div>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="h-4 w-4 mr-1" /> New Lead
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Create Lead</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div className="space-y-2">
+                <Label>Title</Label>
+                <Input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Contact Name</Label>
+                <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Type</Label>
+                  <Select value={form.type} onValueChange={(v) => setForm((f) => ({ ...f, type: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="COMPANY">Company</SelectItem>
+                      <SelectItem value="INDIVIDUAL">Individual</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Source</Label>
+                  <Select value={form.source} onValueChange={(v) => setForm((f) => ({ ...f, source: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {LEAD_SOURCES.map((s) => (
+                        <SelectItem key={s} value={s}>{s.replace(/_/g, " ")}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Organization</Label>
+                <Input value={form.organizationName} onChange={(e) => setForm((f) => ({ ...f, organizationName: e.target.value }))} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Phone</Label>
+                  <Input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Estimated Value</Label>
+                <Input type="number" value={form.estimatedValue} onChange={(e) => setForm((f) => ({ ...f, estimatedValue: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Notes</Label>
+                <Textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+              <Button disabled={!form.name || createMutation.isPending} onClick={() => createMutation.mutate()}>
+                {createMutation.isPending ? "Saving..." : "Create"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <CrmViewControls
+        view={view}
+        onViewChange={setView}
+        search={search}
+        onSearchChange={setSearch}
+      />
+
+      {isLoading ? (
+        <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-64" />)}
+        </div>
+      ) : leads.length === 0 ? (
+        <EmptyState
+          icon={Target}
+          title="No leads yet"
+          description="Capture inbound interest and move them through the pipeline."
+          actionLabel="New Lead"
+          onAction={() => setOpen(true)}
+        />
+      ) : view === "board" ? (
+        <CrmKanbanBoard
+          columns={LEAD_STATUSES.map((s) => ({ key: s.key, label: s.label, color: s.color }))}
+          items={leads.map((l) => ({
+            id: l.id,
+            title: l.title,
+            subtitle: [l.name, l.organizationName].filter(Boolean).join(" · "),
+            meta: l.estimatedValue != null ? `$${Number(l.estimatedValue).toLocaleString()}` : undefined,
+            href: `/leads/${l.id}`,
+            status: l.status,
+            counts: {
+              emails: l._count?.emails,
+              notes: l._count?.crmNotes,
+              tasks: l._count?.crmTasks,
+            },
+          }))}
+          onMove={(id, status) => moveMutation.mutate({ id, status })}
+        />
+      ) : (
+        <Card>
+          <CardContent className="p-0 divide-y">
+            {leads.map((lead) => (
+              <Link
+                key={lead.id}
+                href={`/leads/${lead.id}`}
+                className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-muted/40 transition-colors"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{lead.title}</p>
+                  <p className="text-sm text-muted-foreground truncate">
+                    {lead.name}
+                    {lead.email ? ` · ${lead.email}` : ""}
+                  </p>
+                </div>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "shrink-0",
+                    LEAD_STATUSES.find((s) => s.key === lead.status)?.color,
+                    "bg-opacity-15",
+                  )}
+                >
+                  {lead.status}
+                </Badge>
+              </Link>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
