@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEmail, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsEmail, IsEnum, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ClientType } from '@prisma/client';
 import { PaginationDto } from '../../common/dto/pagination.dto';
@@ -78,6 +78,16 @@ export class CreateClientDto {
   @IsOptional()
   @IsString()
   country?: string;
+
+  @ApiPropertyOptional({ description: 'Assign an existing form after creating the client' })
+  @IsOptional()
+  @IsString()
+  assignFormId?: string;
+
+  @ApiPropertyOptional({ description: 'Create a dedicated form for this new client' })
+  @IsOptional()
+  @IsString()
+  createFormTitle?: string;
 }
 
 export class UpdateClientDto {
@@ -145,4 +155,31 @@ export class UpdateClientDto {
   @IsOptional()
   @IsString()
   country?: string;
+}
+
+export class AssignOnboardingFormDto {
+  @ApiProperty({ description: 'Existing onboarding form id to assign' })
+  @IsString()
+  formId: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
+export class CreateClientOnboardingFormDto {
+  @ApiProperty()
+  @IsString()
+  title: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional({ description: 'Publish immediately so the client link works' })
+  @IsOptional()
+  @IsBoolean()
+  publish?: boolean;
 }

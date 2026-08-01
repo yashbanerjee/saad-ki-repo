@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Sparkles, Send, Loader2, ImageIcon, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -33,8 +33,24 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 export default function PublicOnboardingPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center p-6">
+          <Skeleton className="h-96 w-full max-w-lg" />
+        </div>
+      }
+    >
+      <PublicOnboardingForm />
+    </Suspense>
+  );
+}
+
+function PublicOnboardingForm() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const token = params.token as string;
+  const clientId = searchParams.get("clientId") || undefined;
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [formData, setFormData] = useState<Record<string, FieldValue>>({});
@@ -98,7 +114,7 @@ export default function PublicOnboardingPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await onboardingApi.submitPublicForm(token, formData);
+      await onboardingApi.submitPublicForm(token, formData, clientId);
       setSubmitted(true);
       toast.success("Form submitted successfully");
     } catch {

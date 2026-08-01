@@ -139,6 +139,16 @@ export const clientsApi = {
   get: (id: string) => api.get(`/clients/${id}`),
   create: (data: Record<string, unknown>) => api.post("/clients", data),
   update: (id: string, data: Record<string, unknown>) => api.patch(`/clients/${id}`, data),
+  listOnboardingForms: (clientId: string) =>
+    api.get(`/clients/${clientId}/onboarding-forms`),
+  assignOnboardingForm: (clientId: string, data: { formId: string; notes?: string }) =>
+    api.post(`/clients/${clientId}/onboarding-forms/assign`, data),
+  createOnboardingForm: (
+    clientId: string,
+    data: { title: string; description?: string; publish?: boolean },
+  ) => api.post(`/clients/${clientId}/onboarding-forms`, data),
+  unassignOnboardingForm: (clientId: string, assignmentId: string) =>
+    api.delete(`/clients/${clientId}/onboarding-forms/${assignmentId}`),
 };
 
 // Leads API
@@ -309,8 +319,11 @@ export const onboardingApi = {
   ) => onboardingApi.updateForm(id, data),
   publishForm: (id: string) => api.post(`/onboarding/forms/${id}/publish`),
   getPublicForm: (token: string) => api.get(`/onboarding/public/${token}`),
-  submitPublicForm: (token: string, data: Record<string, unknown>) =>
-    api.post(`/onboarding/public/${token}/submit`, { data }),
+  submitPublicForm: (
+    token: string,
+    data: Record<string, unknown>,
+    clientId?: string,
+  ) => api.post(`/onboarding/public/${token}/submit`, { data, clientId }),
 };
 
 // NDA API

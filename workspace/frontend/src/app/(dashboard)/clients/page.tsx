@@ -1,8 +1,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Plus, Mail, Phone, User } from "lucide-react";
+import {
+  Building2,
+  ClipboardList,
+  Copy,
+  ExternalLink,
+  Mail,
+  Phone,
+  Plus,
+  User,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { clientsApi } from "@/lib/api";
+import { clientsApi, onboardingApi } from "@/lib/api";
 import { toast } from "sonner";
 
 interface Client {
@@ -39,10 +50,15 @@ interface Client {
   firstName?: string;
   lastName?: string;
   status: string;
-  _count?: { projects?: number };
+  _count?: { projects?: number; formAssignments?: number };
 }
 
 type ClientTypeFilter = "ALL" | "COMPANY" | "INDIVIDUAL";
+
+function publicFormUrl(token: string, clientId: string) {
+  if (typeof window === "undefined") return "";
+  return `${window.location.origin}/onboarding/public/${token}?clientId=${clientId}`;
+}
 
 export default function ClientsPage() {
   const [open, setOpen] = useState(false);
@@ -55,8 +71,17 @@ export default function ClientsPage() {
     email: "",
     phone: "",
     companyName: "",
+    onboardingMode: "none" as "none" | "assign" | "create",
+    assignFormId: "",
+    createFormTitle: "",
   });
+  const [assignClient, setAssignClient] = useState<Client | null>(null);
+  const [assignMode, setAssignMode] = useState<"assign" | "create">("assign");
+  const [assignFormId, setAssignFormId] = useState("");
+  const [createFormTitle, setCreateFormTitle] = useState("");
+  const [formsClient, setFormsClient] = useState<Client | null>(null);
   const queryClient = useQueryClient();
+  const router = useRouter();
 
   const { data, isLoading } = useQuery({
     queryKey: ["clients", typeFilter],
@@ -68,10 +93,33 @@ export default function ClientsPage() {
     retry: false,
   });
 
+  const { data: formsData } = useQuery({
+    queryKey: ["onboarding-forms"],
+    queryFn: () => onboardingApi.listForms(),
+    retry: false,
+  });
+
+  const { data: clientFormsData, isLoading: clientFormsLoading } = useQuery({
+    queryKey: ["clients", formsClient?.id, "onboarding-forms"],
+    queryFn: () => clientsApi.listOnboardingForms(formsClient!.id),
+    enabled: !!formsClient?.id,
+    retry: false,
+  });
+
   const clients: Client[] = useMemo(() => {
     const raw = data?.data?.data ?? data?.data ?? [];
     return Array.isArray(raw) ? raw : [];
   }, [data]);
+
+  const catalogForms = useMemo(() => {
+    const raw = formsData?.data?.data ?? formsData?.data ?? [];
+    return Array.isArray(raw) ? raw : [];
+  }, [formsData]);
+
+  const clientAssignments = useMemo(() => {
+    const raw = clientFormsData?.data?.data ?? clientFormsData?.data ?? [];
+    return Array.isArray(raw) ? raw : [];
+  }, [clientFormsData]);
 
   const createMutation = useMutation({
     mutationFn: () => {
@@ -88,9 +136,16 @@ export default function ClientsPage() {
         companyName: type === "COMPANY" ? form.companyName || name : undefined,
         firstName: type === "INDIVIDUAL" ? form.firstName || undefined : undefined,
         lastName: type === "INDIVIDUAL" ? form.lastName || undefined : undefined,
+        ...(form.onboardingMode === "assign" && form.assignFormId
+          ? { assignFormId: form.assignFormId }
+          : {}),
+        ...(form.onboardingMode === "create" && form.createFormTitle
+          ? { createFormTitle: form.createFormTitle }
+          : {}),
       });
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
+      const mode = form.onboardingMode;
       queryClient.invalidateQueries({ queryKey: ["clients"] });
       toast.success("Client created");
       setOpen(false);
@@ -102,7 +157,15 @@ export default function ClientsPage() {
         email: "",
         phone: "",
         companyName: "",
+        onboardingMode: "none",
+        assignFormId: "",
+        createFormTitle: "",
       });
+      if (mode === "create") {
+        const assignments = res?.data?.formAssignments ?? [];
+        const formId = assignments[0]?.form?.id as string | undefined;
+        if (formId) router.push(`/onboarding/${formId}/builder`);
+      }
     },
     onError: (err: unknown) => {
       const message =
@@ -112,12 +175,55 @@ export default function ClientsPage() {
     },
   });
 
+  const assignMutation = useMutation({
+    mutationFn: () => {
+      if (!assignClient) throw new Error("No client");
+      if (assignMode === "assign") {
+        return clientsApi.assignOnboardingForm(assignClient.id, {
+          formId: assignFormId,
+        });
+      }
+      return clientsApi.createOnboardingForm(assignClient.id, {
+        title: createFormTitle || `${assignClient.name} onboarding`,
+        publish: true,
+      });
+    },
+    onSuccess: (res) => {
+      const createdFormId =
+        assignMode === "create" ? (res?.data?.form?.id as string | undefined) : undefined;
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+      if (assignClient) {
+        queryClient.invalidateQueries({
+          queryKey: ["clients", assignClient.id, "onboarding-forms"],
+        });
+      }
+      toast.success(
+        assignMode === "assign" ? "Form assigned to client" : "Client form created",
+      );
+      setAssignClient(null);
+      setAssignFormId("");
+      setCreateFormTitle("");
+      if (createdFormId) {
+        router.push(`/onboarding/${createdFormId}/builder`);
+      }
+    },
+    onError: (err: unknown) => {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Failed to assign form";
+      toast.error(Array.isArray(message) ? message.join(", ") : message);
+    },
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
+          <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground mb-1">CRM</p>
           <h1 className="font-display text-2xl font-bold">Clients</h1>
-          <p className="text-muted-foreground">Companies and individual clients</p>
+          <p className="text-muted-foreground">
+            Companies and individuals — assign or create onboarding forms
+          </p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
@@ -125,7 +231,7 @@ export default function ClientsPage() {
               <Plus className="h-4 w-4 mr-1" /> Add Client
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add Client</DialogTitle>
             </DialogHeader>
@@ -152,7 +258,11 @@ export default function ClientsPage() {
                     placeholder="Acme Ltd"
                     value={form.companyName}
                     onChange={(e) =>
-                      setForm((f) => ({ ...f, companyName: e.target.value, name: e.target.value }))
+                      setForm((f) => ({
+                        ...f,
+                        companyName: e.target.value,
+                        name: e.target.value,
+                      }))
                     }
                   />
                 </div>
@@ -190,6 +300,57 @@ export default function ClientsPage() {
                   onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
                 />
               </div>
+
+              <div className="rounded-lg border p-3 space-y-3">
+                <Label>Onboarding form</Label>
+                <Select
+                  value={form.onboardingMode}
+                  onValueChange={(v) =>
+                    setForm((f) => ({
+                      ...f,
+                      onboardingMode: v as "none" | "assign" | "create",
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None for now</SelectItem>
+                    <SelectItem value="assign">Assign existing form</SelectItem>
+                    <SelectItem value="create">Create form for this client</SelectItem>
+                  </SelectContent>
+                </Select>
+                {form.onboardingMode === "assign" && (
+                  <Select
+                    value={form.assignFormId || "none"}
+                    onValueChange={(v) =>
+                      setForm((f) => ({ ...f, assignFormId: v === "none" ? "" : v }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select form" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Select form</SelectItem>
+                      {catalogForms.map((f: { id: string; title: string; status: string }) => (
+                        <SelectItem key={f.id} value={f.id}>
+                          {f.title} ({f.status})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {form.onboardingMode === "create" && (
+                  <Input
+                    placeholder="Form title"
+                    value={form.createFormTitle}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, createFormTitle: e.target.value }))
+                    }
+                  />
+                )}
+              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setOpen(false)}>
@@ -224,7 +385,7 @@ export default function ClientsPage() {
         <EmptyState
           icon={Building2}
           title="No clients yet"
-          description="Add your first client to start managing relationships."
+          description="Add your first client and optionally assign an onboarding form."
           actionLabel="Add Client"
           onAction={() => setOpen(true)}
         />
@@ -248,7 +409,7 @@ export default function ClientsPage() {
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-2 text-sm">
+                <CardContent className="space-y-3 text-sm">
                   {client.email && (
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Mail className="h-3.5 w-3.5" />
@@ -261,13 +422,38 @@ export default function ClientsPage() {
                       {client.phone}
                     </div>
                   )}
-                  <div className="flex items-center justify-between pt-2">
+                  <div className="flex items-center justify-between pt-1">
                     <Badge variant={client.status === "active" ? "success" : "warning"}>
                       {client.status}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
+                      {client._count?.formAssignments ?? 0} forms ·{" "}
                       {client._count?.projects ?? 0} projects
                     </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs"
+                      onClick={() => {
+                        setAssignClient(client);
+                        setAssignMode("assign");
+                        setAssignFormId("");
+                        setCreateFormTitle(`${client.name} onboarding`);
+                      }}
+                    >
+                      <ClipboardList className="h-3.5 w-3.5 mr-1" />
+                      Assign form
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 text-xs"
+                      onClick={() => setFormsClient(client)}
+                    >
+                      View forms
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -275,6 +461,173 @@ export default function ClientsPage() {
           })}
         </div>
       )}
+
+      {/* Assign / create form for existing client */}
+      <Dialog
+        open={!!assignClient}
+        onOpenChange={(v) => {
+          if (!v) setAssignClient(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Onboarding for {assignClient?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Select
+              value={assignMode}
+              onValueChange={(v) => setAssignMode(v as "assign" | "create")}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="assign">Assign existing form</SelectItem>
+                <SelectItem value="create">Create form for this client</SelectItem>
+              </SelectContent>
+            </Select>
+            {assignMode === "assign" ? (
+              <Select value={assignFormId || "none"} onValueChange={(v) => setAssignFormId(v === "none" ? "" : v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select form" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Select form</SelectItem>
+                  {catalogForms.map((f: { id: string; title: string; status: string }) => (
+                    <SelectItem key={f.id} value={f.id}>
+                      {f.title} ({f.status})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="space-y-2">
+                <Label>Form title</Label>
+                <Input
+                  value={createFormTitle}
+                  onChange={(e) => setCreateFormTitle(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Creates a dedicated published form, then opens the builder so you can add fields.
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignClient(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                assignMutation.isPending ||
+                (assignMode === "assign" ? !assignFormId : !createFormTitle.trim())
+              }
+              onClick={() => assignMutation.mutate()}
+            >
+              {assignMutation.isPending ? "Saving..." : "Confirm"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* List assigned forms + copy client-specific link */}
+      <Dialog
+        open={!!formsClient}
+        onOpenChange={(v) => {
+          if (!v) setFormsClient(null);
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Forms for {formsClient?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2 max-h-[60vh] overflow-y-auto">
+            {clientFormsLoading ? (
+              <Skeleton className="h-20" />
+            ) : clientAssignments.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No forms assigned yet. Use Assign form on the client card.
+              </p>
+            ) : (
+              clientAssignments.map(
+                (a: {
+                  id: string;
+                  status: string;
+                  form: {
+                    id: string;
+                    title: string;
+                    status: string;
+                    secureToken: string;
+                  };
+                }) => {
+                  const link = publicFormUrl(a.form.secureToken, formsClient!.id);
+                  return (
+                    <div key={a.id} className="rounded-lg border p-3 space-y-2 text-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-medium">{a.form.title}</p>
+                          <div className="flex gap-2 mt-1">
+                            <Badge variant="outline" className="text-[10px]">
+                              {a.form.status}
+                            </Badge>
+                            <Badge variant="secondary" className="text-[10px]">
+                              {a.status}
+                            </Badge>
+                          </div>
+                        </div>
+                        <Button size="sm" variant="ghost" asChild>
+                          <Link href={`/onboarding/${a.form.id}/builder`}>Edit</Link>
+                        </Button>
+                      </div>
+                      {a.form.status === "PUBLISHED" ? (
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-xs"
+                            onClick={() => {
+                              navigator.clipboard.writeText(link);
+                              toast.success("Client link copied");
+                            }}
+                          >
+                            <Copy className="h-3.5 w-3.5 mr-1" /> Copy client link
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-8 text-xs" asChild>
+                            <a href={link} target="_blank" rel="noreferrer">
+                              <ExternalLink className="h-3.5 w-3.5 mr-1" /> Open
+                            </a>
+                          </Button>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          Publish the form to share a client link.
+                        </p>
+                      )}
+                    </div>
+                  );
+                },
+              )
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (formsClient) {
+                  setAssignClient(formsClient);
+                  setAssignMode("assign");
+                  setFormsClient(null);
+                }
+              }}
+            >
+              Assign another
+            </Button>
+            <Button onClick={() => setFormsClient(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

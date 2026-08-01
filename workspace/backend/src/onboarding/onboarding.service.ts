@@ -209,7 +209,7 @@ export class OnboardingService {
 
   async submitByToken(secureToken: string, dto: SubmitFormDto, ip?: string, userAgent?: string) {
     const form = await this.findByToken(secureToken);
-    return this.prisma.formSubmission.create({
+    const submission = await this.prisma.formSubmission.create({
       data: {
         formId: form.id,
         clientId: dto.clientId,
@@ -220,6 +220,19 @@ export class OnboardingService {
         submittedAt: new Date(),
       },
     });
+
+    if (dto.clientId) {
+      await this.prisma.clientOnboardingAssignment.updateMany({
+        where: {
+          formId: form.id,
+          clientId: dto.clientId,
+          status: 'PENDING',
+        },
+        data: { status: 'COMPLETED' },
+      });
+    }
+
+    return submission;
   }
 
   async getSubmissions(formId: string, companyId: string) {

@@ -345,6 +345,7 @@ model Company {
   crmWhatsAppMessages CrmWhatsAppMessage[]
   crmAttachments    CrmAttachment[]
   onboardingForms   OnboardingForm[]
+  clientOnboardingAssignments ClientOnboardingAssignment[]
   documents         Document[]
   ndaTemplates      NdaTemplate[]
   notifications     Notification[]
@@ -426,6 +427,7 @@ model User {
   auditLogs            AuditLog[]
   createdForms         OnboardingForm[]      @relation("FormCreator")
   formSubmissions      FormSubmission[]
+  formAssignments      ClientOnboardingAssignment[] @relation("FormAssignmentAuthor")
   signatures           DigitalSignature[]
   uploadedDocuments    Document[]            @relation("DocumentUploader")
   supportTickets       SupportTicket[]       @relation("TicketCreator")
@@ -753,13 +755,15 @@ model Client {
   organization    Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   convertedFromLead Lead?          @relation("LeadConvertedClient")
   projects        Project[]
-  formSubmissions FormSubmission[]
-  documents       Document[]
-  ndaSignatures   DigitalSignature[]
-  invoices        Invoice[]
-  supportTickets  SupportTicket[]
-  deals           Deal[]
-  crmActivities   CrmActivity[]
+  formSubmissions   FormSubmission[]
+  documents         Document[]
+  ndaSignatures     DigitalSignature[]
+  invoices          Invoice[]
+  supportTickets    SupportTicket[]
+  deals             Deal[]
+  crmActivities     CrmActivity[]
+  specificForms     OnboardingForm[]              @relation("ClientSpecificForms")
+  formAssignments   ClientOnboardingAssignment[]
 
   @@index([companyId])
   @@index([email])
@@ -1076,6 +1080,8 @@ model OnboardingForm {
   id          String               @id @default(cuid())
   companyId   String
   createdById String
+  /// When set, this form was created specifically for one client
+  clientId    String?
   title       String
   description String?
   slug        String
@@ -1088,13 +1094,39 @@ model OnboardingForm {
 
   company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   createdBy   User             @relation("FormCreator", fields: [createdById], references: [id])
+  client      Client?          @relation("ClientSpecificForms", fields: [clientId], references: [id], onDelete: SetNull)
   pages       FormPage[]
   fields      FormField[]
   submissions FormSubmission[]
+  assignments ClientOnboardingAssignment[]
 
   @@unique([companyId, slug])
   @@index([secureToken])
+  @@index([clientId])
   @@map("onboarding_forms")
+}
+
+/// Assign a shared (or dedicated) onboarding form to a client
+model ClientOnboardingAssignment {
+  id           String   @id @default(cuid())
+  companyId    String
+  clientId     String
+  formId       String
+  assignedById String?
+  status       String   @default("PENDING") // PENDING | COMPLETED | CANCELLED
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company    Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  client     Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  form       OnboardingForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  assignedBy User?          @relation("FormAssignmentAuthor", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@unique([clientId, formId])
+  @@index([companyId])
+  @@index([formId])
+  @@map("client_onboarding_assignments")
 }
 
 model FormPage {

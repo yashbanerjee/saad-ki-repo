@@ -11,7 +11,13 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ClientsService } from './clients.service';
-import { CreateClientDto, ListClientsQueryDto, UpdateClientDto } from './dto/client.dto';
+import {
+  AssignOnboardingFormDto,
+  CreateClientDto,
+  CreateClientOnboardingFormDto,
+  ListClientsQueryDto,
+  UpdateClientDto,
+} from './dto/client.dto';
 import { CurrentUser, AuthenticatedUser, Permissions } from '../common/decorators';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { ParseCuidPipe } from '../common/pipes/parse-cuid.pipe';
@@ -35,10 +41,54 @@ export class ClientsController {
     return this.clientsService.findOne(id, user.companyId!);
   }
 
+  @Get(':id/onboarding-forms')
+  @Permissions('clients:read')
+  listOnboardingForms(
+    @Param('id', ParseCuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.clientsService.listOnboardingForms(id, user.companyId!);
+  }
+
   @Post()
   @Permissions('clients:manage')
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateClientDto) {
-    return this.clientsService.create(user.companyId!, dto);
+    return this.clientsService.create(user.companyId!, user.id, dto);
+  }
+
+  @Post(':id/onboarding-forms/assign')
+  @Permissions('clients:manage')
+  assignForm(
+    @Param('id', ParseCuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: AssignOnboardingFormDto,
+  ) {
+    return this.clientsService.assignOnboardingForm(id, user.companyId!, user.id, dto);
+  }
+
+  @Post(':id/onboarding-forms')
+  @Permissions('clients:manage')
+  createFormForClient(
+    @Param('id', ParseCuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateClientOnboardingFormDto,
+  ) {
+    return this.clientsService.createOnboardingFormForClient(
+      id,
+      user.companyId!,
+      user.id,
+      dto,
+    );
+  }
+
+  @Delete(':id/onboarding-forms/:assignmentId')
+  @Permissions('clients:manage')
+  unassignForm(
+    @Param('id', ParseCuidPipe) id: string,
+    @Param('assignmentId', ParseCuidPipe) assignmentId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.clientsService.unassignOnboardingForm(id, user.companyId!, assignmentId);
   }
 
   @Patch(':id')
