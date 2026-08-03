@@ -4,7 +4,14 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, Handshake, Plus } from "lucide-react";
+import {
+  CalendarClock,
+  DollarSign,
+  Handshake,
+  Plus,
+  Target,
+  TrendingUp,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -59,9 +66,17 @@ const emptyForm = {
   notes: "",
 };
 
+const OPEN_STAGES = new Set([
+  "OPEN",
+  "QUALIFICATION",
+  "PROPOSAL",
+  "NEGOTIATION",
+]);
+
 export default function DealsPage() {
   const [view, setView] = useState<"board" | "list">("board");
   const [search, setSearch] = useState("");
+  const [stageFilter, setStageFilter] = useState<string>("ALL");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const queryClient = useQueryClient();
@@ -84,9 +99,16 @@ export default function DealsPage() {
     retry: false,
   });
 
-  const deals: Deal[] = useMemo(() => {
+  const allDeals: Deal[] = useMemo(() => {
     const raw = data?.data?.data ?? data?.data ?? [];
-    const list = Array.isArray(raw) ? raw : [];
+    return Array.isArray(raw) ? raw : [];
+  }, [data]);
+
+  const deals = useMemo(() => {
+    let list = allDeals;
+    if (stageFilter !== "ALL") {
+      list = list.filter((d) => d.status === stageFilter);
+    }
     if (!search.trim()) return list;
     const q = search.toLowerCase();
     return list.filter(
@@ -95,7 +117,7 @@ export default function DealsPage() {
         d.client?.name?.toLowerCase().includes(q) ||
         d.lead?.title?.toLowerCase().includes(q),
     );
-  }, [data, search]);
+  }, [allDeals, search, stageFilter]);
 
   const clients = useMemo(() => {
     const raw = clientsData?.data?.data ?? clientsData?.data ?? [];
@@ -104,15 +126,30 @@ export default function DealsPage() {
 
   const pipeline = pipelineData?.data?.data ?? pipelineData?.data;
 
-  const weightedValue = useMemo(() => {
-    return deals
-      .filter((d) => !["WON", "LOST"].includes(d.status))
-      .reduce((sum, d) => {
-        const amount = Number(d.amount ?? 0);
-        const prob = (DEAL_STAGE_PROBABILITY[d.status] ?? 0) / 100;
-        return sum + amount * prob;
-      }, 0);
-  }, [deals]);
+  const stats = useMemo(() => {
+    const openDeals = allDeals.filter((d) => OPEN_STAGES.has(d.status));
+    const won = allDeals.filter((d) => d.status === "WON");
+    const weighted = openDeals.reduce((sum, d) => {
+      const amount = Number(d.amount ?? 0);
+      const prob = (DEAL_STAGE_PROBABILITY[d.status] ?? 0) / 100;
+      return sum + amount * prob;
+    }, 0);
+    const closingSoon = openDeals.filter((d) => {
+      if (!d.expectedCloseDate) return false;
+      const days =
+        (new Date(d.expectedCloseDate).getTime() - Date.now()) /
+        (1000 * 60 * 60 * 24);
+      return days >= 0 && days <= 14;
+    }).length;
+    return {
+      openValue: Number(pipeline?.pipelineValue ?? 0),
+      openCount: Number(pipeline?.pipelineCount ?? openDeals.length),
+      weighted: Math.round(weighted),
+      wonValue: won.reduce((s, d) => s + Number(d.amount ?? 0), 0),
+      wonCount: won.length,
+      closingSoon,
+    };
+  }, [allDeals, pipeline]);
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -151,24 +188,23 @@ export default function DealsPage() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground mb-1">
-            CRM
+            Revenue pipeline
           </p>
           <h1 className="font-display text-2xl font-bold">Deals</h1>
-          <p className="text-muted-foreground text-sm">
-            Pipeline ${Number(pipeline?.pipelineValue ?? 0).toLocaleString()} ·{" "}
-            {pipeline?.pipelineCount ?? 0} open · Weighted $
-            {Math.round(weightedValue).toLocaleString()}
+          <p className="text-muted-foreground text-sm max-w-xl">
+            Manage opportunities after a lead converts — track value, close date,
+            and stage. Lead contact fields live on Leads, not here.
           </p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button>
-              <Plus className="h-4 w-4 mr-1" /> New Deal
+              <Plus className="h-4 w-4 mr-1" /> New deal
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create deal</DialogTitle>
+              <DialogTitle>Create opportunity</DialogTitle>
             </DialogHeader>
             <div className="space-y-3 py-2">
               <div className="space-y-2">
@@ -183,7 +219,7 @@ export default function DealsPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Deal value</Label>
+                  <Label>Deal value ($)</Label>
                   <Input
                     type="number"
                     min="0"
@@ -233,7 +269,7 @@ export default function DealsPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Stage</Label>
+                <Label>Pipeline stage</Label>
                 <Select
                   value={form.status}
                   onValueChange={(v) => setForm((f) => ({ ...f, status: v }))}
@@ -246,21 +282,21 @@ export default function DealsPage() {
                       (s) => s.key !== "WON" && s.key !== "LOST",
                     ).map((s) => (
                       <SelectItem key={s.key} value={s.key}>
-                        {s.label} ({DEAL_STAGE_PROBABILITY[s.key]}%)
+                        {s.label} · {DEAL_STAGE_PROBABILITY[s.key]}% likely
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Notes</Label>
+                <Label>Next steps</Label>
                 <Textarea
                   value={form.notes}
                   onChange={(e) =>
                     setForm((f) => ({ ...f, notes: e.target.value }))
                   }
                   rows={2}
-                  placeholder="Next steps, proposal notes…"
+                  placeholder="Proposal sent, follow-up call…"
                 />
               </div>
             </div>
@@ -279,6 +315,94 @@ export default function DealsPage() {
         </Dialog>
       </div>
 
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Card className="!shadow-sm border-teal-900/10 bg-gradient-to-br from-teal-50/80 to-background">
+          <CardContent className="flex items-start gap-3 p-4">
+            <div className="rounded-lg bg-teal-900/10 p-2 text-teal-800">
+              <DollarSign className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Open pipeline</p>
+              <p className="font-display text-xl font-semibold tabular-nums">
+                ${stats.openValue.toLocaleString()}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {stats.openCount} open deals
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="!shadow-sm">
+          <CardContent className="flex items-start gap-3 p-4">
+            <div className="rounded-lg bg-amber-500/10 p-2 text-amber-700">
+              <TrendingUp className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Weighted forecast</p>
+              <p className="font-display text-xl font-semibold tabular-nums">
+                ${stats.weighted.toLocaleString()}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                By stage likelihood
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="!shadow-sm">
+          <CardContent className="flex items-start gap-3 p-4">
+            <div className="rounded-lg bg-emerald-500/10 p-2 text-emerald-700">
+              <Target className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Won</p>
+              <p className="font-display text-xl font-semibold tabular-nums">
+                ${stats.wonValue.toLocaleString()}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {stats.wonCount} closed won
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="!shadow-sm">
+          <CardContent className="flex items-start gap-3 p-4">
+            <div className="rounded-lg bg-sky-500/10 p-2 text-sky-700">
+              <CalendarClock className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Closing in 14 days</p>
+              <p className="font-display text-xl font-semibold tabular-nums">
+                {stats.closingSoon}
+              </p>
+              <p className="text-[11px] text-muted-foreground">Need attention</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant={stageFilter === "ALL" ? "default" : "outline"}
+          onClick={() => setStageFilter("ALL")}
+        >
+          All stages
+        </Button>
+        {DEAL_STATUSES.map((s) => (
+          <Button
+            key={s.key}
+            size="sm"
+            variant={stageFilter === s.key ? "default" : "outline"}
+            onClick={() => setStageFilter(s.key)}
+          >
+            {s.label}
+            <Badge variant="secondary" className="ml-1.5 text-[10px]">
+              {allDeals.filter((d) => d.status === s.key).length}
+            </Badge>
+          </Button>
+        ))}
+      </div>
+
       <CrmViewControls
         view={view}
         onViewChange={setView}
@@ -292,13 +416,24 @@ export default function DealsPage() {
             <Skeleton key={i} className="h-56" />
           ))}
         </div>
+      ) : allDeals.length === 0 ? (
+        <EmptyState
+          icon={Handshake}
+          title="No deals in the pipeline"
+          description="Convert a lead to a deal, or create an opportunity with value and an expected close date."
+          actionLabel="New deal"
+          onAction={() => setOpen(true)}
+        />
       ) : deals.length === 0 ? (
         <EmptyState
           icon={Handshake}
-          title="No deals yet"
-          description="Convert a won lead, or create a deal with value and expected close date."
-          actionLabel="New Deal"
-          onAction={() => setOpen(true)}
+          title="No deals match"
+          description="Try another stage filter or search."
+          actionLabel="Clear filters"
+          onAction={() => {
+            setStageFilter("ALL");
+            setSearch("");
+          }}
         />
       ) : view === "board" ? (
         <CrmKanbanBoard
@@ -327,10 +462,10 @@ export default function DealsPage() {
               meta:
                 d.amount != null
                   ? `$${Number(d.amount).toLocaleString()}`
-                  : undefined,
+                  : "No value set",
               detail: d.expectedCloseDate
                 ? `Close ${formatDate(d.expectedCloseDate)}`
-                : "No close date",
+                : "Set close date",
               badge: `${prob}%`,
               href: `/deals/${d.id}`,
               status: d.status,
@@ -341,68 +476,70 @@ export default function DealsPage() {
       ) : (
         <Card>
           <CardContent className="p-0">
-            <div className="hidden sm:grid grid-cols-[1.4fr_1fr_0.8fr_1fr_0.9fr] gap-3 border-b px-4 py-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+            <div className="hidden sm:grid grid-cols-[1.5fr_1fr_0.8fr_1fr_0.7fr_0.9fr] gap-3 border-b px-4 py-2 text-[11px] uppercase tracking-wide text-muted-foreground">
               <span>Deal</span>
               <span>Client</span>
               <span>Value</span>
               <span>Close date</span>
+              <span>Likely</span>
               <span>Stage</span>
             </div>
             <div className="divide-y">
-              {deals.map((deal) => (
-                <div
-                  key={deal.id}
-                  className="grid gap-2 px-4 py-3 sm:grid-cols-[1.4fr_1fr_0.8fr_1fr_0.9fr] sm:items-center"
-                >
-                  <div>
-                    <Link
-                      href={`/deals/${deal.id}`}
-                      className="font-medium hover:underline"
-                    >
-                      {deal.title}
-                    </Link>
-                    {deal.lead?.title && (
-                      <p className="text-xs text-muted-foreground">
-                        From lead · {deal.lead.title}
-                      </p>
-                    )}
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {deal.client?.name || "—"}
-                  </p>
-                  <p className="text-sm font-medium tabular-nums">
-                    {deal.amount != null
-                      ? `$${Number(deal.amount).toLocaleString()}`
-                      : "—"}
-                  </p>
-                  <p className="text-sm text-muted-foreground flex items-center gap-1">
-                    <CalendarClock className="h-3.5 w-3.5" />
-                    {deal.expectedCloseDate
-                      ? formatDate(deal.expectedCloseDate)
-                      : "—"}
-                  </p>
-                  <Select
-                    value={deal.status}
-                    onValueChange={(v) =>
-                      moveMutation.mutate({ id: deal.id, status: v })
-                    }
+              {deals.map((deal) => {
+                const prob = DEAL_STAGE_PROBABILITY[deal.status] ?? 0;
+                return (
+                  <div
+                    key={deal.id}
+                    className="grid gap-2 px-4 py-3 sm:grid-cols-[1.5fr_1fr_0.8fr_1fr_0.7fr_0.9fr] sm:items-center"
                   >
-                    <SelectTrigger className="h-8 w-full text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {DEAL_STATUSES.map((s) => (
-                        <SelectItem key={s.key} value={s.key}>
-                          {s.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Badge variant="outline" className="sr-only">
-                    {deal.status}
-                  </Badge>
-                </div>
-              ))}
+                    <div>
+                      <Link
+                        href={`/deals/${deal.id}`}
+                        className="font-medium hover:underline"
+                      >
+                        {deal.title}
+                      </Link>
+                      {deal.lead?.title && (
+                        <p className="text-xs text-muted-foreground">
+                          Converted from · {deal.lead.title}
+                        </p>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {deal.client?.name || "—"}
+                    </p>
+                    <p className="text-sm font-semibold tabular-nums">
+                      {deal.amount != null
+                        ? `$${Number(deal.amount).toLocaleString()}`
+                        : "—"}
+                    </p>
+                    <p className="text-sm text-muted-foreground flex items-center gap-1">
+                      <CalendarClock className="h-3.5 w-3.5 shrink-0" />
+                      {deal.expectedCloseDate
+                        ? formatDate(deal.expectedCloseDate)
+                        : "—"}
+                    </p>
+                    <p className="text-sm tabular-nums">{prob}%</p>
+                    <Select
+                      value={deal.status}
+                      onValueChange={(v) =>
+                        moveMutation.mutate({ id: deal.id, status: v })
+                      }
+                    >
+                      <SelectTrigger className="h-8 w-full text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DEAL_STATUSES.map((s) => (
+                          <SelectItem key={s.key} value={s.key}>
+                            {s.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
