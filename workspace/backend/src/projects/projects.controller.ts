@@ -71,14 +71,14 @@ export class ProjectsController {
   }
 
   @Get(':id/board')
-  @Permissions('issues:read')
+  @Permissions('projects:read')
   getBoard(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
     const isClient = user.roles?.includes('client') ?? false;
     return this.issuesService.getBoard(id, user.companyId!, isClient);
   }
 
   @Patch(':id/tasks/:taskId')
-  @Permissions('issues:read')
+  @Permissions('projects:read')
   updateBoardTask(
     @Param('id', ParseCuidPipe) id: string,
     @Param('taskId', ParseCuidPipe) taskId: string,

@@ -34,6 +34,7 @@ export default function ProjectBoardPage() {
   const projectId = params.id as string;
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const isClient = isClientUser(user);
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -46,16 +47,25 @@ export default function ProjectBoardPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["project-board", projectId],
     queryFn: () => projectsApi.getBoard(projectId),
-    retry: false,
+    retry: 1,
+    enabled: Boolean(accessToken && projectId),
   });
 
   const boardData = data?.data?.data ?? data?.data;
   const initialColumns: KanbanColumn[] = useMemo(() => {
     if (Array.isArray(boardData?.columns) && boardData.columns.length > 0) {
-      return boardData.columns;
+      return boardData.columns.map((col: KanbanColumn) => ({
+        ...col,
+        title: col.title || col.id?.replace(/_/g, " ") || "Column",
+        tasks: Array.isArray(col.tasks) ? col.tasks : [],
+      }));
     }
-    return defaultColumns;
-  }, [boardData]);
+    return isClient
+      ? defaultColumns.filter((c) =>
+          ["TODO", "IN_PROGRESS", "TESTING", "DONE"].includes(c.id),
+        )
+      : defaultColumns;
+  }, [boardData, isClient]);
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -79,13 +89,23 @@ export default function ProjectBoardPage() {
     },
   });
 
-  const handleTaskMove = async (taskId: string, _from: string, toColumn: string) => {
+  const handleTaskMove = async (taskId: string, _fromColumn: string, toColumn: string) => {
     try {
-      await projectsApi.updateTaskStatus(projectId, taskId, toColumn);
-      queryClient.invalidateQueries({ queryKey: ["project-board", projectId] });
+      // Prefer issue transition (widely available); fall back to project board patch
+      try {
+        await issuesApi.transition(taskId, toColumn);
+      } catch {
+        await projectsApi.updateTaskStatus(projectId, taskId, toColumn);
+      }
       toast.success("Task moved");
-    } catch {
-      toast.error("Failed to move task");
+      queryClient.invalidateQueries({ queryKey: ["project-board", projectId] });
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      toast.error(
+        status === 401
+          ? "Session expired — please sign in again"
+          : "Failed to move task",
+      );
       queryClient.invalidateQueries({ queryKey: ["project-board", projectId] });
     }
   };

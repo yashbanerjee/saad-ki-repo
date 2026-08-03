@@ -60,7 +60,7 @@ const priorityBar = {
 };
 
 export const defaultColumns: KanbanColumn[] = [
-  { id: "TODO", title: "To Do", tasks: [] },
+  { id: "TODO", title: "Todo", tasks: [] },
   { id: "IN_PROGRESS", title: "In Progress", tasks: [] },
   { id: "TESTING", title: "Testing", tasks: [] },
   { id: "CODE_REVIEW", title: "Code Review", tasks: [] },
@@ -87,13 +87,13 @@ function SortableTask({
 
   const body = (
     <>
-      <div className={cn("absolute left-0 top-0 h-full w-0.5", priorityBar[task.priority])} />
-      <div className="flex items-start gap-2 pl-1.5">
+      <div className={cn("absolute left-0 top-0 h-full w-1 rounded-l-xl", priorityBar[task.priority])} />
+      <div className="flex items-start gap-2 pl-2">
         <button
           type="button"
           {...attributes}
           {...listeners}
-          className="mt-0.5 text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:text-foreground"
+          className="mt-0.5 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:text-foreground"
           aria-label="Drag task"
           onClick={(e) => e.preventDefault()}
         >
@@ -101,12 +101,12 @@ function SortableTask({
         </button>
         <div className="min-w-0 flex-1">
           {task.key && (
-            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               {task.key}
             </p>
           )}
-          <p className="text-sm font-medium leading-snug">{task.title}</p>
-          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+          <p className="text-sm font-medium leading-snug text-foreground">{task.title}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <Badge variant={priorityColors[task.priority]} className="text-[10px] capitalize">
               {task.priority}
             </Badge>
@@ -122,22 +122,20 @@ function SortableTask({
             ))}
           </div>
           {(task.dueDate || task.assignee) && (
-            <div className="mt-3 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                {task.assignee && (
-                  <Avatar className="h-6 w-6 ring-1 ring-white/10">
-                    <AvatarFallback className="bg-vedha-teal/30 text-[9px] text-vedha-cyan">
-                      {getInitials(task.assignee)}
-                    </AvatarFallback>
-                  </Avatar>
-                )}
-                {task.dueDate && (
-                  <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                    <Calendar className="h-3 w-3" />
-                    {task.dueDate}
-                  </span>
-                )}
-              </div>
+            <div className="mt-2.5 flex items-center gap-2">
+              {task.assignee && (
+                <Avatar className="h-6 w-6 border border-border">
+                  <AvatarFallback className="bg-vedha-teal/15 text-[9px] text-vedha-teal dark:bg-vedha-teal/30 dark:text-vedha-cyan">
+                    {getInitials(task.assignee)}
+                  </AvatarFallback>
+                </Avatar>
+              )}
+              {task.dueDate && (
+                <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                  <Calendar className="h-3 w-3" />
+                  {task.dueDate}
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -149,11 +147,12 @@ function SortableTask({
     <div
       ref={setNodeRef}
       style={style}
-      className={cn(
-        "group relative overflow-hidden rounded-2xl border border-white/8 bg-[#111827]/80 p-3.5 shadow-glass backdrop-blur-[20px] cursor-grab active:cursor-grabbing transition-all duration-300",
-        "hover:border-vedha-cyan/25 hover:shadow-glow",
-        isDragging && "opacity-40 ring-2 ring-vedha-cyan/30",
-      )}
+        className={cn(
+          "group relative z-10 overflow-hidden rounded-xl border border-border bg-background p-3 shadow-sm",
+          "cursor-grab active:cursor-grabbing transition-all duration-200",
+          "hover:border-vedha-teal/40 hover:shadow-md",
+          isDragging && "opacity-50 ring-2 ring-vedha-teal/25",
+        )}
     >
       {href ? (
         <Link href={href} className="block" onClick={(e) => e.stopPropagation()}>
@@ -168,11 +167,11 @@ function SortableTask({
 
 function TaskOverlay({ task }: { task: KanbanTask }) {
   return (
-    <div className="w-72 rotate-2 rounded-2xl border border-vedha-cyan/30 bg-[#111827] p-3.5 shadow-float glow-vedha">
+    <div className="w-72 rotate-1 rounded-xl border border-vedha-teal/30 bg-card p-3 shadow-lg">
       {task.key && (
-        <p className="text-[10px] uppercase text-muted-foreground">{task.key}</p>
+        <p className="text-[10px] font-semibold uppercase text-muted-foreground">{task.key}</p>
       )}
-      <p className="text-sm font-medium">{task.title}</p>
+      <p className="text-sm font-medium text-foreground">{task.title}</p>
       <Badge variant={priorityColors[task.priority]} className="mt-2 text-[10px] capitalize">
         {task.priority}
       </Badge>
@@ -207,17 +206,19 @@ function DroppableColumn({
     >
       <Card
         className={cn(
-          "h-full border-white/8 bg-white/[0.03]",
-          isOver && "border-vedha-cyan/40 shadow-glow",
+          "h-full border-border !bg-muted/50 !shadow-none",
+          isOver && "border-vedha-teal/40 !bg-muted/70",
         )}
       >
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-medium tracking-wide">{column.title}</CardTitle>
+        <CardHeader className="pb-3 pt-4 px-4">
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-sm font-semibold tracking-wide text-foreground">
+              {column.title || "Column"}
+            </CardTitle>
             <Badge variant="secondary">{column.tasks.length}</Badge>
           </div>
         </CardHeader>
-        <CardContent className="min-h-[220px] space-y-2.5">{children}</CardContent>
+        <CardContent className="min-h-[220px] space-y-2.5 px-3 pb-3">{children}</CardContent>
       </Card>
     </motion.div>
   );

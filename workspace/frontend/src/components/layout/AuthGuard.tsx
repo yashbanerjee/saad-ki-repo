@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { authApi } from "@/lib/api";
 import {
@@ -30,18 +30,25 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const refreshed = useRef(false);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    const unsub = useAuthStore.persist.onFinishHydration(() => setHydrated(true));
+    if (useAuthStore.persist.hasHydrated()) setHydrated(true);
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
     if (!isAuthenticated && !accessToken) {
       router.replace("/login");
     } else if (accessToken) {
       document.cookie = `taskflow-auth-token=${accessToken}; path=/; max-age=604800; SameSite=Lax`;
     }
-  }, [isAuthenticated, accessToken, router]);
+  }, [hydrated, isAuthenticated, accessToken, router]);
 
-  // Refresh role from API so stale persisted sessions don't show staff UI to clients
   useEffect(() => {
-    if (!accessToken || refreshed.current) return;
+    if (!hydrated || !accessToken || refreshed.current) return;
     refreshed.current = true;
     authApi
       .me()
@@ -52,22 +59,21 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         }
       })
       .catch(() => {
-        /* keep persisted user */
+        /* keep persisted user — interceptor handles refresh */
       });
-  }, [accessToken, updateUser]);
+  }, [hydrated, accessToken, updateUser]);
 
-  // Clients must never land on staff dashboards / CRM
   useEffect(() => {
-    if (!isClientUser(user)) return;
+    if (!hydrated || !isClientUser(user)) return;
     const onStaffRoute = STAFF_ONLY_PREFIXES.some(
       (route) => pathname === route || pathname.startsWith(`${route}/`),
     );
     if (onStaffRoute) {
       router.replace("/client-portal");
     }
-  }, [user, pathname, router]);
+  }, [hydrated, user, pathname, router]);
 
-  if (!isAuthenticated && !accessToken) {
+  if (!hydrated || (!isAuthenticated && !accessToken)) {
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="space-y-4 w-64">

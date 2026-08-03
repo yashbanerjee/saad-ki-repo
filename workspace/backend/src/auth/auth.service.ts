@@ -573,7 +573,7 @@ export class AuthService {
 
     const accessToken = this.jwt.sign(payload, {
       secret: this.config.get('JWT_SECRET'),
-      expiresIn: this.config.get('JWT_EXPIRES_IN', '15m'),
+      expiresIn: this.config.get('JWT_EXPIRES_IN', '12h'),
     });
 
     const refreshToken = this.jwt.sign(
@@ -584,7 +584,7 @@ export class AuthService {
       },
     );
 
-    return { accessToken, refreshToken, expiresIn: 900 };
+    return { accessToken, refreshToken, expiresIn: 43200 };
   }
 
   private sanitizeUser(user: {

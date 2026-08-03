@@ -47,9 +47,18 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       ),
     ];
 
-    // Clients can upload/manage their own documents
-    if (roles.includes('client') && !permissions.includes('documents:manage')) {
-      permissions.push('documents:manage');
+    // Ensure portal clients always have board/task capabilities even if DB role lagged
+    if (roles.includes('client')) {
+      for (const slug of [
+        'projects:read',
+        'issues:read',
+        'issues:create',
+        'documents:read',
+        'documents:manage',
+        'nda:read',
+      ]) {
+        if (!permissions.includes(slug)) permissions.push(slug);
+      }
     }
 
     return {

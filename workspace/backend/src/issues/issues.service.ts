@@ -17,7 +17,7 @@ import { paginate, paginatedResponse } from '../common/dto/pagination.dto';
 import { ActivityService } from '../activity/activity.service';
 
 const ADMIN_BOARD_STATUSES: { status: IssueStatus; title: string }[] = [
-  { status: IssueStatus.TODO, title: 'To Do' },
+  { status: IssueStatus.TODO, title: 'Todo' },
   { status: IssueStatus.IN_PROGRESS, title: 'In Progress' },
   { status: IssueStatus.TESTING, title: 'Testing' },
   { status: IssueStatus.CODE_REVIEW, title: 'Code Review' },
@@ -29,7 +29,7 @@ const ADMIN_BOARD_STATUSES: { status: IssueStatus; title: string }[] = [
 ];
 
 const CLIENT_BOARD_STATUSES: { status: IssueStatus; title: string }[] = [
-  { status: IssueStatus.TODO, title: 'To Do' },
+  { status: IssueStatus.TODO, title: 'Todo' },
   { status: IssueStatus.IN_PROGRESS, title: 'In Progress' },
   { status: IssueStatus.TESTING, title: 'Testing' },
   { status: IssueStatus.DONE, title: 'Done' },
