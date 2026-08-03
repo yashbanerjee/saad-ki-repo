@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { api, authApi } from "@/lib/api";
-import { normalizeAuthUser, useAuthStore } from "@/lib/auth-store";
+import { isClientUser, normalizeAuthUser, useAuthStore } from "@/lib/auth-store";
 import { toast } from "sonner";
 
 const loginSchema = z.object({
@@ -57,9 +57,11 @@ export default function LoginPage() {
       }
 
       toast.success("Welcome back!");
+      const isClient = isClientUser(normalized);
       const dest =
-        redirect ||
-        (normalized.role === "client" ? "/client-portal" : "/dashboard");
+        isClient && (!redirect || redirect === "/dashboard")
+          ? "/client-portal"
+          : redirect || (isClient ? "/client-portal" : "/dashboard");
       router.push(dest);
     } catch (err: unknown) {
       const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;

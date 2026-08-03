@@ -594,12 +594,13 @@ export class AuthService {
       .filter(Boolean) as string[];
 
     let role: 'admin' | 'manager' | 'member' | 'client' = 'member';
-    if (roleSlugs.includes('super_admin') || roleSlugs.includes('company_admin')) {
+    // Prefer client so portal users never map to staff dashboards
+    if (roleSlugs.includes('client') || linkedClient?.id) {
+      role = 'client';
+    } else if (roleSlugs.includes('super_admin') || roleSlugs.includes('company_admin')) {
       role = 'admin';
     } else if (roleSlugs.includes('project_manager') || roleSlugs.includes('team_lead')) {
       role = 'manager';
-    } else if (roleSlugs.includes('client')) {
-      role = 'client';
     }
 
     return {

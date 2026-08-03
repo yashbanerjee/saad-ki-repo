@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -34,7 +36,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { dashboardApi, projectsApi } from "@/lib/api";
 import { formatRelativeTime, formatDate } from "@/lib/utils";
-import { useAuthStore } from "@/lib/auth-store";
+import { useAuthStore, isClientUser } from "@/lib/auth-store";
 
 const STAT_LABELS = [
   { label: "Active Projects", icon: FolderKanban },
@@ -76,24 +78,44 @@ interface DashboardProject {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const user = useAuthStore((s) => s.user);
+  const isClient = isClientUser(user);
+
+  useEffect(() => {
+    if (isClient) {
+      router.replace("/client-portal");
+    }
+  }, [isClient, router]);
+
   const { data: statsData, isLoading: statsLoading } = useQuery({
     queryKey: ["dashboard-stats"],
     queryFn: () => dashboardApi.stats(),
     retry: false,
+    enabled: !isClient,
   });
 
   const { data: activityData, isLoading: activityLoading } = useQuery({
     queryKey: ["dashboard-activity"],
     queryFn: () => dashboardApi.activity(),
     retry: false,
+    enabled: !isClient,
   });
 
   const { data: projectsData, isLoading: projectsLoading } = useQuery({
     queryKey: ["projects"],
     queryFn: () => projectsApi.list(),
     retry: false,
+    enabled: !isClient,
   });
+
+  if (isClient) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Skeleton className="h-40 w-full max-w-lg" />
+      </div>
+    );
+  }
 
   const apiStats = statsData?.data?.data ?? statsData?.data;
   const stats: DashboardStat[] =

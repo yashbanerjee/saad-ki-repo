@@ -47,6 +47,11 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       ),
     ];
 
+    // Clients can upload/manage their own documents
+    if (roles.includes('client') && !permissions.includes('documents:manage')) {
+      permissions.push('documents:manage');
+    }
+
     return {
       id: user.id,
       sub: user.id,

@@ -1,8 +1,21 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { CreateFolderDto } from './dto/document.dto';
 import { DocumentType } from '@prisma/client';
+import { AuthenticatedUser } from '../common/decorators';
+import { renderNdaPlaceholders } from '../nda/nda-placeholders';
+import { memoryStorage } from 'multer';
+
+export const uploadMulterOptions = {
+  storage: memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+};
 
 @Injectable()
 export class DocumentsService {
@@ -11,16 +24,181 @@ export class DocumentsService {
     private storage: StorageService,
   ) {}
 
-  async findAll(companyId: string, folderId?: string, projectId?: string) {
-    return this.prisma.document.findMany({
+  private isClientUser(user: AuthenticatedUser) {
+    return user.roles?.includes('client');
+  }
+
+  private isCompanyAdmin(user: AuthenticatedUser) {
+    return (
+      user.roles?.includes('company_admin') ||
+      user.roles?.includes('super_admin') ||
+      user.roles?.includes('admin') ||
+      // Managers who manage clients can see all client uploads
+      user.permissions?.includes('clients:manage') === true
+    );
+  }
+
+  private async resolveClientId(user: AuthenticatedUser): Promise<string | null> {
+    const linked = await this.prisma.client.findFirst({
+      where: { userId: user.id, companyId: user.companyId! },
+      select: { id: true },
+    });
+    return linked?.id ?? null;
+  }
+
+  /** Client IDs this staff member can access (via project membership). */
+  private async getAssignedClientIds(user: AuthenticatedUser): Promise<string[]> {
+    const memberships = await this.prisma.projectMember.findMany({
+      where: {
+        userId: user.id,
+        project: { companyId: user.companyId!, clientId: { not: null } },
+      },
+      select: { project: { select: { clientId: true } } },
+    });
+    return [
+      ...new Set(
+        memberships
+          .map((m) => m.project.clientId)
+          .filter((id): id is string => !!id),
+      ),
+    ];
+  }
+
+  private async canAccessClientDoc(
+    user: AuthenticatedUser,
+    clientId: string | null | undefined,
+    uploadedById?: string | null,
+  ): Promise<boolean> {
+    if (this.isCompanyAdmin(user)) return true;
+    if (uploadedById && uploadedById === user.id) return true;
+    if (!clientId) {
+      // Company-wide docs: readable by any staff with documents:read
+      return !this.isClientUser(user);
+    }
+    if (this.isClientUser(user)) {
+      const linked = await this.resolveClientId(user);
+      return linked === clientId;
+    }
+    const assigned = await this.getAssignedClientIds(user);
+    return assigned.includes(clientId);
+  }
+
+  async findAll(
+    user: AuthenticatedUser,
+    folderId?: string,
+    projectId?: string,
+  ) {
+    const companyId = user.companyId!;
+    const isClient = this.isClientUser(user);
+    const isAdmin = this.isCompanyAdmin(user);
+    const linkedClientId = isClient ? await this.resolveClientId(user) : null;
+
+    if (isClient && !linkedClientId) {
+      return { documents: [], ndaDocuments: [], items: [] };
+    }
+
+    const assignedClientIds =
+      !isClient && !isAdmin ? await this.getAssignedClientIds(user) : [];
+
+    const accessFilter = isClient
+      ? { clientId: linkedClientId! }
+      : isAdmin
+        ? {}
+        : {
+            OR: [
+              { clientId: null },
+              { clientId: { in: assignedClientIds } },
+              { uploadedById: user.id },
+            ],
+          };
+
+    const documents = await this.prisma.document.findMany({
       where: {
         companyId,
+        ...accessFilter,
         ...(folderId ? { folderId } : {}),
         ...(projectId ? { projectId } : {}),
       },
-      include: { uploadedBy: { select: { id: true, firstName: true, lastName: true } } },
+      include: {
+        uploadedBy: { select: { id: true, firstName: true, lastName: true } },
+        client: { select: { id: true, name: true } },
+        folder: { select: { id: true, name: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
+
+    let ndaWhere: Record<string, unknown>;
+    if (isClient && linkedClientId) {
+      ndaWhere = {
+        status: 'SIGNED',
+        clientId: linkedClientId,
+        ndaTemplate: { companyId },
+      };
+    } else if (isAdmin) {
+      ndaWhere = {
+        status: 'SIGNED',
+        ndaTemplate: { companyId },
+      };
+    } else {
+      ndaWhere = {
+        status: 'SIGNED',
+        clientId: { in: assignedClientIds },
+        ndaTemplate: { companyId },
+      };
+    }
+
+    const signatures = await this.prisma.digitalSignature.findMany({
+      where: ndaWhere,
+      include: {
+        ndaTemplate: {
+          select: { id: true, title: true, content: true, version: true },
+        },
+        client: { select: { id: true, name: true } },
+      },
+      orderBy: { signedAt: 'desc' },
+    });
+
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: { name: true },
+    });
+
+    const ndaDocuments = signatures.map((sig) => ({
+      id: `nda-${sig.id}`,
+      kind: 'nda' as const,
+      name: `${sig.ndaTemplate.title} (Signed)`,
+      originalName: `${sig.ndaTemplate.title}.nda.txt`,
+      type: 'NDA' as DocumentType,
+      mimeType: 'text/plain',
+      size: 0,
+      folder: 'NDA',
+      folderId: null,
+      clientId: sig.clientId,
+      client: sig.client,
+      storageUrl: null,
+      signedAt: sig.signedAt,
+      createdAt: sig.signedAt ?? sig.createdAt,
+      updatedAt: sig.updatedAt,
+      contentPreview: renderNdaPlaceholders(sig.ndaTemplate.content, {
+        companyName: company?.name,
+        clientName: sig.client?.name,
+      }),
+      signatureId: sig.id,
+      templateId: sig.ndaTemplate.id,
+      version: String(sig.ndaTemplate.version),
+    }));
+
+    const mappedDocs = documents.map((d) => ({
+      ...d,
+      kind: 'file' as const,
+      folder: d.folder?.name ?? (d.clientId ? 'Client uploads' : 'General'),
+    }));
+
+    return {
+      documents: mappedDocs,
+      ndaDocuments,
+      items: [...ndaDocuments, ...mappedDocs],
+    };
   }
 
   async findFolders(companyId: string, parentId?: string) {
@@ -43,48 +221,192 @@ export class DocumentsService {
   }
 
   async upload(
-    companyId: string,
-    uploadedById: string,
-    file: Express.Multer.File,
-    meta: { name: string; type?: DocumentType; clientId?: string; projectId?: string; folderId?: string },
+    user: AuthenticatedUser,
+    file: Express.Multer.File | undefined,
+    meta: {
+      name?: string;
+      type?: DocumentType;
+      clientId?: string;
+      projectId?: string;
+      folderId?: string;
+    },
   ) {
-    const key = this.storage.generateKey(`companies/${companyId}`, file.originalname);
-    const { url } = await this.storage.upload(key, file.buffer, file.mimetype);
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Please choose a file to upload');
+    }
 
-    return this.prisma.document.create({
-      data: {
-        companyId,
-        uploadedById,
-        name: meta.name,
-        originalName: file.originalname,
-        type: meta.type ?? 'CUSTOM',
-        mimeType: file.mimetype,
-        size: file.size,
-        storageKey: key,
-        storageUrl: url,
-        clientId: meta.clientId,
-        projectId: meta.projectId,
-        folderId: meta.folderId,
+    const companyId = user.companyId!;
+    const isClient = this.isClientUser(user);
+    const linkedClientId = isClient ? await this.resolveClientId(user) : null;
+
+    if (isClient) {
+      if (!linkedClientId) {
+        throw new ForbiddenException('No client profile linked to this account');
+      }
+    } else if (!user.permissions?.includes('documents:manage')) {
+      throw new ForbiddenException('Insufficient permissions');
+    }
+
+    const clientId = isClient ? linkedClientId! : meta.clientId;
+
+    try {
+      const key = this.storage.generateKey(
+        `companies/${companyId}${clientId ? `/clients/${clientId}` : ''}`,
+        file.originalname,
+      );
+      const { url } = await this.storage.upload(key, file.buffer, file.mimetype);
+
+      return this.prisma.document.create({
+        data: {
+          companyId,
+          uploadedById: user.id,
+          name: (meta.name || file.originalname).trim(),
+          originalName: file.originalname,
+          type: meta.type ?? 'CUSTOM',
+          mimeType: file.mimetype,
+          size: file.size,
+          storageKey: key,
+          storageUrl: url,
+          clientId: clientId || undefined,
+          projectId: meta.projectId || undefined,
+          folderId: meta.folderId || undefined,
+        },
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Upload failed — check storage configuration';
+      throw new BadRequestException(message);
+    }
+  }
+
+  async findOne(id: string, user: AuthenticatedUser) {
+    if (id.startsWith('nda-')) {
+      return this.getNdaDocument(id.slice(4), user);
+    }
+
+    const doc = await this.prisma.document.findFirst({
+      where: { id, companyId: user.companyId! },
+    });
+    if (!doc) throw new NotFoundException('Document not found');
+
+    const allowed = await this.canAccessClientDoc(user, doc.clientId, doc.uploadedById);
+    if (!allowed) {
+      throw new ForbiddenException('Not allowed to access this document');
+    }
+    return { ...doc, kind: 'file' as const };
+  }
+
+  private async getNdaDocument(signatureId: string, user: AuthenticatedUser) {
+    const sig = await this.prisma.digitalSignature.findFirst({
+      where: {
+        id: signatureId,
+        status: 'SIGNED',
+        ndaTemplate: { companyId: user.companyId! },
+      },
+      include: {
+        ndaTemplate: true,
+        client: { select: { id: true, name: true } },
       },
     });
+    if (!sig) throw new NotFoundException('Signed NDA not found');
+
+    const allowed = await this.canAccessClientDoc(user, sig.clientId);
+    if (!allowed) {
+      throw new ForbiddenException('Not allowed to access this NDA');
+    }
+
+    const company = await this.prisma.company.findUnique({
+      where: { id: user.companyId! },
+      select: { name: true },
+    });
+
+    const content = renderNdaPlaceholders(sig.ndaTemplate.content, {
+      companyName: company?.name,
+      clientName: sig.client?.name,
+    });
+
+    return {
+      id: `nda-${sig.id}`,
+      kind: 'nda' as const,
+      name: `${sig.ndaTemplate.title} (Signed)`,
+      type: 'NDA',
+      content,
+      signedAt: sig.signedAt,
+      client: sig.client,
+      signatureType: sig.signatureType,
+      signatureData: sig.signatureData,
+    };
   }
 
-  async findOne(id: string, companyId: string) {
-    const doc = await this.prisma.document.findFirst({ where: { id, companyId } });
-    if (!doc) throw new NotFoundException('Document not found');
-    return doc;
-  }
+  async getDownloadUrl(id: string, user: AuthenticatedUser) {
+    if (id.startsWith('nda-')) {
+      const nda = await this.getNdaDocument(id.slice(4), user);
+      const body = [
+        nda.content,
+        '',
+        '────────────────────────────────',
+        `Signed at: ${nda.signedAt?.toISOString?.() ?? nda.signedAt}`,
+        `Signer: ${nda.client?.name ?? 'Client'}`,
+        `Signature type: ${nda.signatureType ?? 'N/A'}`,
+      ].join('\n');
 
-  async getDownloadUrl(id: string, companyId: string) {
-    const doc = await this.findOne(id, companyId);
+      return {
+        kind: 'inline',
+        name: `${nda.name}.txt`,
+        mimeType: 'text/plain',
+        content: body,
+      };
+    }
+
+    const doc = await this.findOne(id, user);
+    if (!('storageKey' in doc) || !doc.storageKey) {
+      throw new NotFoundException('File not available');
+    }
     const url = await this.storage.getSignedUrl(doc.storageKey);
-    return { url, name: doc.name, mimeType: doc.mimeType };
+    return { kind: 'url', url, name: doc.name, mimeType: doc.mimeType };
   }
 
-  async remove(id: string, companyId: string) {
-    const doc = await this.findOne(id, companyId);
-    await this.storage.delete(doc.storageKey);
+  async remove(id: string, user: AuthenticatedUser) {
+    if (id.startsWith('nda-')) {
+      throw new BadRequestException('Signed NDAs cannot be deleted from Documents');
+    }
+
+    const doc = await this.prisma.document.findFirst({
+      where: { id, companyId: user.companyId! },
+    });
+    if (!doc) throw new NotFoundException('Document not found');
+
+    if (this.isClientUser(user)) {
+      const linkedClientId = await this.resolveClientId(user);
+      if (!linkedClientId || doc.clientId !== linkedClientId) {
+        throw new ForbiddenException('Not allowed to delete this document');
+      }
+    } else if (!user.permissions?.includes('documents:manage')) {
+      throw new ForbiddenException('Insufficient permissions');
+    }
+
+    try {
+      await this.storage.delete(doc.storageKey);
+    } catch {
+      /* ignore storage delete failures */
+    }
     await this.prisma.document.delete({ where: { id } });
     return { message: 'Document deleted' };
+  }
+
+  /** Ensure client role has documents:manage in DB (for existing tenants). */
+  async ensureClientUploadPermission(companyId: string) {
+    const role = await this.prisma.role.findFirst({
+      where: { companyId, slug: 'client' },
+    });
+    if (!role) return;
+    const perm = await this.prisma.permission.findFirst({
+      where: { slug: 'documents:manage' },
+    });
+    if (!perm) return;
+    await this.prisma.rolePermission.createMany({
+      data: [{ roleId: role.id, permissionId: perm.id }],
+      skipDuplicates: true,
+    });
   }
 }

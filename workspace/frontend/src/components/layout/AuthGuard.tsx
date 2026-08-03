@@ -1,13 +1,36 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useAuthStore } from "@/lib/auth-store";
+import { useEffect, useRef } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { authApi } from "@/lib/api";
+import {
+  isClientUser,
+  normalizeAuthUser,
+  useAuthStore,
+} from "@/lib/auth-store";
 import { Skeleton } from "@/components/ui/skeleton";
 
+const STAFF_ONLY_PREFIXES = [
+  "/dashboard",
+  "/crm",
+  "/leads",
+  "/deals",
+  "/contacts",
+  "/organizations",
+  "/clients",
+  "/team",
+  "/reports",
+  "/admin",
+  "/onboarding",
+  "/nda",
+  "/issues",
+];
+
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, accessToken } = useAuthStore();
+  const { isAuthenticated, accessToken, user, updateUser } = useAuthStore();
   const router = useRouter();
+  const pathname = usePathname();
+  const refreshed = useRef(false);
 
   useEffect(() => {
     if (!isAuthenticated && !accessToken) {
@@ -16,6 +39,34 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       document.cookie = `taskflow-auth-token=${accessToken}; path=/; max-age=604800; SameSite=Lax`;
     }
   }, [isAuthenticated, accessToken, router]);
+
+  // Refresh role from API so stale persisted sessions don't show staff UI to clients
+  useEffect(() => {
+    if (!accessToken || refreshed.current) return;
+    refreshed.current = true;
+    authApi
+      .me()
+      .then((res) => {
+        const payload = res.data?.data ?? res.data;
+        if (payload && typeof payload === "object") {
+          updateUser(normalizeAuthUser(payload as Record<string, unknown>));
+        }
+      })
+      .catch(() => {
+        /* keep persisted user */
+      });
+  }, [accessToken, updateUser]);
+
+  // Clients must never land on staff dashboards / CRM
+  useEffect(() => {
+    if (!isClientUser(user)) return;
+    const onStaffRoute = STAFF_ONLY_PREFIXES.some(
+      (route) => pathname === route || pathname.startsWith(`${route}/`),
+    );
+    if (onStaffRoute) {
+      router.replace("/client-portal");
+    }
+  }, [user, pathname, router]);
 
   if (!isAuthenticated && !accessToken) {
     return (

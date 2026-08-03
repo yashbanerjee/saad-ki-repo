@@ -9,14 +9,14 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags, ApiConsumes, ApiBody } from '@nestjs/swagger';
-import { DocumentsService } from './documents.service';
+import { DocumentsService, uploadMulterOptions } from './documents.service';
 import { CreateFolderDto, UploadDocumentDto } from './dto/document.dto';
 import { CurrentUser, AuthenticatedUser, Permissions } from '../common/decorators';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
-import { ParseCuidPipe } from '../common/pipes/parse-cuid.pipe';
 
 @ApiTags('documents')
 @ApiBearerAuth()
@@ -32,7 +32,7 @@ export class DocumentsController {
     @Query('folderId') folderId?: string,
     @Query('projectId') projectId?: string,
   ) {
-    return this.documentsService.findAll(user.companyId!, folderId, projectId);
+    return this.documentsService.findAll(user, folderId, projectId);
   }
 
   @Get('folders')
@@ -51,8 +51,8 @@ export class DocumentsController {
   }
 
   @Post('upload')
-  @Permissions('documents:manage')
-  @UseInterceptors(FileInterceptor('file'))
+  @Permissions('documents:read')
+  @UseInterceptors(FileInterceptor('file', uploadMulterOptions))
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -67,29 +67,41 @@ export class DocumentsController {
       },
     },
   })
-  upload(
+  async upload(
     @CurrentUser() user: AuthenticatedUser,
     @UploadedFile() file: Express.Multer.File,
     @Body() dto: UploadDocumentDto,
   ) {
-    return this.documentsService.upload(user.companyId!, user.id, file, dto);
+    if (user.roles?.includes('client') && user.companyId) {
+      await this.documentsService.ensureClientUploadPermission(user.companyId);
+    }
+    if (!file) {
+      throw new BadRequestException('Please choose a file to upload');
+    }
+    return this.documentsService.upload(user, file, {
+      name: dto.name || file.originalname,
+      type: dto.type,
+      clientId: dto.clientId,
+      projectId: dto.projectId,
+      folderId: dto.folderId,
+    });
   }
 
   @Get(':id')
   @Permissions('documents:read')
-  findOne(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.documentsService.findOne(id, user.companyId!);
+  findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.documentsService.findOne(id, user);
   }
 
   @Get(':id/download')
   @Permissions('documents:read')
-  getDownloadUrl(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.documentsService.getDownloadUrl(id, user.companyId!);
+  getDownloadUrl(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.documentsService.getDownloadUrl(id, user);
   }
 
   @Delete(':id')
-  @Permissions('documents:manage')
-  remove(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.documentsService.remove(id, user.companyId!);
+  @Permissions('documents:read')
+  remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.documentsService.remove(id, user);
   }
 }

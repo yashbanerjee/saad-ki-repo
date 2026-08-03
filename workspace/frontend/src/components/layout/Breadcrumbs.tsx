@@ -10,6 +10,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { isClientUser, useAuthStore } from "@/lib/auth-store";
 
 const routeLabels: Record<string, string> = {
   dashboard: "Dashboard",
@@ -27,7 +28,7 @@ const routeLabels: Record<string, string> = {
   team: "Team",
   reports: "Reports",
   admin: "Admin",
-  "client-portal": "Client Portal",
+  "client-portal": "Dashboard",
   notifications: "Notifications",
   settings: "Settings",
   search: "Search",
@@ -42,6 +43,8 @@ const routeLabels: Record<string, string> = {
 
 export function AppBreadcrumbs() {
   const pathname = usePathname();
+  const user = useAuthStore((s) => s.user);
+  const homeHref = isClientUser(user) ? "/client-portal" : "/dashboard";
   const segments = pathname.split("/").filter(Boolean);
 
   if (segments.length === 0) return null;
@@ -51,7 +54,7 @@ export function AppBreadcrumbs() {
       <BreadcrumbList>
         <BreadcrumbItem>
           <BreadcrumbLink asChild>
-            <Link href="/dashboard">Home</Link>
+            <Link href={homeHref}>Home</Link>
           </BreadcrumbLink>
         </BreadcrumbItem>
         {segments.map((segment, index) => {
@@ -67,7 +70,7 @@ export function AppBreadcrumbs() {
                   <BreadcrumbPage>{label}</BreadcrumbPage>
                 ) : (
                   <BreadcrumbLink asChild>
-                    <Link href={href}>{label}</Link>
+                    <Link href={href}>{label}</BreadcrumbLink>
                   </BreadcrumbLink>
                 )}
               </BreadcrumbItem>

@@ -11,6 +11,8 @@ export interface User {
   avatar?: string;
   companyId?: string;
   companyName?: string;
+  /** Linked CRM client record — present for portal users */
+  clientId?: string;
 }
 
 interface AuthState {
@@ -67,6 +69,12 @@ export function hasRole(user: User | null, roles: UserRole[]) {
   return roles.includes(user.role);
 }
 
+/** True for portal clients (role or linked clientId). */
+export function isClientUser(user: User | null) {
+  if (!user) return false;
+  return user.role === "client" || Boolean(user.clientId);
+}
+
 /** Map API login/me/register user payload into the frontend User shape. */
 export function normalizeAuthUser(
   raw: Record<string, unknown>,
@@ -93,12 +101,13 @@ export function normalizeAuthUser(
       ? raw.role
       : "member";
 
-  if (roleSlugs.includes("super_admin") || roleSlugs.includes("company_admin")) {
+  // Prefer explicit client role so portal users never map to staff dashboards
+  if (roleSlugs.includes("client")) {
+    role = "client";
+  } else if (roleSlugs.includes("super_admin") || roleSlugs.includes("company_admin")) {
     role = "admin";
   } else if (roleSlugs.includes("project_manager") || roleSlugs.includes("team_lead")) {
     role = "manager";
-  } else if (roleSlugs.includes("client")) {
-    role = "client";
   }
 
   const firstName = typeof raw.firstName === "string" ? raw.firstName : "";
@@ -112,6 +121,19 @@ export function normalizeAuthUser(
     raw.company && typeof raw.company === "object"
       ? (raw.company as { name?: string })
       : null;
+
+  const clientIdRaw = raw.clientId;
+  const clientId =
+    typeof clientIdRaw === "string"
+      ? clientIdRaw
+      : clientIdRaw != null
+        ? String(clientIdRaw)
+        : undefined;
+
+  // Linked client record is a strong signal even if role slug mapping lagged
+  if (clientId && role !== "admin") {
+    role = "client";
+  }
 
   return {
     id: String(raw.id ?? ""),
@@ -130,5 +152,6 @@ export function normalizeAuthUser(
       company?.name ||
       companyNameFallback ||
       undefined,
+    clientId,
   };
 }

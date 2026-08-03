@@ -416,6 +416,34 @@ export const ndaApi = {
   ) => api.post(`/nda/templates/${templateId}/sign`, data),
 };
 
+// Documents API
+export const documentsApi = {
+  list: (params?: { folderId?: string; projectId?: string }) =>
+    api.get("/documents", { params }),
+  folders: (params?: { parentId?: string }) =>
+    api.get("/documents/folders", { params }),
+  upload: (file: File, meta?: { name?: string; clientId?: string; projectId?: string }) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (meta?.name) formData.append("name", meta.name);
+    if (meta?.clientId) formData.append("clientId", meta.clientId);
+    if (meta?.projectId) formData.append("projectId", meta.projectId);
+    return api.post("/documents/upload", formData, {
+      headers: { "Content-Type": undefined as unknown as string },
+      timeout: 120000,
+      transformRequest: [(data, headers) => {
+        if (headers && typeof headers === "object") {
+          delete (headers as Record<string, unknown>)["Content-Type"];
+        }
+        return data;
+      }],
+    });
+  },
+  get: (id: string) => api.get(`/documents/${id}`),
+  download: (id: string) => api.get(`/documents/${id}/download`),
+  remove: (id: string) => api.delete(`/documents/${id}`),
+};
+
 // Team API
 export const teamApi = {
   list: () => api.get("/team"),

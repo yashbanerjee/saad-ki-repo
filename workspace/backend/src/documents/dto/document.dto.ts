@@ -14,9 +14,10 @@ export class CreateFolderDto {
 }
 
 export class UploadDocumentDto {
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
-  name: string;
+  name?: string;
 
   @ApiPropertyOptional({ enum: DocumentType })
   @IsOptional()

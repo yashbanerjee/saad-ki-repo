@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSidebarStore } from "@/lib/sidebar-store";
-import { useAuthStore, hasRole } from "@/lib/auth-store";
+import { useAuthStore, hasRole, isClientUser } from "@/lib/auth-store";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -76,7 +76,8 @@ const crmNav: NavItem[] = [
 ];
 
 const secondaryNav: NavItem[] = [
-  { title: "Client Portal", href: "/client-portal", icon: Globe, roles: ["client", "admin"] },
+  // Staff-only shortcut; clients use Dashboard → /client-portal
+  { title: "Client Portal", href: "/client-portal", icon: Globe, roles: ["admin"] },
   { title: "Admin", href: "/admin", icon: Shield, roles: ["admin"] },
   { title: "Integrations", href: "/settings/integrations", icon: Settings, roles: ["admin", "manager"] },
   { title: "Notifications", href: "/notifications", icon: Bell },
@@ -134,9 +135,28 @@ export function AppSidebar() {
   const { collapsed, toggle } = useSidebarStore();
   const user = useAuthStore((s) => s.user);
   const workspace = user?.companyName ?? "Workspace";
+  const isClient = isClientUser(user);
+  const homeHref = isClient ? "/client-portal" : "/dashboard";
 
   const filterByRole = (items: NavItem[]) =>
     items.filter((item) => !item.roles || hasRole(user, item.roles));
+
+  const visibleMain = filterByRole(
+    mainNav.map((item) =>
+      item.href === "/dashboard" ? { ...item, href: homeHref } : item,
+    ),
+  ).filter((item) => {
+    // Clients: keep a focused nav (no staff Issues board)
+    if (!isClient) return true;
+    return ["Dashboard", "Projects", "Documents"].includes(item.title);
+  });
+
+  // Clients must never see CRM or Client Portal
+  const visibleCrm = isClient ? [] : filterByRole(crmNav);
+  const visibleSecondary = filterByRole(secondaryNav).filter((item) => {
+    if (!isClient) return true;
+    return item.title !== "Client Portal" && item.href !== "/client-portal";
+  });
 
   return (
     <TooltipProvider>
@@ -152,7 +172,7 @@ export function AppSidebar() {
             collapsed && "justify-center px-2"
           )}
         >
-          <Link href="/dashboard" className="flex items-center gap-2.5">
+          <Link href={homeHref} className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl gradient-vedha-animated glow-vedha shadow-glow">
               <Sparkles className="h-4 w-4 text-white" />
             </div>
@@ -198,16 +218,18 @@ export function AppSidebar() {
             </DropdownMenu>
           )}
 
-          <Button
-            className={cn("w-full justify-start gap-2", collapsed && "px-0 justify-center")}
-            size={collapsed ? "icon" : "default"}
-            asChild
-          >
-            <Link href="/projects">
-              <Plus className="h-4 w-4" />
-              {!collapsed && "Quick create"}
-            </Link>
-          </Button>
+          {!isClient && (
+            <Button
+              className={cn("w-full justify-start gap-2", collapsed && "px-0 justify-center")}
+              size={collapsed ? "icon" : "default"}
+              asChild
+            >
+              <Link href="/projects">
+                <Plus className="h-4 w-4" />
+                {!collapsed && "Quick create"}
+              </Link>
+            </Button>
+          )}
         </div>
 
         <ScrollArea className="flex-1 py-4">
@@ -217,31 +239,37 @@ export function AppSidebar() {
                 Navigate
               </p>
             )}
-            {filterByRole(mainNav).map((item) => (
-              <NavLink key={item.href} item={item} collapsed={collapsed} />
-            ))}
-          </nav>
-
-          <Separator className="my-4 mx-3 bg-border dark:bg-white/[0.06]" />
-
-          <nav className={cn("space-y-0.5 px-3", collapsed && "px-2")}>
-            {!collapsed && (
-              <p className="mb-2 px-3 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                CRM
-              </p>
-            )}
-            {filterByRole(crmNav).map((item) => (
-              <NavLink key={item.href} item={item} collapsed={collapsed} />
-            ))}
-          </nav>
-
-          <Separator className="my-4 mx-3 bg-border dark:bg-white/[0.06]" />
-
-          <nav className={cn("space-y-0.5 px-3", collapsed && "px-2")}>
-            {filterByRole(secondaryNav).map((item) => (
+            {visibleMain.map((item) => (
               <NavLink key={`${item.href}-${item.title}`} item={item} collapsed={collapsed} />
             ))}
           </nav>
+
+          {visibleCrm.length > 0 && (
+            <>
+              <Separator className="my-4 mx-3 bg-border dark:bg-white/[0.06]" />
+              <nav className={cn("space-y-0.5 px-3", collapsed && "px-2")}>
+                {!collapsed && (
+                  <p className="mb-2 px-3 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                    CRM
+                  </p>
+                )}
+                {visibleCrm.map((item) => (
+                  <NavLink key={item.href} item={item} collapsed={collapsed} />
+                ))}
+              </nav>
+            </>
+          )}
+
+          {visibleSecondary.length > 0 && (
+            <>
+              <Separator className="my-4 mx-3 bg-border dark:bg-white/[0.06]" />
+              <nav className={cn("space-y-0.5 px-3", collapsed && "px-2")}>
+                {visibleSecondary.map((item) => (
+                  <NavLink key={`${item.href}-${item.title}`} item={item} collapsed={collapsed} />
+                ))}
+              </nav>
+            </>
+          )}
         </ScrollArea>
 
         <div className="border-t border-border p-3 space-y-2 dark:border-white/[0.06]">

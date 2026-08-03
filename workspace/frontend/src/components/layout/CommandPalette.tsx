@@ -22,6 +22,7 @@ import {
   CommandSeparator,
   CommandShortcut,
 } from "@/components/ui/command";
+import { isClientUser, useAuthStore } from "@/lib/auth-store";
 
 interface CommandPaletteProps {
   open: boolean;
@@ -30,6 +31,9 @@ interface CommandPaletteProps {
 
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
+  const isClient = isClientUser(user);
+  const homeHref = isClient ? "/client-portal" : "/dashboard";
 
   const runCommand = useCallback(
     (command: () => void) => {
@@ -45,7 +49,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       <CommandList>
         <CommandEmpty>No results found.</CommandEmpty>
         <CommandGroup heading="Navigation">
-          <CommandItem onSelect={() => runCommand(() => router.push("/dashboard"))}>
+          <CommandItem onSelect={() => runCommand(() => router.push(homeHref))}>
             <LayoutDashboard className="mr-2 h-4 w-4" />
             Dashboard
           </CommandItem>
@@ -53,14 +57,18 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <FolderKanban className="mr-2 h-4 w-4" />
             Projects
           </CommandItem>
-          <CommandItem onSelect={() => runCommand(() => router.push("/issues"))}>
-            <Bug className="mr-2 h-4 w-4" />
-            Issues
-          </CommandItem>
-          <CommandItem onSelect={() => runCommand(() => router.push("/team"))}>
-            <Users className="mr-2 h-4 w-4" />
-            Team
-          </CommandItem>
+          {!isClient && (
+            <CommandItem onSelect={() => runCommand(() => router.push("/issues"))}>
+              <Bug className="mr-2 h-4 w-4" />
+              Issues
+            </CommandItem>
+          )}
+          {!isClient && (
+            <CommandItem onSelect={() => runCommand(() => router.push("/team"))}>
+              <Users className="mr-2 h-4 w-4" />
+              Team
+            </CommandItem>
+          )}
           <CommandItem onSelect={() => runCommand(() => router.push("/documents"))}>
             <FileText className="mr-2 h-4 w-4" />
             Documents
@@ -70,22 +78,30 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             Settings
           </CommandItem>
         </CommandGroup>
-        <CommandSeparator />
-        <CommandGroup heading="Actions">
-          <CommandItem onSelect={() => runCommand(() => router.push("/projects?create=true"))}>
-            <Plus className="mr-2 h-4 w-4" />
-            Create Project
-            <CommandShortcut>⌘N</CommandShortcut>
-          </CommandItem>
-          <CommandItem onSelect={() => runCommand(() => router.push("/issues?create=true"))}>
-            <Plus className="mr-2 h-4 w-4" />
-            Create Issue
-          </CommandItem>
-          <CommandItem onSelect={() => runCommand(() => router.push("/search"))}>
-            <Search className="mr-2 h-4 w-4" />
-            Advanced Search
-          </CommandItem>
-        </CommandGroup>
+        {!isClient && (
+          <>
+            <CommandSeparator />
+            <CommandGroup heading="Actions">
+              <CommandItem
+                onSelect={() => runCommand(() => router.push("/projects?create=true"))}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Create Project
+                <CommandShortcut>⌘N</CommandShortcut>
+              </CommandItem>
+              <CommandItem
+                onSelect={() => runCommand(() => router.push("/issues?create=true"))}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Create Issue
+              </CommandItem>
+              <CommandItem onSelect={() => runCommand(() => router.push("/search"))}>
+                <Search className="mr-2 h-4 w-4" />
+                Advanced Search
+              </CommandItem>
+            </CommandGroup>
+          </>
+        )}
       </CommandList>
     </CommandDialog>
   );

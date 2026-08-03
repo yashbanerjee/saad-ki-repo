@@ -11,6 +11,7 @@ import { CommandPalette, useCommandPalette } from "./CommandPalette";
 import { AuthGuard } from "./AuthGuard";
 import { AiAssistant } from "./AiAssistant";
 import { useSidebarStore } from "@/lib/sidebar-store";
+import { useAuthStore, hasRole, isClientUser } from "@/lib/auth-store";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { open, setOpen } = useCommandPalette();
   const { mobileOpen, setMobileOpen } = useSidebarStore();
   const pathname = usePathname();
+  const user = useAuthStore((s) => s.user);
+  const homeHref = isClientUser(user) ? "/client-portal" : "/dashboard";
 
   return (
     <AuthGuard>
@@ -38,7 +41,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               <div className="flex h-16 items-center justify-between border-b border-border px-4">
                 <Link
-                  href="/dashboard"
+                  href={homeHref}
                   className="flex items-center gap-2"
                   onClick={() => setMobileOpen(false)}
                 >
@@ -89,12 +92,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 }
 
 const mobileLinks = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/projects", label: "Projects" },
-  { href: "/issues", label: "Issues" },
-  { href: "/clients", label: "Clients" },
-  { href: "/team", label: "Team" },
-  { href: "/settings", label: "Settings" },
+  { href: "/dashboard", label: "Dashboard", roles: ["admin", "manager", "member"] as const },
+  { href: "/client-portal", label: "Dashboard", roles: ["client"] as const },
+  { href: "/projects", label: "Projects", roles: ["admin", "manager", "member", "client"] as const },
+  { href: "/issues", label: "Issues", roles: ["admin", "manager", "member"] as const },
+  { href: "/documents", label: "Documents", roles: ["admin", "manager", "member", "client"] as const },
+  { href: "/clients", label: "Clients", roles: ["admin", "manager", "member"] as const },
+  { href: "/team", label: "Team", roles: ["admin", "manager"] as const },
+  { href: "/settings", label: "Settings", roles: ["admin", "manager", "member", "client"] as const },
 ];
 
 function MobileNav({
@@ -104,16 +109,21 @@ function MobileNav({
   pathname: string;
   onNavigate: () => void;
 }) {
+  const user = useAuthStore((s) => s.user);
+  const links = mobileLinks.filter(
+    (link) => !link.roles || hasRole(user, [...link.roles]),
+  );
+
   return (
     <nav className="space-y-1 p-4">
-      {mobileLinks.map((link) => (
+      {links.map((link) => (
         <Link
-          key={link.href}
+          key={`${link.href}-${link.label}`}
           href={link.href}
           onClick={onNavigate}
           className={cn(
             "block rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
-            pathname.startsWith(link.href)
+            pathname === link.href || pathname.startsWith(`${link.href}/`)
               ? "nav-active text-vedha-teal dark:text-vedha-cyan"
               : "text-muted-foreground nav-hover"
           )}
