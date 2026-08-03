@@ -24,6 +24,7 @@ import {
   ChevronsUpDown,
   Search,
   Target,
+  LayoutGrid,
   Handshake,
   Contact,
   CheckSquare,
@@ -65,6 +66,7 @@ const mainNav: NavItem[] = [
 const crmNav: NavItem[] = [
   { title: "CRM Home", href: "/crm", icon: Sparkles, roles: ["admin", "manager", "member"] },
   { title: "Leads", href: "/leads", icon: Target, roles: ["admin", "manager", "member"] },
+  { title: "Board", href: "/leads/board", icon: LayoutGrid, roles: ["admin", "manager", "member"] },
   { title: "Deals", href: "/deals", icon: Handshake, roles: ["admin", "manager", "member"] },
   { title: "Contacts", href: "/contacts", icon: Contact, roles: ["admin", "manager", "member"] },
   { title: "Organizations", href: "/organizations", icon: Building2, roles: ["admin", "manager", "member"] },
@@ -83,7 +85,12 @@ const secondaryNav: NavItem[] = [
 
 function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
   const pathname = usePathname();
-  const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+  // Prefer exact / longer CRM paths so /leads does not steal /leads/board
+  const isActive =
+    item.href === "/leads"
+      ? pathname === "/leads" ||
+        (pathname.startsWith("/leads/") && !pathname.startsWith("/leads/board"))
+      : pathname === item.href || pathname.startsWith(`${item.href}/`);
   const Icon = item.icon;
 
   const link = (

@@ -45,6 +45,9 @@ export default function CrmHomePage() {
           <Button asChild variant="outline">
             <Link href="/leads">Leads</Link>
           </Button>
+          <Button asChild variant="outline">
+            <Link href="/leads/board">Board</Link>
+          </Button>
           <Button asChild>
             <Link href="/deals">Deals</Link>
           </Button>

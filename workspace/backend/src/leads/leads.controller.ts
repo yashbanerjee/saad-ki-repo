@@ -7,9 +7,13 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
+import { memoryStorage } from 'multer';
 import { LeadsService } from './leads.service';
 import {
   ConvertLeadDto,
@@ -17,6 +21,7 @@ import {
   CreateLeadActivityDto,
   CreateLeadDto,
   ListLeadsQueryDto,
+  MoveLeadsToBoardDto,
   UpdateLeadDto,
 } from './dto/lead.dto';
 import { CurrentUser, AuthenticatedUser, Permissions } from '../common/decorators';
@@ -40,6 +45,43 @@ export class LeadsController {
   @Permissions('leads:read')
   stats(@CurrentUser() user: AuthenticatedUser) {
     return this.leadsService.statusCounts(user.companyId!);
+  }
+
+  @Post('move-to-board')
+  @Permissions('leads:manage')
+  moveToBoard(@CurrentUser() user: AuthenticatedUser, @Body() dto: MoveLeadsToBoardDto) {
+    return this.leadsService.moveToBoard(user.companyId!, dto);
+  }
+
+  @Post('remove-from-board')
+  @Permissions('leads:manage')
+  removeFromBoard(@CurrentUser() user: AuthenticatedUser, @Body() dto: MoveLeadsToBoardDto) {
+    return this.leadsService.removeFromBoard(user.companyId!, dto);
+  }
+
+  @Post('import')
+  @Permissions('leads:manage')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+      required: ['file'],
+    },
+  })
+  import(
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.leadsService.importFromFile(user.companyId!, user.id, file);
   }
 
   @Get(':id')

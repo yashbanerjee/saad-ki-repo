@@ -6,12 +6,21 @@ import {
   IsBoolean,
   IsNumber,
   IsDateString,
+  IsArray,
+  ArrayMinSize,
   Min,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ClientType, LeadStatus, LeadSource, CrmActivityType } from '@prisma/client';
 import { PaginationDto } from '../../common/dto/pagination.dto';
+
+function toOptionalBoolean({ value }: { value: unknown }) {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (value === true || value === 'true' || value === '1') return true;
+  if (value === false || value === 'false' || value === '0') return false;
+  return undefined;
+}
 
 export class ListLeadsQueryDto extends PaginationDto {
   @ApiPropertyOptional({ enum: LeadStatus })
@@ -36,9 +45,23 @@ export class ListLeadsQueryDto extends PaginationDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(toOptionalBoolean)
   @IsBoolean()
   includeArchived?: boolean;
+
+  @ApiPropertyOptional({ description: 'Filter leads on / off the board' })
+  @IsOptional()
+  @Transform(toOptionalBoolean)
+  @IsBoolean()
+  onBoard?: boolean;
+}
+
+export class MoveLeadsToBoardDto {
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  ids: string[];
 }
 
 export class CreateLeadDto {
@@ -131,6 +154,11 @@ export class CreateLeadDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiPropertyOptional({ description: 'Place lead on the board immediately' })
+  @IsOptional()
+  @IsBoolean()
+  onBoard?: boolean;
 }
 
 export class UpdateLeadDto {
@@ -195,6 +223,11 @@ export class UpdateLeadDto {
   @IsOptional()
   @IsBoolean()
   archived?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  onBoard?: boolean;
 }
 
 export class CreateLeadActivityDto {

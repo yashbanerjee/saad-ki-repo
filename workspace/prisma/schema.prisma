@@ -798,6 +798,7 @@ model Lead {
   convertedClientId String?    @unique
   convertedAt       DateTime?
   archived          Boolean    @default(false)
+  onBoard           Boolean    @default(false)
   metadata          Json       @default("{}")
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
@@ -817,6 +818,7 @@ model Lead {
   attachments     CrmAttachment[]
 
   @@index([companyId])
+  @@index([companyId, onBoard])
   @@index([status])
   @@index([ownerId])
   @@index([email])

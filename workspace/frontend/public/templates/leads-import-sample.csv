@@ -1,0 +1,3 @@
+title,name,email,phone,organization,source,estimatedValue,notes
+Acme interest,Jane Doe,jane@acme.com,+971500000000,Acme Ltd,WEBSITE,5000,Imported sample row
+Partner intro,John Smith,john@partner.com,+971511111111,Partner Co,REFERRAL,12000,

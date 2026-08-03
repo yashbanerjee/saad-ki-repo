@@ -158,6 +158,7 @@ export const leadsApi = {
     ownerId?: string;
     source?: string;
     search?: string;
+    onBoard?: boolean;
     page?: number;
     limit?: number;
   }) => api.get("/leads", { params }),
@@ -166,6 +167,15 @@ export const leadsApi = {
   create: (data: Record<string, unknown>) => api.post("/leads", data),
   update: (id: string, data: Record<string, unknown>) => api.patch(`/leads/${id}`, data),
   remove: (id: string) => api.delete(`/leads/${id}`),
+  moveToBoard: (ids: string[]) => api.post("/leads/move-to-board", { ids }),
+  removeFromBoard: (ids: string[]) => api.post("/leads/remove-from-board", { ids }),
+  import: (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return api.post("/leads/import", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
   addActivity: (id: string, data: { type: string; body: string }) =>
     api.post(`/leads/${id}/activities`, data),
   convert: (id: string, data?: Record<string, unknown>) =>

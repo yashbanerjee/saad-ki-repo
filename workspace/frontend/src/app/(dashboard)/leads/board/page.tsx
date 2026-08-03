@@ -1,17 +1,16 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, LayoutGrid, Plus, Target, Upload } from "lucide-react";
+import { LayoutGrid, Plus, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -27,10 +26,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent } from "@/components/ui/card";
+import { CrmKanbanBoard } from "@/components/crm/CrmKanbanBoard";
 import { LEAD_SOURCES, LEAD_STATUSES } from "@/components/crm/crm-constants";
 import { leadsApi } from "@/lib/api";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 interface Lead {
@@ -38,22 +36,17 @@ interface Lead {
   title: string;
   name: string;
   email?: string | null;
-  phone?: string | null;
   organizationName?: string | null;
   type: string;
   status: string;
   source: string;
-  onBoard?: boolean;
   estimatedValue?: string | number | null;
+  _count?: { emails?: number; crmNotes?: number; crmTasks?: number; activities?: number };
 }
 
-export default function LeadsPage() {
+export default function LeadsBoardPage() {
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [importFile, setImportFile] = useState<File | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
     title: "",
     name: "",
@@ -66,10 +59,12 @@ export default function LeadsPage() {
     notes: "",
   });
   const queryClient = useQueryClient();
+  const router = useRouter();
 
   const { data, isLoading } = useQuery({
-    queryKey: ["leads", "all", search],
-    queryFn: () => leadsApi.list({ limit: 100, search: search || undefined }),
+    queryKey: ["leads", "board", search],
+    queryFn: () =>
+      leadsApi.list({ limit: 100, onBoard: true, search: search || undefined }),
     retry: false,
   });
 
@@ -77,9 +72,6 @@ export default function LeadsPage() {
     const raw = data?.data?.data ?? data?.data ?? [];
     return Array.isArray(raw) ? raw : [];
   }, [data]);
-
-  const allSelected = leads.length > 0 && selected.size === leads.length;
-  const someSelected = selected.size > 0;
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -93,11 +85,11 @@ export default function LeadsPage() {
         source: form.source,
         estimatedValue: form.estimatedValue ? Number(form.estimatedValue) : undefined,
         notes: form.notes || undefined,
-        onBoard: false,
+        onBoard: true,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["leads"] });
-      toast.success("Lead created — select it and move to Board when ready");
+      toast.success("Lead added to board");
       setOpen(false);
       setForm({
         title: "",
@@ -120,118 +112,28 @@ export default function LeadsPage() {
   });
 
   const moveMutation = useMutation({
-    mutationFn: (ids: string[]) => leadsApi.moveToBoard(ids),
-    onSuccess: (res) => {
-      const updated = res?.data?.updated ?? selected.size;
-      queryClient.invalidateQueries({ queryKey: ["leads"] });
-      toast.success(`${updated} lead(s) moved to Board`);
-      setSelected(new Set());
-    },
-    onError: () => toast.error("Could not move leads to board"),
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      leadsApi.update(id, { status }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["leads"] }),
+    onError: () => toast.error("Could not update status"),
   });
-
-  const importMutation = useMutation({
-    mutationFn: (file: File) => leadsApi.import(file),
-    onSuccess: (res) => {
-      const result = res?.data?.data ?? res?.data ?? {};
-      const created = result.created ?? 0;
-      const skipped = result.skipped ?? 0;
-      queryClient.invalidateQueries({ queryKey: ["leads"] });
-      toast.success(`Imported ${created} lead(s)${skipped ? `, skipped ${skipped}` : ""}`);
-      setImportOpen(false);
-      setImportFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    },
-    onError: (err: unknown) => {
-      const message =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        "Import failed";
-      toast.error(Array.isArray(message) ? message.join(", ") : message);
-    },
-  });
-
-  const toggleOne = (id: string, checked: boolean) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  };
-
-  const toggleAll = (checked: boolean) => {
-    if (checked) setSelected(new Set(leads.map((l) => l.id)));
-    else setSelected(new Set());
-  };
 
   return (
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground mb-1">CRM</p>
-          <h1 className="font-display text-2xl font-bold">Leads</h1>
+          <h1 className="font-display text-2xl font-bold">Board</h1>
           <p className="text-muted-foreground text-sm">
-            Import or create leads, then select and move them to the Board
+            Pipeline for leads moved from the Leads list
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" asChild>
-            <Link href="/leads/board">
-              <LayoutGrid className="h-4 w-4 mr-1" /> Open Board
+            <Link href="/leads">
+              <Target className="h-4 w-4 mr-1" /> All leads
             </Link>
           </Button>
-          <Button
-            variant="secondary"
-            disabled={!someSelected || moveMutation.isPending}
-            onClick={() => moveMutation.mutate([...selected])}
-          >
-            Move to board{someSelected ? ` (${selected.size})` : ""}
-          </Button>
-          <Dialog open={importOpen} onOpenChange={setImportOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline">
-                <Upload className="h-4 w-4 mr-1" /> Import Excel
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Import leads from Excel</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-3 py-2 text-sm">
-                <p className="text-muted-foreground">
-                  Upload <code>.xlsx</code> or <code>.csv</code>. Columns: title, name, email,
-                  phone, organization, source, estimatedValue, notes.
-                </p>
-                <a
-                  href="/templates/leads-import-sample.csv"
-                  download
-                  className="inline-flex items-center gap-1 text-primary hover:underline"
-                >
-                  <Download className="h-3.5 w-3.5" /> Download sample CSV
-                </a>
-                <div className="space-y-2">
-                  <Label>File</Label>
-                  <Input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".xlsx,.xls,.csv"
-                    onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setImportOpen(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  disabled={!importFile || importMutation.isPending}
-                  onClick={() => importFile && importMutation.mutate(importFile)}
-                >
-                  {importMutation.isPending ? "Importing..." : "Import"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button>
@@ -240,7 +142,7 @@ export default function LeadsPage() {
             </DialogTrigger>
             <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Create Lead</DialogTitle>
+                <DialogTitle>Create lead on board</DialogTitle>
               </DialogHeader>
               <div className="space-y-3 py-2">
                 <div className="space-y-2">
@@ -340,7 +242,7 @@ export default function LeadsPage() {
                   disabled={!form.name || createMutation.isPending}
                   onClick={() => createMutation.mutate()}
                 >
-                  {createMutation.isPending ? "Saving..." : "Create"}
+                  {createMutation.isPending ? "Saving..." : "Create on board"}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -349,83 +251,44 @@ export default function LeadsPage() {
       </div>
 
       <Input
-        placeholder="Search leads..."
+        placeholder="Search board..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         className="max-w-sm"
       />
 
       {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-14" />
+        <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-64" />
           ))}
         </div>
       ) : leads.length === 0 ? (
         <EmptyState
-          icon={Target}
-          title="No leads yet"
-          description="Import from Excel or create a lead, then move selected leads to the Board."
-          actionLabel="New Lead"
-          onAction={() => setOpen(true)}
+          icon={LayoutGrid}
+          title="No leads on the board yet"
+          description="Import or select leads from the Leads list and move them here."
+          actionLabel="Go to Leads"
+          onAction={() => router.push("/leads")}
         />
       ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="flex items-center gap-3 border-b px-4 py-2.5 text-sm text-muted-foreground">
-              <Checkbox
-                checked={allSelected}
-                onCheckedChange={(v) => toggleAll(v === true)}
-                aria-label="Select all leads"
-              />
-              <span>
-                {someSelected ? `${selected.size} selected` : `${leads.length} leads`}
-              </span>
-            </div>
-            <div className="divide-y">
-              {leads.map((lead) => (
-                <div
-                  key={lead.id}
-                  className="flex items-center gap-3 px-4 py-3 hover:bg-muted/40 transition-colors"
-                >
-                  <Checkbox
-                    checked={selected.has(lead.id)}
-                    onCheckedChange={(v) => toggleOne(lead.id, v === true)}
-                    aria-label={`Select ${lead.title}`}
-                  />
-                  <Link href={`/leads/${lead.id}`} className="min-w-0 flex-1">
-                    <p className="font-medium truncate">{lead.title}</p>
-                    <p className="text-sm text-muted-foreground truncate">
-                      {lead.name}
-                      {lead.email ? ` · ${lead.email}` : ""}
-                      {lead.organizationName ? ` · ${lead.organizationName}` : ""}
-                    </p>
-                  </Link>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Badge variant={lead.onBoard ? "success" : "secondary"} className="text-[10px]">
-                      {lead.onBoard ? "On board" : "Inbox"}
-                    </Badge>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-[10px]",
-                        LEAD_STATUSES.find((s) => s.key === lead.status)?.color,
-                        "bg-opacity-15",
-                      )}
-                    >
-                      {lead.status}
-                    </Badge>
-                    {lead.estimatedValue != null && (
-                      <span className="text-xs text-muted-foreground hidden sm:inline">
-                        ${Number(lead.estimatedValue).toLocaleString()}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <CrmKanbanBoard
+          columns={LEAD_STATUSES.map((s) => ({ key: s.key, label: s.label, color: s.color }))}
+          items={leads.map((l) => ({
+            id: l.id,
+            title: l.title,
+            subtitle: [l.name, l.organizationName].filter(Boolean).join(" · "),
+            meta: l.estimatedValue != null ? `$${Number(l.estimatedValue).toLocaleString()}` : undefined,
+            href: `/leads/${l.id}`,
+            status: l.status,
+            counts: {
+              emails: l._count?.emails,
+              notes: l._count?.crmNotes,
+              tasks: l._count?.crmTasks,
+            },
+          }))}
+          onMove={(id, status) => moveMutation.mutate({ id, status })}
+        />
       )}
     </div>
   );

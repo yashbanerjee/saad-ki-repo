@@ -10,7 +10,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
+    "start:prod": "node dist/main.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -19,8 +19,7 @@
     "prisma:migrate": "prisma migrate dev --schema=../prisma/schema.prisma",
     "prisma:migrate:deploy": "prisma migrate deploy --schema=../prisma/schema.prisma",
     "ensure:admin": "node ./scripts/ensure-super-admin.js",
-    "prisma:seed": "node ./scripts/run-seed.js",
-    "start:prod": "node dist/main.js"
+    "prisma:seed": "node ./scripts/run-seed.js"
   },
   "prisma": {
     "schema": "../prisma/schema.prisma",
@@ -55,7 +54,8 @@
     "pdfkit": "^0.16.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.5",
@@ -79,13 +79,19 @@
     "typescript": "^5.8.2"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
-    "collectCoverageFrom": ["**/*.(t|j)s"],
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
   }
