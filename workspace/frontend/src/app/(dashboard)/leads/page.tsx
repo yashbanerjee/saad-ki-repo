@@ -68,8 +68,9 @@ export default function LeadsPage() {
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ["leads", "all", search],
-    queryFn: () => leadsApi.list({ limit: 100, search: search || undefined }),
+    queryKey: ["leads", "inbox", search],
+    queryFn: () =>
+      leadsApi.list({ limit: 100, onBoard: false, search: search || undefined }),
     retry: false,
   });
 
@@ -171,7 +172,7 @@ export default function LeadsPage() {
           <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground mb-1">CRM</p>
           <h1 className="font-display text-2xl font-bold">Leads</h1>
           <p className="text-muted-foreground text-sm">
-            Import or create leads, then select and move them to the Board
+            Inbox leads — import or create, then move selected ones to the Board
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -200,7 +201,8 @@ export default function LeadsPage() {
               <div className="space-y-3 py-2 text-sm">
                 <p className="text-muted-foreground">
                   Upload <code>.xlsx</code> or <code>.csv</code>. Columns: title, name, email,
-                  phone, organization, source, estimatedValue, notes.
+                  phone, organization, source, estimatedValue, notes. Email and phone are
+                  optional — rows with only one (or neither) still import.
                 </p>
                 <a
                   href="/templates/leads-import-sample.csv"
@@ -402,9 +404,6 @@ export default function LeadsPage() {
                     </p>
                   </Link>
                   <div className="flex items-center gap-2 shrink-0">
-                    <Badge variant={lead.onBoard ? "success" : "secondary"} className="text-[10px]">
-                      {lead.onBoard ? "On board" : "Inbox"}
-                    </Badge>
                     <Badge
                       variant="outline"
                       className={cn(

@@ -247,8 +247,21 @@ export class LeadsService {
   private mapImportRow(row: Record<string, unknown>) {
     const normalized: Record<string, string> = {};
     for (const [key, value] of Object.entries(row)) {
-      const k = key.trim().toLowerCase().replace(/[\s-]+/g, '_');
-      normalized[k] = String(value ?? '').trim();
+      const k = key
+        .trim()
+        .toLowerCase()
+        .replace(/[\s\-./]+/g, '_')
+        .replace(/_+/g, '_');
+      // Preserve Excel numeric cells (phones) as plain strings
+      let text = '';
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        text = Number.isInteger(value) ? String(value) : String(value);
+      } else {
+        text = String(value ?? '').trim();
+      }
+      // Collapse scientific notation leftovers / trailing .0 from Excel
+      if (/^\d+\.0+$/.test(text)) text = text.replace(/\.0+$/, '');
+      normalized[k] = text;
     }
 
     const pick = (...keys: string[]) => {
@@ -258,8 +271,16 @@ export class LeadsService {
       return '';
     };
 
-    const title = pick('title', 'lead', 'lead_title', 'subject');
-    const name = pick('name', 'contact', 'contact_name', 'full_name');
+    const title = pick('title', 'lead', 'lead_title', 'subject', 'deal', 'opportunity');
+    const name = pick(
+      'name',
+      'contact',
+      'contact_name',
+      'full_name',
+      'fullname',
+      'client',
+      'client_name',
+    );
     if (!title && !name) return null;
 
     const sourceRaw = pick('source').toLowerCase().replace(/[\s-]+/g, '_');
@@ -272,20 +293,45 @@ export class LeadsService {
       if (!Number.isNaN(n) && n >= 0) estimatedValue = n;
     }
 
-    const email = pick('email', 'email_address') || undefined;
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      throw new Error(`Invalid email: ${email}`);
+    // Email and phone are both optional — import rows with either, neither, or both
+    const emailRaw = pick('email', 'email_address', 'e_mail', 'mail');
+    let email: string | undefined;
+    let emailNote: string | undefined;
+    if (emailRaw) {
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)) {
+        email = emailRaw;
+      } else {
+        // Keep the row; stash the raw value in notes instead of failing import
+        emailNote = `Imported contact value (not stored as email): ${emailRaw}`;
+      }
     }
+
+    const phone =
+      pick(
+        'phone',
+        'telephone',
+        'mobile',
+        'mobile_number',
+        'phone_number',
+        'contact_number',
+        'cell',
+        'whatsapp',
+      ) || undefined;
+
+    const baseNotes = pick('notes', 'note', 'comments', 'remark', 'remarks');
+    const notes = [baseNotes, emailNote].filter(Boolean).join('\n') || undefined;
 
     return {
       title: title || name,
       name: name || title,
       email,
-      phone: pick('phone', 'telephone', 'mobile') || undefined,
-      organizationName: pick('organization', 'company', 'organization_name', 'company_name') || undefined,
+      phone,
+      organizationName:
+        pick('organization', 'company', 'organization_name', 'company_name', 'org') ||
+        undefined,
       source,
       estimatedValue,
-      notes: pick('notes', 'note', 'comments') || undefined,
+      notes,
     };
   }
 
