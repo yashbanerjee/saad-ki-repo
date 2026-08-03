@@ -107,7 +107,6 @@ export class InvoicesController {
       properties: {
         file: { type: 'string', format: 'binary' },
         clientId: { type: 'string' },
-        number: { type: 'string' },
         projectId: { type: 'string' },
         milestoneId: { type: 'string' },
         title: { type: 'string' },
@@ -118,7 +117,7 @@ export class InvoicesController {
         amount: { type: 'number' },
         items: { type: 'string', description: 'JSON string of line items' },
       },
-      required: ['clientId', 'billingType'],
+      required: ['clientId', 'dueDate'],
     },
   })
   createWithPdf(
@@ -126,6 +125,8 @@ export class InvoicesController {
     @UploadedFile() file: Express.Multer.File,
     @Body() body: Record<string, string>,
   ) {
+    if (!file) throw new BadRequestException('Please upload an invoice PDF');
+
     let items: CreateInvoiceDto['items'];
     if (body.items) {
       try {
@@ -137,13 +138,12 @@ export class InvoicesController {
 
     const dto: CreateInvoiceDto = {
       clientId: body.clientId,
-      number: body.number || undefined,
       projectId: body.projectId || undefined,
       milestoneId: body.milestoneId || undefined,
       title: body.title || undefined,
-      billingType: body.billingType as CreateInvoiceDto['billingType'],
+      billingType: (body.billingType as CreateInvoiceDto['billingType']) || undefined,
       currency: body.currency || undefined,
-      dueDate: body.dueDate || undefined,
+      dueDate: body.dueDate,
       notes: body.notes || undefined,
       amount: body.amount ? Number(body.amount) : undefined,
       items,

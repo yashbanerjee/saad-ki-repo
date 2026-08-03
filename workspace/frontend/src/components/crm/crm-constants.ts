@@ -16,6 +16,25 @@ export const DEAL_STATUSES = [
   { key: "LOST", label: "Lost", color: "bg-rose-500" },
 ] as const;
 
+/** Stage likelihood used for weighted pipeline (UI-only). */
+export const DEAL_STAGE_PROBABILITY: Record<string, number> = {
+  OPEN: 10,
+  QUALIFICATION: 25,
+  PROPOSAL: 50,
+  NEGOTIATION: 75,
+  WON: 100,
+  LOST: 0,
+};
+
+export const DEAL_LOST_REASONS = [
+  "Price",
+  "Competitor",
+  "No budget",
+  "Timing",
+  "No response",
+  "Other",
+] as const;
+
 export const LEAD_SOURCES = [
   "WEBSITE",
   "REFERRAL",

@@ -123,4 +123,14 @@ export class UpdateDealDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  lostReason?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  lostNotes?: string;
 }

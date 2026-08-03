@@ -53,6 +53,29 @@ export class InvoicesService {
     };
   }
 
+  /** Next serial: INV-{year}-{####} per company (always auto, never manual). */
+  private async allocateInvoiceNumber(companyId: string): Promise<string> {
+    const year = new Date().getFullYear();
+    const prefix = `INV-${year}-`;
+    const latest = await this.prisma.invoice.findFirst({
+      where: {
+        companyId,
+        number: { startsWith: prefix },
+      },
+      orderBy: { number: 'desc' },
+      select: { number: true },
+    });
+
+    let seq = 1;
+    if (latest?.number) {
+      const raw = latest.number.slice(prefix.length);
+      const parsed = parseInt(raw, 10);
+      if (!Number.isNaN(parsed) && parsed >= 0) seq = parsed + 1;
+    }
+
+    return `${prefix}${String(seq).padStart(4, '0')}`;
+  }
+
   async findAll(
     user: AuthenticatedUser,
     filters: InvoiceFilterDto,
@@ -156,49 +179,56 @@ export class InvoicesService {
     }
 
     const amount = this.calcAmount(dto.items, dto.amount);
-    const year = new Date().getFullYear();
-    let number = dto.number?.trim();
-    if (number) {
-      const taken = await this.prisma.invoice.findFirst({
-        where: { companyId, number },
-      });
-      if (taken) throw new BadRequestException(`Invoice number ${number} already exists`);
-    } else {
-      const count = await this.prisma.invoice.count({ where: { companyId } });
-      number = `INV-${year}-${String(count + 1).padStart(4, '0')}`;
+
+    // Always auto-generate a serialized invoice number (ignore any client-sent number)
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const number = await this.allocateInvoiceNumber(companyId);
+      try {
+        const invoice = await this.prisma.invoice.create({
+          data: {
+            companyId,
+            clientId: dto.clientId,
+            projectId: dto.projectId,
+            milestoneId: dto.milestoneId,
+            createdById: user.id,
+            number,
+            title: dto.title?.trim() || `Invoice ${number}`,
+            billingType: dto.billingType || InvoiceBillingType.CUSTOM,
+            amount,
+            currency: dto.currency || 'AED',
+            dueDate: new Date(dto.dueDate),
+            notes: dto.notes,
+            items: (dto.items ?? []) as unknown as Prisma.InputJsonValue,
+            status: InvoiceStatus.DRAFT,
+          },
+          include: {
+            client: { select: { id: true, name: true, email: true } },
+            project: { select: { id: true, name: true, key: true } },
+          },
+        });
+        return this.serialize(invoice);
+      } catch (err) {
+        lastError = err;
+        // Unique collision on (companyId, number) — retry with next serial
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2002'
+        ) {
+          continue;
+        }
+        throw err;
+      }
     }
 
-    const invoice = await this.prisma.invoice.create({
-      data: {
-        companyId,
-        clientId: dto.clientId,
-        projectId: dto.projectId,
-        milestoneId: dto.milestoneId,
-        createdById: user.id,
-        number,
-        title: dto.title?.trim() || `Invoice ${number}`,
-        billingType: dto.billingType,
-        amount,
-        currency: dto.currency || 'AED',
-        dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
-        notes: dto.notes,
-        items: (dto.items ?? []) as unknown as Prisma.InputJsonValue,
-        status: InvoiceStatus.DRAFT,
-      },
-      include: {
-        client: { select: { id: true, name: true, email: true } },
-        project: { select: { id: true, name: true, key: true } },
-      },
-    });
-
-    return this.serialize(invoice);
+    throw lastError instanceof Error
+      ? lastError
+      : new BadRequestException('Could not allocate invoice number');
   }
 
   async nextNumber(user: AuthenticatedUser) {
-    const companyId = user.companyId!;
-    const year = new Date().getFullYear();
-    const count = await this.prisma.invoice.count({ where: { companyId } });
-    return { number: `INV-${year}-${String(count + 1).padStart(4, '0')}` };
+    const number = await this.allocateInvoiceNumber(user.companyId!);
+    return { number };
   }
 
   async generatePdfBuffer(id: string, user: AuthenticatedUser): Promise<{
@@ -529,16 +559,11 @@ export class InvoicesService {
     dto: CreateInvoiceDto,
     file?: Express.Multer.File,
   ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Please upload an invoice PDF');
+    }
     const created = await this.create(user, dto);
-    if (file?.buffer?.length) {
-      return this.uploadPdf(created.id as string, user, file);
-    }
-    // Auto-generate a downloadable PDF (Refrens-style)
-    try {
-      return await this.generateAndStorePdf(created.id as string, user);
-    } catch {
-      return created;
-    }
+    return this.uploadPdf(created.id as string, user, file);
   }
 
   async remove(id: string, user: AuthenticatedUser) {

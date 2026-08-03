@@ -271,7 +271,8 @@ export default function LeadDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["deals"] });
       toast.success("Converted to deal");
       const dealId = res.data?.deal?.id ?? res.data?.data?.deal?.id;
-      if (dealId) router.push(`/deals`);
+      if (dealId) router.push(`/deals/${dealId}`);
+      else router.push("/deals");
     },
     onError: () => toast.error("Could not convert to deal"),
   });

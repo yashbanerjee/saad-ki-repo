@@ -103,6 +103,8 @@ export class DealsService {
             }
           : {}),
         ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
+        ...(dto.lostReason !== undefined ? { lostReason: dto.lostReason } : {}),
+        ...(dto.lostNotes !== undefined ? { lostNotes: dto.lostNotes } : {}),
       },
       include: {
         owner: { select: { id: true, firstName: true, lastName: true } },

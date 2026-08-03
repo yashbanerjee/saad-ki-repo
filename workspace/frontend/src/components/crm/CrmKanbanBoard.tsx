@@ -6,13 +6,21 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
-export type CrmKanbanColumn = { key: string; label: string; color?: string };
+export type CrmKanbanColumn = {
+  key: string;
+  label: string;
+  color?: string;
+  footer?: string;
+};
 
 export type CrmKanbanCard = {
   id: string;
   title: string;
   subtitle?: string;
   meta?: string;
+  /** Extra deal-focused line (e.g. close date / probability) */
+  detail?: string;
+  badge?: string;
   href: string;
   status: string;
   counts?: { emails?: number; notes?: number; tasks?: number; comments?: number };
@@ -34,7 +42,7 @@ export function CrmKanbanBoard({ columns, items, onMove }: Props) {
         return (
           <div
             key={col.key}
-            className="rounded-xl border bg-muted/25 p-2 min-h-[300px]"
+            className="rounded-xl border bg-muted/25 p-2 min-h-[300px] flex flex-col"
             onDragOver={(e) => e.preventDefault()}
             onDrop={() => {
               if (draggingId) onMove(draggingId, col.key);
@@ -43,7 +51,12 @@ export function CrmKanbanBoard({ columns, items, onMove }: Props) {
           >
             <div className="flex items-center justify-between px-2 py-2 mb-1">
               <div className="flex items-center gap-2">
-                <span className={cn("h-2 w-2 rounded-full", col.color || "bg-muted-foreground")} />
+                <span
+                  className={cn(
+                    "h-2 w-2 rounded-full",
+                    col.color || "bg-muted-foreground",
+                  )}
+                />
                 <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   {col.label}
                 </span>
@@ -52,9 +65,13 @@ export function CrmKanbanBoard({ columns, items, onMove }: Props) {
                 {colItems.length}
               </Badge>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 flex-1">
               {colItems.map((item) => (
-                <Link key={item.id} href={item.href} onClick={(e) => draggingId && e.preventDefault()}>
+                <Link
+                  key={item.id}
+                  href={item.href}
+                  onClick={(e) => draggingId && e.preventDefault()}
+                >
                   <Card
                     draggable
                     onDragStart={() => setDraggingId(item.id)}
@@ -65,19 +82,46 @@ export function CrmKanbanBoard({ columns, items, onMove }: Props) {
                     )}
                   >
                     <CardHeader className="p-3 pb-1">
-                      <CardTitle className="text-sm font-medium leading-snug">
-                        {item.title}
-                      </CardTitle>
+                      <div className="flex items-start justify-between gap-2">
+                        <CardTitle className="text-sm font-medium leading-snug">
+                          {item.title}
+                        </CardTitle>
+                        {item.badge && (
+                          <Badge
+                            variant="outline"
+                            className="shrink-0 text-[10px] font-normal"
+                          >
+                            {item.badge}
+                          </Badge>
+                        )}
+                      </div>
                     </CardHeader>
                     <CardContent className="p-3 pt-1 space-y-1.5 text-xs text-muted-foreground">
-                      {item.subtitle && <p className="truncate">{item.subtitle}</p>}
-                      {item.meta && <p className="font-medium text-foreground/80">{item.meta}</p>}
+                      {item.subtitle && (
+                        <p className="truncate">{item.subtitle}</p>
+                      )}
+                      {item.meta && (
+                        <p className="font-semibold text-foreground tabular-nums">
+                          {item.meta}
+                        </p>
+                      )}
+                      {item.detail && (
+                        <p className="text-[11px] text-muted-foreground">
+                          {item.detail}
+                        </p>
+                      )}
                       {item.counts && (
                         <p className="text-[10px] text-muted-foreground/80 pt-1">
                           {[
-                            item.counts.emails != null ? `${item.counts.emails} email` : null,
-                            item.counts.notes != null ? `${item.counts.notes} note` : null,
-                            item.counts.tasks != null ? `${item.counts.tasks} task` : null,
+                            item.counts.emails != null
+                              ? `${item.counts.emails} email`
+                              : null,
+                            item.counts.notes != null
+                              ? `${item.counts.notes} note`
+                              : null,
+                            item.counts.tasks != null
+                              ? `${item.counts.tasks} task`
+                              : null,
                           ]
                             .filter(Boolean)
                             .join(" · ")}
@@ -88,6 +132,11 @@ export function CrmKanbanBoard({ columns, items, onMove }: Props) {
                 </Link>
               ))}
             </div>
+            {col.footer && (
+              <div className="mt-2 border-t px-2 pt-2 text-[11px] font-medium tabular-nums text-muted-foreground">
+                {col.footer}
+              </div>
+            )}
           </div>
         );
       })}

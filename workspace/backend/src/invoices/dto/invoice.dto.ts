@@ -47,12 +47,6 @@ export class CreateInvoiceDto {
   @IsString()
   clientId: string;
 
-  @ApiPropertyOptional({ description: 'Custom invoice number; auto-generated if omitted' })
-  @IsOptional()
-  @IsString()
-  @MinLength(3)
-  number?: string;
-
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -68,19 +62,19 @@ export class CreateInvoiceDto {
   @IsString()
   title?: string;
 
-  @ApiProperty({ enum: InvoiceBillingType })
+  @ApiPropertyOptional({ enum: InvoiceBillingType, default: InvoiceBillingType.CUSTOM })
+  @IsOptional()
   @IsEnum(InvoiceBillingType)
-  billingType: InvoiceBillingType;
+  billingType?: InvoiceBillingType;
 
   @ApiPropertyOptional({ default: 'AED' })
   @IsOptional()
   @IsString()
   currency?: string;
 
-  @ApiPropertyOptional()
-  @IsOptional()
+  @ApiProperty({ description: 'Payment due / end date' })
   @IsDateString()
-  dueDate?: string;
+  dueDate: string;
 
   @ApiPropertyOptional()
   @IsOptional()
