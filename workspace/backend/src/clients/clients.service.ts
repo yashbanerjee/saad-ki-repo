@@ -23,6 +23,7 @@ import {
   ROLE_NAMES,
   ROLE_PERMISSIONS,
 } from '../common/constants/permissions.constants';
+import { renderNdaPlaceholders } from '../nda/nda-placeholders';
 
 @Injectable()
 export class ClientsService {
@@ -520,6 +521,16 @@ export class ClientsService {
       });
     }
 
+    const renderedNda = ndaTemplate
+      ? {
+          ...ndaTemplate,
+          content: renderNdaPlaceholders(ndaTemplate.content, {
+            companyName: client.company.name,
+            clientName: client.name,
+          }),
+        }
+      : null;
+
     const forms = client.formAssignments
       .filter((a) => a.form.status === 'PUBLISHED' || a.status === 'COMPLETED')
       .map((a) => ({
@@ -558,7 +569,7 @@ export class ClientsService {
       formsComplete,
       requireNda: client.requireNda,
       ndaDone,
-      ndaTemplate: client.requireNda ? ndaTemplate : null,
+      ndaTemplate: client.requireNda ? renderedNda : null,
       setupComplete,
       currentStep,
     };

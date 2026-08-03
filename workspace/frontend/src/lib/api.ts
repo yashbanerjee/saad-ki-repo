@@ -390,7 +390,30 @@ export const onboardingApi = {
 // NDA API
 export const ndaApi = {
   listTemplates: () => api.get("/nda/templates"),
-  sign: (data: Record<string, unknown>) => api.post("/nda/sign", data),
+  listSigned: () => api.get("/nda/signed"),
+  getTemplate: (id: string) => api.get(`/nda/templates/${id}`),
+  createTemplate: (data: { title: string; content: string; clientId?: string }) =>
+    api.post("/nda/templates", data),
+  updateTemplate: (
+    id: string,
+    data: { title?: string; content?: string; isActive?: boolean },
+  ) => api.patch(`/nda/templates/${id}`, data),
+  preview: (id: string, data?: { clientId?: string; content?: string }) =>
+    api.post(`/nda/templates/${id}/preview`, data ?? {}),
+  assign: (data: {
+    clientId: string;
+    templateId?: string;
+    customContent?: string;
+    customTitle?: string;
+  }) => api.post("/nda/assign", data),
+  sign: (
+    templateId: string,
+    data: {
+      signatureType: "DRAW" | "TYPE" | "UPLOAD";
+      signatureData: string;
+      clientId?: string;
+    },
+  ) => api.post(`/nda/templates/${templateId}/sign`, data),
 };
 
 // Team API

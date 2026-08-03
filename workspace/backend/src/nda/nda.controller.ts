@@ -1,8 +1,24 @@
-import { Controller, Get, Post, Body, Param, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Body,
+  Param,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 import { NdaService } from './nda.service';
-import { CreateNdaTemplateDto, SignNdaDto, RejectNdaDto } from './dto/nda.dto';
+import {
+  AssignNdaDto,
+  CreateNdaTemplateDto,
+  PreviewNdaDto,
+  SignNdaDto,
+  RejectNdaDto,
+  UpdateNdaTemplateDto,
+} from './dto/nda.dto';
 import { CurrentUser, AuthenticatedUser, Permissions } from '../common/decorators';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { ParseCuidPipe } from '../common/pipes/parse-cuid.pipe';
@@ -20,16 +36,48 @@ export class NdaController {
     return this.ndaService.findTemplates(user.companyId!);
   }
 
+  @Get('signed')
+  @Permissions('nda:read')
+  listSigned(@CurrentUser() user: AuthenticatedUser) {
+    return this.ndaService.listSigned(user.companyId!);
+  }
+
   @Post('templates')
   @Permissions('nda:manage')
   createTemplate(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateNdaTemplateDto) {
     return this.ndaService.createTemplate(user.companyId!, dto);
   }
 
+  @Post('assign')
+  @Permissions('nda:manage')
+  assign(@CurrentUser() user: AuthenticatedUser, @Body() dto: AssignNdaDto) {
+    return this.ndaService.assignToClient(user.companyId!, dto);
+  }
+
   @Get('templates/:id')
   @Permissions('nda:read')
   findTemplate(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.ndaService.findTemplate(id, user.companyId!);
+  }
+
+  @Patch('templates/:id')
+  @Permissions('nda:manage')
+  updateTemplate(
+    @Param('id', ParseCuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateNdaTemplateDto,
+  ) {
+    return this.ndaService.updateTemplate(id, user.companyId!, dto);
+  }
+
+  @Post('templates/:id/preview')
+  @Permissions('nda:read')
+  preview(
+    @Param('id', ParseCuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: PreviewNdaDto,
+  ) {
+    return this.ndaService.preview(id, user.companyId!, dto);
   }
 
   @Get('templates/:id/signatures')
