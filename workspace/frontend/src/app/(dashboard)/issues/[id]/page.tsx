@@ -22,9 +22,37 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { EmptyState } from "@/components/ui/empty-state";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { issuesApi } from "@/lib/api";
+import { isClientUser, useAuthStore } from "@/lib/auth-store";
 import { formatRelativeTime, getInitials } from "@/lib/utils";
 import { toast } from "sonner";
+
+const CLIENT_STATUSES = [
+  { value: "TODO", label: "Todo" },
+  { value: "IN_PROGRESS", label: "In Progress" },
+  { value: "TESTING", label: "Testing" },
+  { value: "DONE", label: "Done" },
+] as const;
+
+const STAFF_STATUSES = [
+  { value: "TODO", label: "Todo" },
+  { value: "IN_PROGRESS", label: "In Progress" },
+  { value: "TESTING", label: "Testing" },
+  { value: "CODE_REVIEW", label: "Code Review" },
+  { value: "READY_FOR_QA", label: "Ready for QA" },
+  { value: "QA_FAILED", label: "QA Failed" },
+  { value: "READY_FOR_RELEASE", label: "Ready for Release" },
+  { value: "DONE", label: "Done" },
+  { value: "BLOCKED", label: "Blocked" },
+  { value: "CANCELLED", label: "Cancelled" },
+] as const;
 
 function personName(p?: { firstName?: string; lastName?: string; name?: string } | string | null) {
   if (!p) return "—";
@@ -33,18 +61,27 @@ function personName(p?: { firstName?: string; lastName?: string; name?: string }
   return `${p.firstName || ""} ${p.lastName || ""}`.trim() || "—";
 }
 
+function statusLabel(value: string, options: readonly { value: string; label: string }[]) {
+  return options.find((o) => o.value === value)?.label || value.replace(/_/g, " ");
+}
+
 export default function IssueDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const [comment, setComment] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const isClient = isClientUser(user);
+  const statusOptions = isClient ? CLIENT_STATUSES : STAFF_STATUSES;
 
   const { data, isLoading } = useQuery({
     queryKey: ["issue", id],
     queryFn: () => issuesApi.get(id),
     retry: false,
   });
+
+  const issue = data?.data?.data ?? data?.data ?? null;
 
   const commentMutation = useMutation({
     mutationFn: (body: string) => issuesApi.addComment(id, body),
@@ -76,7 +113,24 @@ export default function IssueDetailPage() {
     onError: () => toast.error("Failed to delete attachment"),
   });
 
-  const issue = data?.data?.data ?? data?.data ?? null;
+  const statusMutation = useMutation({
+    mutationFn: (status: string) => issuesApi.transition(id, status),
+    onSuccess: (_res, status) => {
+      queryClient.invalidateQueries({ queryKey: ["issue", id] });
+      const projectId = issue?.project?.id;
+      if (projectId) {
+        queryClient.invalidateQueries({ queryKey: ["project-board", projectId] });
+      }
+      toast.success(`Status updated to ${statusLabel(status, statusOptions)}`);
+    },
+    onError: (err: { response?: { data?: { message?: string }; status?: number } }) => {
+      toast.error(
+        err?.response?.status === 401
+          ? "Session expired — please sign in again"
+          : err?.response?.data?.message || "Failed to update status",
+      );
+    },
+  });
 
   if (isLoading) {
     return (
@@ -105,6 +159,15 @@ export default function IssueDetailPage() {
 
   const comments = Array.isArray(issue.comments) ? issue.comments : [];
   const attachments = Array.isArray(issue.attachments) ? issue.attachments : [];
+  const currentStatus = String(issue.status || "TODO");
+
+  const selectOptions =
+    statusOptions.some((o) => o.value === currentStatus)
+      ? statusOptions
+      : [
+          { value: currentStatus, label: statusLabel(currentStatus, STAFF_STATUSES) },
+          ...statusOptions,
+        ];
 
   return (
     <div className="space-y-6">
@@ -119,7 +182,7 @@ export default function IssueDetailPage() {
             <Bug className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm text-muted-foreground">{issue.key || `#${issue.id}`}</span>
             {issue.priority && <Badge variant="destructive">{issue.priority}</Badge>}
-            {issue.status && <Badge variant="info">{issue.status}</Badge>}
+            <Badge variant="info">{statusLabel(currentStatus, STAFF_STATUSES)}</Badge>
             {issue.type && <Badge variant="outline">{issue.type}</Badge>}
           </div>
           <h1 className="font-display text-2xl font-bold">{issue.title}</h1>
@@ -285,7 +348,32 @@ export default function IssueDetailPage() {
             <CardHeader>
               <CardTitle className="text-sm">Details</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm">
+            <CardContent className="space-y-4 text-sm">
+              <div className="space-y-2">
+                <span className="text-muted-foreground">Status</span>
+                <Select
+                  value={currentStatus}
+                  disabled={statusMutation.isPending}
+                  onValueChange={(value) => {
+                    if (value !== currentStatus) statusMutation.mutate(value);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {selectOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {statusMutation.isPending && (
+                  <p className="text-[11px] text-muted-foreground">Updating status…</p>
+                )}
+              </div>
+
               <div className="flex justify-between gap-2">
                 <span className="text-muted-foreground">Assignee</span>
                 <span className="text-right">{personName(issue.assignee)}</span>
@@ -304,6 +392,12 @@ export default function IssueDetailPage() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Type</span>
                   <Badge variant="outline">{issue.type}</Badge>
+                </div>
+              )}
+              {issue.priority && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Priority</span>
+                  <Badge variant="destructive">{issue.priority}</Badge>
                 </div>
               )}
               {issue.createdAt && (
