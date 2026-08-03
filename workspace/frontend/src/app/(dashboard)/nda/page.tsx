@@ -36,6 +36,7 @@ import {
 import { clientsApi, ndaApi } from "@/lib/api";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
+import { NdaDocumentPreview } from "@/components/features/NdaDocumentPreview";
 
 const DEFAULT_NDA = `NON-DISCLOSURE AGREEMENT
 
@@ -697,9 +698,10 @@ export default function NDAPage() {
               Placeholders resolved with company and client names
             </DialogDescription>
           </DialogHeader>
-          <div className="rounded-lg border bg-muted/30 p-4 max-h-[60vh] overflow-y-auto text-sm whitespace-pre-wrap font-mono leading-relaxed">
-            {previewText || "No document content available."}
-          </div>
+          <NdaDocumentPreview
+            content={previewText || ""}
+            maxHeightClassName="max-h-[min(65vh,36rem)]"
+          />
         </DialogContent>
       </Dialog>
     </div>

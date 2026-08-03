@@ -27,6 +27,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { SignaturePad } from "@/components/features/SignaturePad";
 import { OnboardingFormFill } from "@/components/features/OnboardingFormFill";
+import { NdaDocumentPreview } from "@/components/features/NdaDocumentPreview";
 import { authApi, setupApi } from "@/lib/api";
 import { normalizeAuthUser, useAuthStore } from "@/lib/auth-store";
 import { cn } from "@/lib/utils";
@@ -238,7 +239,7 @@ export default function ClientSetupPage() {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/8 via-background to-muted/40">
-      <div className="mx-auto w-full max-w-xl px-4 pb-10 pt-6 sm:px-6 sm:pb-14 sm:pt-10">
+      <div className="mx-auto w-full max-w-xl sm:max-w-2xl lg:max-w-3xl px-4 pb-10 pt-6 sm:px-6 sm:pb-14 sm:pt-10">
         <header className="text-center space-y-3 mb-6 sm:mb-8">
           <div className="mx-auto flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-xl gradient-vedha glow-vedha">
             <Sparkles className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
@@ -523,18 +524,21 @@ export default function ClientSetupPage() {
         )}
 
         {setup.currentStep === "nda" && (
-          <Card className="shadow-float border-border/60 overflow-hidden">
-            <CardHeader className="space-y-1.5 px-4 pt-5 pb-3 sm:px-6 sm:pt-6">
+          <Card className="shadow-float border-border/60 overflow-hidden sm:max-w-3xl sm:mx-auto w-full">
+            <CardHeader className="space-y-1.5 px-4 pt-5 pb-2 sm:px-8 sm:pt-7">
               <CardTitle className="text-lg sm:text-xl flex items-center gap-2">
                 <FileSignature className="h-5 w-5 shrink-0" />
                 <span>Sign NDA</span>
               </CardTitle>
               <CardDescription className="text-xs sm:text-sm">
-                {setup.ndaTemplate?.title || "Non-disclosure agreement"}
-                {setup.ndaTemplate?.version ? ` · v${setup.ndaTemplate.version}` : ""}
+                Review the agreement below, then apply your signature
+                {setup.ndaTemplate?.title
+                  ? ` · ${setup.ndaTemplate.title}`
+                  : ""}
+                {setup.ndaTemplate?.version ? ` v${setup.ndaTemplate.version}` : ""}
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4 px-4 pb-5 sm:px-6 sm:pb-6">
+            <CardContent className="space-y-5 px-4 pb-5 sm:px-8 sm:pb-8">
               {!isAuthenticated && (
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs sm:text-sm">
                   You must be signed in to sign the NDA.{" "}
@@ -546,12 +550,22 @@ export default function ClientSetupPage() {
                   </Link>
                 </div>
               )}
-              <div className="rounded-xl border bg-muted/30 p-3.5 sm:p-4 max-h-48 sm:max-h-56 overflow-y-auto text-xs sm:text-sm whitespace-pre-wrap font-mono leading-relaxed">
-                {setup.ndaTemplate?.content || "No NDA content available yet."}
-              </div>
+
+              <NdaDocumentPreview content={setup.ndaTemplate?.content || ""} />
+
               {isAuthenticated && setup.ndaTemplate && (
-                <div className={cn(signing && "opacity-60 pointer-events-none")}>
-                  <SignaturePad onSign={handleSignNda} />
+                <div
+                  className={cn(
+                    "space-y-2 sm:max-w-lg sm:mx-auto",
+                    signing && "opacity-60 pointer-events-none",
+                  )}
+                >
+                  <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground font-medium text-center sm:text-left">
+                    Your signature
+                  </p>
+                  <div className="rounded-xl border bg-muted/20 p-3 sm:p-5">
+                    <SignaturePad onSign={handleSignNda} />
+                  </div>
                 </div>
               )}
               {!setup.ndaTemplate && (

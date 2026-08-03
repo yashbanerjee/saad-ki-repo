@@ -86,17 +86,21 @@ export function SignaturePad({ onSign, className }: SignaturePadProps) {
   };
 
   return (
-    <div className={cn("space-y-4", className)}>
+    <div className={cn("space-y-3 sm:space-y-4", className)}>
       <Tabs value={mode} onValueChange={(v) => setMode(v as "draw" | "type")}>
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="draw"><Pen className="h-4 w-4 mr-1" /> Draw</TabsTrigger>
-          <TabsTrigger value="type"><Type className="h-4 w-4 mr-1" /> Type</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 h-11">
+          <TabsTrigger value="draw" className="text-sm gap-1.5">
+            <Pen className="h-4 w-4" /> Draw
+          </TabsTrigger>
+          <TabsTrigger value="type" className="text-sm gap-1.5">
+            <Type className="h-4 w-4" /> Type
+          </TabsTrigger>
         </TabsList>
-        <TabsContent value="draw" className="mt-4">
-          <div className="relative rounded-lg border-2 border-dashed border-border bg-muted/30">
+        <TabsContent value="draw" className="mt-3 sm:mt-4">
+          <div className="relative rounded-xl border border-dashed border-border bg-background">
             <canvas
               ref={canvasRef}
-              className="w-full h-40 cursor-crosshair touch-none"
+              className="w-full h-36 sm:h-40 cursor-crosshair touch-none rounded-xl"
               onMouseDown={startDraw}
               onMouseMove={draw}
               onMouseUp={stopDraw}
@@ -105,25 +109,35 @@ export function SignaturePad({ onSign, className }: SignaturePadProps) {
               onTouchMove={draw}
               onTouchEnd={stopDraw}
             />
-            <Button variant="ghost" size="sm" className="absolute top-2 right-2" onClick={clearCanvas}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute top-2 right-2 h-8 w-8 p-0"
+              onClick={clearCanvas}
+              type="button"
+            >
               <Eraser className="h-4 w-4" />
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-2">Draw your signature above</p>
         </TabsContent>
-        <TabsContent value="type" className="mt-4">
+        <TabsContent value="type" className="mt-3 sm:mt-4">
           <Input
             placeholder="Type your full name"
             value={typedSignature}
             onChange={(e) => setTypedSignature(e.target.value)}
-            className="text-2xl font-display h-16 text-center"
+            className="text-xl sm:text-2xl font-display h-14 sm:h-16 text-center"
           />
           {typedSignature && (
-            <p className="mt-4 text-center font-display text-3xl italic text-primary">{typedSignature}</p>
+            <p className="mt-3 text-center font-display text-2xl sm:text-3xl italic text-primary">
+              {typedSignature}
+            </p>
           )}
         </TabsContent>
       </Tabs>
-      <Button onClick={handleApply} className="w-full">Apply Signature</Button>
+      <Button onClick={handleApply} className="w-full h-11" type="button">
+        Apply Signature
+      </Button>
     </div>
   );
 }
