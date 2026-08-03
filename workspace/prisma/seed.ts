@@ -25,6 +25,8 @@ const PERMISSION_DEFINITIONS = [
   { name: 'View Onboarding', slug: 'onboarding:read', module: 'onboarding' },
   { name: 'Manage Documents', slug: 'documents:manage', module: 'documents' },
   { name: 'View Documents', slug: 'documents:read', module: 'documents' },
+  { name: 'Manage Invoices', slug: 'invoices:manage', module: 'invoices' },
+  { name: 'View Invoices', slug: 'invoices:read', module: 'invoices' },
   { name: 'Manage NDA', slug: 'nda:manage', module: 'nda' },
   { name: 'View NDA', slug: 'nda:read', module: 'nda' },
   { name: 'Manage Clients', slug: 'clients:manage', module: 'clients' },
@@ -166,6 +168,7 @@ async function main() {
                 'issues:create',
                 'documents:read',
                 'documents:manage',
+                'invoices:read',
                 'nda:read',
               ]
             : slug === 'developer'
@@ -219,6 +222,8 @@ async function main() {
                       'search:read',
                       'documents:manage',
                       'documents:read',
+                      'invoices:manage',
+                      'invoices:read',
                       'reports:read',
                     ];
 
@@ -237,6 +242,7 @@ async function main() {
     'issues:create',
     'documents:read',
     'documents:manage',
+    'invoices:read',
     'nda:read',
   ];
   const clientPerms = allPermissions.filter((p) => clientPermSlugs.includes(p.slug));

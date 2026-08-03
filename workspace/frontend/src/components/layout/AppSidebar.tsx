@@ -29,6 +29,7 @@ import {
   Contact,
   CheckSquare,
   StickyNote,
+  Receipt,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSidebarStore } from "@/lib/sidebar-store";
@@ -59,6 +60,7 @@ const mainNav: NavItem[] = [
   { title: "Onboarding", href: "/onboarding", icon: ClipboardList, roles: ["admin", "manager"] },
   { title: "NDA", href: "/nda", icon: FileSignature, roles: ["admin", "manager"] },
   { title: "Documents", href: "/documents", icon: FileText },
+  { title: "Invoices", href: "/invoices", icon: Receipt, roles: ["admin", "manager", "member", "client"] },
   { title: "Team", href: "/team", icon: Users, roles: ["admin", "manager"] },
   { title: "Reports", href: "/reports", icon: BarChart3, roles: ["admin", "manager"] },
 ];
@@ -148,7 +150,7 @@ export function AppSidebar() {
   ).filter((item) => {
     // Clients: focused nav + Issues for board/task access
     if (!isClient) return true;
-    return ["Dashboard", "Projects", "Issues", "Documents"].includes(item.title);
+    return ["Dashboard", "Projects", "Issues", "Documents", "Invoices"].includes(item.title);
   });
 
   // Clients must never see CRM or Client Portal

@@ -55,6 +55,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
         'issues:create',
         'documents:read',
         'documents:manage',
+        'invoices:read',
         'nda:read',
       ]) {
         if (!permissions.includes(slug)) permissions.push(slug);

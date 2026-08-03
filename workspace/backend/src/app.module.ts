@@ -35,6 +35,7 @@ import { StorageModule } from './storage/storage.module';
 import { MailModule } from './mail/mail.module';
 import { QueueModule } from './queue/queue.module';
 import { HealthModule } from './health/health.module';
+import { InvoicesModule } from './invoices/invoices.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
@@ -80,6 +81,7 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     WorkflowsModule,
     TeamsModule,
     ReportsModule,
+    InvoicesModule,
     HealthModule,
   ],
   controllers: [RootController],

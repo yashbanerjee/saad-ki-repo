@@ -503,6 +503,72 @@ export const documentsApi = {
   remove: (id: string) => api.delete(`/documents/${id}`),
 };
 
+// Invoices API
+export const invoicesApi = {
+  list: (params?: Record<string, unknown>) => api.get("/invoices", { params }),
+  get: (id: string) => api.get(`/invoices/${id}`),
+  create: (data: Record<string, unknown>) => api.post("/invoices", data),
+  createWithPdf: (data: {
+    clientId: string;
+    billingType: string;
+    projectId?: string;
+    milestoneId?: string;
+    title?: string;
+    currency?: string;
+    dueDate?: string;
+    notes?: string;
+    amount?: number;
+    items?: unknown[];
+    file?: File;
+  }) => {
+    const formData = new FormData();
+    formData.append("clientId", data.clientId);
+    formData.append("billingType", data.billingType);
+    if (data.projectId) formData.append("projectId", data.projectId);
+    if (data.milestoneId) formData.append("milestoneId", data.milestoneId);
+    if (data.title) formData.append("title", data.title);
+    if (data.currency) formData.append("currency", data.currency);
+    if (data.dueDate) formData.append("dueDate", data.dueDate);
+    if (data.notes) formData.append("notes", data.notes);
+    if (data.amount != null) formData.append("amount", String(data.amount));
+    if (data.items) formData.append("items", JSON.stringify(data.items));
+    if (data.file) formData.append("file", data.file);
+    return api.post("/invoices/with-pdf", formData, {
+      headers: { "Content-Type": undefined as unknown as string },
+      timeout: 120000,
+      transformRequest: [
+        (body, headers) => {
+          if (headers && typeof headers === "object") {
+            delete (headers as Record<string, unknown>)["Content-Type"];
+          }
+          return body;
+        },
+      ],
+    });
+  },
+  update: (id: string, data: Record<string, unknown>) =>
+    api.patch(`/invoices/${id}`, data),
+  send: (id: string) => api.post(`/invoices/${id}/send`),
+  markPaid: (id: string) => api.post(`/invoices/${id}/mark-paid`),
+  uploadPdf: (id: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return api.post(`/invoices/${id}/pdf`, formData, {
+      headers: { "Content-Type": undefined as unknown as string },
+      timeout: 120000,
+      transformRequest: [
+        (body, headers) => {
+          if (headers && typeof headers === "object") {
+            delete (headers as Record<string, unknown>)["Content-Type"];
+          }
+          return body;
+        },
+      ],
+    });
+  },
+  remove: (id: string) => api.delete(`/invoices/${id}`),
+};
+
 // Team API
 export const teamApi = {
   list: () => api.get("/team"),

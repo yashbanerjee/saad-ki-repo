@@ -279,6 +279,13 @@ enum InvoiceStatus {
   CANCELLED
 }
 
+enum InvoiceBillingType {
+  MILESTONE
+  HOURLY
+  TASK
+  CUSTOM
+}
+
 enum SubscriptionStatus {
   TRIAL
   ACTIVE
@@ -448,6 +455,7 @@ model User {
   crmEmails            CrmEmail[]            @relation("CrmEmailAuthor")
   crmWhatsAppMessages  CrmWhatsAppMessage[]  @relation("CrmWhatsAppAuthor")
   crmAttachments       CrmAttachment[]       @relation("CrmAttachmentUploader")
+  createdInvoices      Invoice[]             @relation("InvoiceCreator")
 
   @@index([companyId])
   @@index([email])
@@ -1360,6 +1368,7 @@ model Project {
   labels      Label[]
   documents   Document[]
   activities  ActivityLog[]
+  invoices    Invoice[]
   workflowId  String?
   workflow    Workflow?        @relation(fields: [workflowId], references: [id])
 
@@ -1414,6 +1423,7 @@ model Milestone {
   project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   issues      Issue[]
   clientTasks ClientTask[]
+  invoices    Invoice[]
 
   @@index([projectId])
   @@map("milestones")
@@ -1815,25 +1825,42 @@ model AuditLog {
 // ─────────────────────────────────────────────
 
 model Invoice {
-  id          String        @id @default(cuid())
-  companyId   String
-  clientId    String
-  number      String
-  status      InvoiceStatus @default(DRAFT)
-  amount      Decimal       @db.Decimal(12, 2)
-  currency    String        @default("USD")
-  dueDate     DateTime?
-  paidAt      DateTime?
-  items       Json          @default("[]")
-  notes       String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id             String             @id @default(cuid())
+  companyId      String
+  clientId       String
+  projectId      String?
+  createdById    String?
+  milestoneId    String?
+  number         String
+  title          String             @default("Invoice")
+  billingType    InvoiceBillingType @default(CUSTOM)
+  status         InvoiceStatus      @default(DRAFT)
+  amount         Decimal            @db.Decimal(12, 2)
+  currency       String             @default("AED")
+  dueDate        DateTime?
+  paidAt         DateTime?
+  sentAt         DateTime?
+  items          Json               @default("[]")
+  notes          String?            @db.Text
+  /// Uploaded PDF (optional — invoices can also be created in-app)
+  pdfName        String?
+  pdfMimeType    String?
+  pdfSize        Int?
+  pdfStorageKey  String?
+  pdfStorageUrl  String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  client  Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  client    Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  project   Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdBy User?      @relation("InvoiceCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  milestone Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
 
   @@unique([companyId, number])
   @@index([clientId])
+  @@index([projectId])
+  @@index([status])
   @@map("invoices")
 }
 
