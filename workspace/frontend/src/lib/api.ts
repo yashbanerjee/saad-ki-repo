@@ -376,7 +376,10 @@ export const onboardingApi = {
     }
   ) => onboardingApi.updateForm(id, data),
   publishForm: (id: string) => api.post(`/onboarding/forms/${id}/publish`),
-  getPublicForm: (token: string) => api.get(`/onboarding/public/${token}`),
+  getPublicForm: (token: string, clientId?: string) =>
+    api.get(`/onboarding/public/${token}`, {
+      params: clientId ? { clientId } : undefined,
+    }),
   submitPublicForm: (
     token: string,
     data: Record<string, unknown>,

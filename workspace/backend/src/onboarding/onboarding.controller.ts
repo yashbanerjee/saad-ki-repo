@@ -148,8 +148,11 @@ export class OnboardingController {
 
   @Public()
   @Get('public/:secureToken')
-  getPublicForm(@Param('secureToken') secureToken: string) {
-    return this.onboardingService.findByToken(secureToken);
+  getPublicForm(
+    @Param('secureToken') secureToken: string,
+    @Query('clientId') clientId?: string,
+  ) {
+    return this.onboardingService.getPublicForm(secureToken, clientId);
   }
 
   @Public()

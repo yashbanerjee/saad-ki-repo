@@ -9,9 +9,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   CheckCircle2,
-  Circle,
   ClipboardList,
-  ExternalLink,
   FileSignature,
   Loader2,
   Sparkles,
@@ -26,9 +24,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SignaturePad } from "@/components/features/SignaturePad";
+import { OnboardingFormFill } from "@/components/features/OnboardingFormFill";
 import { authApi, setupApi } from "@/lib/api";
 import { normalizeAuthUser, useAuthStore } from "@/lib/auth-store";
 import { cn } from "@/lib/utils";
@@ -234,6 +232,9 @@ export default function ClientSetupPage() {
   const progressPct = Math.round(
     ((visibleSteps.filter((s) => stepStatus(s.id)).length) / visibleSteps.length) * 100,
   );
+  const pendingForms = setup.forms.filter((f) => !f.completed);
+  const activeForm = pendingForms[0];
+  const completedForms = setup.forms.filter((f) => f.completed);
 
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/8 via-background to-muted/40">
@@ -431,10 +432,14 @@ export default function ClientSetupPage() {
                 <span>Complete onboarding forms</span>
               </CardTitle>
               <CardDescription className="text-xs sm:text-sm">
-                Open each form, submit it, then refresh this page.
+                Fill out the form below
+                {pendingForms.length > 1
+                  ? ` (${pendingForms.length} remaining)`
+                  : ""}
+                .
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3 px-4 pb-5 sm:px-6 sm:pb-6">
+            <CardContent className="space-y-4 px-4 pb-5 sm:px-6 sm:pb-6">
               {!isAuthenticated && (
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs sm:text-sm">
                   Sign in to continue, then finish your forms.{" "}
@@ -446,52 +451,59 @@ export default function ClientSetupPage() {
                   </Link>
                 </div>
               )}
+
+              {completedForms.length > 0 && (
+                <ul className="space-y-2">
+                  {completedForms.map((form) => (
+                    <li
+                      key={form.assignmentId}
+                      className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm"
+                    >
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <span className="truncate">{form.title}</span>
+                      <span className="ml-auto text-[11px] text-muted-foreground">Done</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
               {setup.forms.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   No forms assigned yet. Contact your agency, or refresh if they just assigned one.
                 </p>
-              ) : (
-                setup.forms.map((form) => (
-                  <div
-                    key={form.assignmentId}
-                    className={cn(
-                      "rounded-xl border p-3.5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between",
-                      form.completed && "bg-muted/40",
-                    )}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-sm flex items-start gap-2">
-                        {form.completed ? (
-                          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
-                        ) : (
-                          <Circle className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                        )}
-                        <span className="break-words">{form.title}</span>
+              ) : activeForm ? (
+                <div className="rounded-xl border p-3.5 sm:p-4 space-y-3">
+                  <div>
+                    <p className="font-medium text-sm">{activeForm.title}</p>
+                    {activeForm.description && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {activeForm.description}
                       </p>
-                      {form.description && (
-                        <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2 pl-6">
-                          {form.description}
-                        </p>
-                      )}
-                    </div>
-                    {form.completed ? (
-                      <Badge variant="success" className="self-start sm:self-auto">
-                        Done
-                      </Badge>
-                    ) : (
-                      <Button size="sm" variant="outline" className="w-full sm:w-auto h-10" asChild>
-                        <a
-                          href={`/onboarding/public/${form.secureToken}?clientId=${setup.clientId}`}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Open form <ExternalLink className="h-3.5 w-3.5 ml-1" />
-                        </a>
-                      </Button>
                     )}
                   </div>
-                ))
+                  <OnboardingFormFill
+                    key={activeForm.assignmentId}
+                    formToken={activeForm.secureToken}
+                    clientId={setup.clientId}
+                    loadFromApi
+                    compact
+                    submitLabel={
+                      pendingForms.length > 1
+                        ? "Submit & continue"
+                        : "Submit form"
+                    }
+                    onSubmitted={() => {
+                      queryClient.invalidateQueries({ queryKey: ["setup", token] });
+                    }}
+                  />
+                </div>
+              ) : (
+                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-3 text-sm text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  All forms submitted
+                </div>
               )}
+
               <Button
                 variant="secondary"
                 className="w-full h-11"

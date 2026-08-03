@@ -62,6 +62,55 @@ export class OnboardingService {
     return form;
   }
 
+  /**
+   * Public form payload. When clientId is present and the client has no login yet,
+   * returns clientGate so the frontend can redirect to the setup journey first.
+   */
+  async getPublicForm(secureToken: string, clientId?: string) {
+    const form = await this.findByToken(secureToken);
+    if (!clientId) return form;
+
+    const client = await this.prisma.client.findFirst({
+      where: { id: clientId, companyId: form.companyId },
+      select: {
+        id: true,
+        userId: true,
+        setupToken: true,
+        setupEnabled: true,
+      },
+    });
+    if (!client) return { ...form, clientGate: null };
+
+    if (client.userId) {
+      return {
+        ...form,
+        clientGate: {
+          accountDone: true,
+          requiresAccount: false,
+          setupToken: client.setupToken,
+        },
+      };
+    }
+
+    let setupToken = client.setupToken;
+    if (!client.setupEnabled || !setupToken) {
+      setupToken = setupToken || randomBytes(24).toString('hex');
+      await this.prisma.client.update({
+        where: { id: client.id },
+        data: { setupEnabled: true, setupToken },
+      });
+    }
+
+    return {
+      ...form,
+      clientGate: {
+        accountDone: false,
+        requiresAccount: true,
+        setupToken,
+      },
+    };
+  }
+
   async create(companyId: string, createdById: string, dto: CreateFormDto) {
     const slug = dto.slug?.trim() || this.slugify(dto.title);
     return this.prisma.onboardingForm.create({
