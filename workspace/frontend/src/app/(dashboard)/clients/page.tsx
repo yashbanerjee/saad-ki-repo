@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowRight,
   Building2,
   CheckCircle2,
   ClipboardList,
@@ -450,6 +451,22 @@ export default function ClientsPage() {
           {clients.map((client) => {
             const isPerson = client.type === "INDIVIDUAL";
             const Icon = isPerson ? User : Building2;
+            const progress = client.setupProgress;
+            const accountDone = !!progress?.accountDone;
+            const formsComplete = !!progress?.formsComplete;
+            const formsSubmitted =
+              formsComplete && (progress?.formsTotal ?? 0) > 0;
+            const ndaDone = !!progress?.ndaDone;
+            const requireNda = !!progress?.requireNda || !!client.requireNda;
+            const setupComplete = !!progress?.setupComplete;
+            const nextStepLabel = !accountDone
+              ? null
+              : !formsComplete
+                ? "Next step: Complete forms"
+                : requireNda && !ndaDone
+                  ? "Next step: Sign NDA"
+                  : null;
+
             return (
               <Card key={client.id} className="glass-subtle hover:shadow-md transition-shadow">
                 <CardHeader className="pb-3">
@@ -488,35 +505,28 @@ export default function ClientsPage() {
                     </span>
                   </div>
 
-                  {client.setupProgress && (
+                  {progress && (
                     <div className="flex flex-wrap gap-1.5 pt-1">
                       <Badge
-                        variant={client.setupProgress.accountDone ? "success" : "secondary"}
+                        variant={accountDone ? "success" : "secondary"}
                         className="text-[10px] gap-0.5"
                       >
-                        {client.setupProgress.accountDone && (
-                          <CheckCircle2 className="h-3 w-3" />
-                        )}
+                        {accountDone && <CheckCircle2 className="h-3 w-3" />}
                         Account
                       </Badge>
                       <Badge
-                        variant={client.setupProgress.formsComplete ? "success" : "secondary"}
+                        variant={formsComplete ? "success" : "secondary"}
                         className="text-[10px] gap-0.5"
                       >
-                        {client.setupProgress.formsComplete && (
-                          <CheckCircle2 className="h-3 w-3" />
-                        )}
-                        Forms {client.setupProgress.formsDone}/
-                        {client.setupProgress.formsTotal}
+                        {formsComplete && <CheckCircle2 className="h-3 w-3" />}
+                        Forms {progress.formsDone}/{progress.formsTotal}
                       </Badge>
-                      {client.setupProgress.requireNda && (
+                      {requireNda && (
                         <Badge
-                          variant={client.setupProgress.ndaDone ? "success" : "secondary"}
+                          variant={ndaDone ? "success" : "secondary"}
                           className="text-[10px] gap-0.5"
                         >
-                          {client.setupProgress.ndaDone && (
-                            <CheckCircle2 className="h-3 w-3" />
-                          )}
+                          {ndaDone && <CheckCircle2 className="h-3 w-3" />}
                           NDA
                         </Badge>
                       )}
@@ -534,38 +544,83 @@ export default function ClientsPage() {
                     />
                   </div>
 
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    <Button
-                      size="sm"
-                      variant="default"
-                      className="h-8 text-xs"
-                      onClick={() => copySetupLink(client)}
-                    >
-                      <Link2 className="h-3.5 w-3.5 mr-1" />
-                      Copy setup link
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 text-xs"
-                      onClick={() => {
-                        setAssignClient(client);
-                        setAssignMode("assign");
-                        setAssignFormId("");
-                        setCreateFormTitle(`${client.name} onboarding`);
-                      }}
-                    >
-                      <ClipboardList className="h-3.5 w-3.5 mr-1" />
-                      Assign form
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-8 text-xs"
-                      onClick={() => setFormsClient(client)}
-                    >
-                      View forms
-                    </Button>
+                  <div className="space-y-2 pt-1">
+                    {setupComplete ? (
+                      <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 shrink-0" />
+                        Client setup complete
+                      </div>
+                    ) : (
+                      <>
+                        {accountDone ? (
+                          <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                            Account setup completed
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="h-8 text-xs w-full sm:w-auto"
+                            onClick={() => copySetupLink(client)}
+                          >
+                            <Link2 className="h-3.5 w-3.5 mr-1" />
+                            Copy setup link
+                          </Button>
+                        )}
+
+                        {formsSubmitted ? (
+                          <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                            Onboarding form submitted
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 text-xs"
+                              onClick={() => {
+                                setAssignClient(client);
+                                setAssignMode("assign");
+                                setAssignFormId("");
+                                setCreateFormTitle(`${client.name} onboarding`);
+                              }}
+                            >
+                              <ClipboardList className="h-3.5 w-3.5 mr-1" />
+                              Assign form
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 text-xs"
+                              onClick={() => setFormsClient(client)}
+                            >
+                              View forms
+                            </Button>
+                          </div>
+                        )}
+
+                        {requireNda && ndaDone && (
+                          <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                            NDA signed
+                          </div>
+                        )}
+
+                        {nextStepLabel && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="h-8 text-xs w-full sm:w-auto"
+                            onClick={() => copySetupLink(client)}
+                          >
+                            {nextStepLabel}
+                            <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                          </Button>
+                        )}
+                      </>
+                    )}
                   </div>
                 </CardContent>
               </Card>
