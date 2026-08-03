@@ -556,14 +556,14 @@ export default function ClientSetupPage() {
               {isAuthenticated && setup.ndaTemplate && (
                 <div
                   className={cn(
-                    "space-y-2 sm:max-w-lg sm:mx-auto",
+                    "space-y-2 w-full",
                     signing && "opacity-60 pointer-events-none",
                   )}
                 >
-                  <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground font-medium text-center sm:text-left">
+                  <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground font-medium">
                     Your signature
                   </p>
-                  <div className="rounded-xl border bg-muted/20 p-3 sm:p-5">
+                  <div className="rounded-xl border bg-muted/20 p-3 sm:p-5 w-full">
                     <SignaturePad onSign={handleSignNda} />
                   </div>
                 </div>
