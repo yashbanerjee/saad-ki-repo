@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   DndContext,
   DragOverlay,
@@ -29,12 +30,15 @@ import { cn, getInitials } from "@/lib/utils";
 
 export interface KanbanTask {
   id: string;
+  key?: string;
   title: string;
   priority: "low" | "medium" | "high";
   assignee?: string;
   labels?: string[];
   dueDate?: string;
   progress?: number;
+  status?: string;
+  type?: string;
 }
 
 export interface KanbanColumn {
@@ -56,13 +60,21 @@ const priorityBar = {
 };
 
 export const defaultColumns: KanbanColumn[] = [
-  { id: "todo", title: "Todo", tasks: [] },
-  { id: "in-progress", title: "In Progress", tasks: [] },
-  { id: "review", title: "Review", tasks: [] },
-  { id: "done", title: "Done", tasks: [] },
+  { id: "TODO", title: "To Do", tasks: [] },
+  { id: "IN_PROGRESS", title: "In Progress", tasks: [] },
+  { id: "TESTING", title: "Testing", tasks: [] },
+  { id: "CODE_REVIEW", title: "Code Review", tasks: [] },
+  { id: "READY_FOR_QA", title: "Ready for QA", tasks: [] },
+  { id: "DONE", title: "Done", tasks: [] },
 ];
 
-function SortableTask({ task }: { task: KanbanTask }) {
+function SortableTask({
+  task,
+  href,
+}: {
+  task: KanbanTask;
+  href?: string;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
     data: { task },
@@ -73,16 +85,8 @@ function SortableTask({ task }: { task: KanbanTask }) {
     transition,
   };
 
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        "group relative overflow-hidden rounded-2xl border border-white/8 bg-[#111827]/80 p-3.5 shadow-glass backdrop-blur-[20px] cursor-grab active:cursor-grabbing transition-all duration-300",
-        "hover:border-vedha-cyan/25 hover:shadow-glow",
-        isDragging && "opacity-40 ring-2 ring-vedha-cyan/30"
-      )}
-    >
+  const body = (
+    <>
       <div className={cn("absolute left-0 top-0 h-full w-0.5", priorityBar[task.priority])} />
       <div className="flex items-start gap-2 pl-1.5">
         <button
@@ -91,22 +95,33 @@ function SortableTask({ task }: { task: KanbanTask }) {
           {...listeners}
           className="mt-0.5 text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:text-foreground"
           aria-label="Drag task"
+          onClick={(e) => e.preventDefault()}
         >
           <GripVertical className="h-4 w-4" />
         </button>
         <div className="min-w-0 flex-1">
+          {task.key && (
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              {task.key}
+            </p>
+          )}
           <p className="text-sm font-medium leading-snug">{task.title}</p>
           <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
             <Badge variant={priorityColors[task.priority]} className="text-[10px] capitalize">
               {task.priority}
             </Badge>
+            {task.type && (
+              <Badge variant="outline" className="text-[10px]">
+                {task.type}
+              </Badge>
+            )}
             {task.labels?.map((label) => (
               <Badge key={label} variant="outline" className="text-[10px]">
                 {label}
               </Badge>
             ))}
           </div>
-          {(task.progress !== undefined || task.dueDate || task.assignee) && (
+          {(task.dueDate || task.assignee) && (
             <div className="mt-3 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 {task.assignee && (
@@ -123,21 +138,30 @@ function SortableTask({ task }: { task: KanbanTask }) {
                   </span>
                 )}
               </div>
-              {task.progress !== undefined && (
-                <span className="text-[10px] text-muted-foreground">{task.progress}%</span>
-              )}
-            </div>
-          )}
-          {task.progress !== undefined && (
-            <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/5">
-              <div
-                className="h-full rounded-full gradient-vedha"
-                style={{ width: `${task.progress}%` }}
-              />
             </div>
           )}
         </div>
       </div>
+    </>
+  );
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "group relative overflow-hidden rounded-2xl border border-white/8 bg-[#111827]/80 p-3.5 shadow-glass backdrop-blur-[20px] cursor-grab active:cursor-grabbing transition-all duration-300",
+        "hover:border-vedha-cyan/25 hover:shadow-glow",
+        isDragging && "opacity-40 ring-2 ring-vedha-cyan/30",
+      )}
+    >
+      {href ? (
+        <Link href={href} className="block" onClick={(e) => e.stopPropagation()}>
+          {body}
+        </Link>
+      ) : (
+        body
+      )}
     </div>
   );
 }
@@ -145,6 +169,9 @@ function SortableTask({ task }: { task: KanbanTask }) {
 function TaskOverlay({ task }: { task: KanbanTask }) {
   return (
     <div className="w-72 rotate-2 rounded-2xl border border-vedha-cyan/30 bg-[#111827] p-3.5 shadow-float glow-vedha">
+      {task.key && (
+        <p className="text-[10px] uppercase text-muted-foreground">{task.key}</p>
+      )}
       <p className="text-sm font-medium">{task.title}</p>
       <Badge variant={priorityColors[task.priority]} className="mt-2 text-[10px] capitalize">
         {task.priority}
@@ -156,6 +183,9 @@ function TaskOverlay({ task }: { task: KanbanTask }) {
 interface KanbanBoardProps {
   initialColumns?: KanbanColumn[];
   onTaskMove?: (taskId: string, fromColumn: string, toColumn: string) => void;
+  onAddTask?: (columnId: string) => void;
+  canCreate?: boolean;
+  taskHref?: (task: KanbanTask) => string;
 }
 
 function DroppableColumn({
@@ -178,7 +208,7 @@ function DroppableColumn({
       <Card
         className={cn(
           "h-full border-white/8 bg-white/[0.03]",
-          isOver && "border-vedha-cyan/40 shadow-glow"
+          isOver && "border-vedha-cyan/40 shadow-glow",
         )}
       >
         <CardHeader className="pb-3">
@@ -193,13 +223,23 @@ function DroppableColumn({
   );
 }
 
-export function KanbanBoard({ initialColumns = defaultColumns, onTaskMove }: KanbanBoardProps) {
+export function KanbanBoard({
+  initialColumns = defaultColumns,
+  onTaskMove,
+  onAddTask,
+  canCreate = true,
+  taskHref,
+}: KanbanBoardProps) {
   const [columns, setColumns] = useState(initialColumns);
   const [activeTask, setActiveTask] = useState<KanbanTask | null>(null);
 
+  useEffect(() => {
+    setColumns(initialColumns);
+  }, [initialColumns]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor)
+    useSensor(KeyboardSensor),
   );
 
   const findColumn = (taskId: string) =>
@@ -232,10 +272,10 @@ export function KanbanBoard({ initialColumns = defaultColumns, onTaskMove }: Kan
           return { ...col, tasks: col.tasks.filter((t) => t.id !== activeId) };
         }
         if (col.id === destColumn!.id) {
-          return { ...col, tasks: [...col.tasks, task] };
+          return { ...col, tasks: [...col.tasks, { ...task, status: destColumn!.id }] };
         }
         return col;
-      })
+      }),
     );
 
     onTaskMove?.(activeId, sourceColumn.id, destColumn.id);
@@ -256,12 +296,23 @@ export function KanbanBoard({ initialColumns = defaultColumns, onTaskMove }: Kan
               strategy={verticalListSortingStrategy}
             >
               {column.tasks.map((task) => (
-                <SortableTask key={task.id} task={task} />
+                <SortableTask
+                  key={task.id}
+                  task={task}
+                  href={taskHref?.(task)}
+                />
               ))}
             </SortableContext>
-            <Button variant="ghost" size="sm" className="w-full text-muted-foreground">
-              <Plus className="mr-1 h-4 w-4" /> Add task
-            </Button>
+            {canCreate && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full text-muted-foreground"
+                onClick={() => onAddTask?.(column.id)}
+              >
+                <Plus className="mr-1 h-4 w-4" /> Add task
+              </Button>
+            )}
           </DroppableColumn>
         ))}
       </div>

@@ -158,9 +158,29 @@ export const issuesApi = {
   get: (id: string) => api.get(`/issues/${id}`),
   create: (data: Record<string, unknown>) => api.post("/issues", data),
   update: (id: string, data: Record<string, unknown>) =>
-    api.put(`/issues/${id}`, data),
-  addComment: (id: string, content: string) =>
-    api.post(`/issues/${id}/comments`, { content }),
+    api.patch(`/issues/${id}`, data),
+  transition: (id: string, status: string) =>
+    api.post(`/issues/${id}/transition`, { status }),
+  addComment: (id: string, body: string) =>
+    api.post(`/issues/${id}/comments`, { body }),
+  uploadAttachment: (id: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return api.post(`/issues/${id}/attachments`, formData, {
+      headers: { "Content-Type": undefined as unknown as string },
+      timeout: 120000,
+      transformRequest: [
+        (data, headers) => {
+          if (headers && typeof headers === "object") {
+            delete (headers as Record<string, unknown>)["Content-Type"];
+          }
+          return data;
+        },
+      ],
+    });
+  },
+  deleteAttachment: (id: string, attachmentId: string) =>
+    api.delete(`/issues/${id}/attachments/${attachmentId}`),
 };
 
 // Clients API

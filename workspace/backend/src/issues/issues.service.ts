@@ -1,10 +1,11 @@
 import {
   Injectable,
   NotFoundException,
-  ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
+import { IssueStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import {
   CreateIssueDto,
   UpdateIssueDto,
@@ -15,11 +16,37 @@ import {
 import { paginate, paginatedResponse } from '../common/dto/pagination.dto';
 import { ActivityService } from '../activity/activity.service';
 
+const ADMIN_BOARD_STATUSES: { status: IssueStatus; title: string }[] = [
+  { status: IssueStatus.TODO, title: 'To Do' },
+  { status: IssueStatus.IN_PROGRESS, title: 'In Progress' },
+  { status: IssueStatus.TESTING, title: 'Testing' },
+  { status: IssueStatus.CODE_REVIEW, title: 'Code Review' },
+  { status: IssueStatus.READY_FOR_QA, title: 'Ready for QA' },
+  { status: IssueStatus.QA_FAILED, title: 'QA Failed' },
+  { status: IssueStatus.READY_FOR_RELEASE, title: 'Ready for Release' },
+  { status: IssueStatus.DONE, title: 'Done' },
+  { status: IssueStatus.BLOCKED, title: 'Blocked' },
+];
+
+const CLIENT_BOARD_STATUSES: { status: IssueStatus; title: string }[] = [
+  { status: IssueStatus.TODO, title: 'To Do' },
+  { status: IssueStatus.IN_PROGRESS, title: 'In Progress' },
+  { status: IssueStatus.TESTING, title: 'Testing' },
+  { status: IssueStatus.DONE, title: 'Done' },
+];
+
+function mapPriority(p: string): 'low' | 'medium' | 'high' {
+  if (['LOWEST', 'LOW'].includes(p)) return 'low';
+  if (['HIGH', 'HIGHEST', 'CRITICAL'].includes(p)) return 'high';
+  return 'medium';
+}
+
 @Injectable()
 export class IssuesService {
   constructor(
     private prisma: PrismaService,
     private activity: ActivityService,
+    private storage: StorageService,
   ) {}
 
   async findAll(companyId: string, filters: IssueFilterDto, page = 1, limit = 20) {
@@ -63,21 +90,86 @@ export class IssuesService {
     const issue = await this.prisma.issue.findFirst({
       where: { id, project: { companyId } },
       include: {
-        assignee: { select: { id: true, firstName: true, lastName: true, email: true, avatar: true } },
+        assignee: {
+          select: { id: true, firstName: true, lastName: true, email: true, avatar: true },
+        },
         reporter: { select: { id: true, firstName: true, lastName: true, email: true } },
         project: { select: { id: true, key: true, name: true } },
         sprint: true,
         comments: {
-          include: { author: { select: { id: true, firstName: true, lastName: true, avatar: true } } },
+          include: {
+            author: { select: { id: true, firstName: true, lastName: true, avatar: true } },
+          },
           orderBy: { createdAt: 'asc' },
         },
+        attachments: {
+          include: {
+            uploadedBy: { select: { id: true, firstName: true, lastName: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
         labels: { include: { label: true } },
-        watchers: { include: { user: { select: { id: true, firstName: true, lastName: true } } } },
+        watchers: {
+          include: { user: { select: { id: true, firstName: true, lastName: true } } },
+        },
         children: { select: { id: true, key: true, title: true, status: true, type: true } },
       },
     });
     if (!issue) throw new NotFoundException('Issue not found');
     return issue;
+  }
+
+  async getBoard(projectId: string, companyId: string, isClient = false) {
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId, companyId },
+      select: { id: true, name: true, key: true },
+    });
+    if (!project) throw new NotFoundException('Project not found');
+
+    const issues = await this.prisma.issue.findMany({
+      where: {
+        projectId,
+        status: { notIn: [IssueStatus.CANCELLED] },
+      },
+      include: {
+        assignee: { select: { id: true, firstName: true, lastName: true, avatar: true } },
+        labels: { include: { label: { select: { name: true, color: true } } } },
+      },
+      orderBy: [{ order: 'asc' }, { updatedAt: 'desc' }],
+    });
+
+    const defs = isClient ? CLIENT_BOARD_STATUSES : ADMIN_BOARD_STATUSES;
+    const known = new Set(defs.map((d) => d.status));
+
+    const toTask = (i: (typeof issues)[number]) => ({
+      id: i.id,
+      key: i.key,
+      title: i.title,
+      priority: mapPriority(i.priority),
+      status: i.status,
+      type: i.type,
+      assignee: i.assignee
+        ? `${i.assignee.firstName} ${i.assignee.lastName}`.trim()
+        : undefined,
+      labels: i.labels.map((l) => l.label.name),
+      dueDate: i.dueDate ? i.dueDate.toISOString().slice(0, 10) : undefined,
+    });
+
+    const columns = defs.map((col) => ({
+      id: col.status,
+      title: col.title,
+      tasks: issues.filter((i) => i.status === col.status).map(toTask),
+    }));
+
+    const orphans = issues.filter((i) => !known.has(i.status));
+    if (orphans.length && isClient) {
+      const todo = columns.find((c) => c.id === IssueStatus.TODO);
+      if (todo) {
+        todo.tasks.push(...orphans.map(toTask));
+      }
+    }
+
+    return { project, columns };
   }
 
   async create(companyId: string, reporterId: string, dto: CreateIssueDto) {
@@ -100,8 +192,8 @@ export class IssuesService {
         key,
         title: dto.title,
         description: dto.description,
-        type: dto.type,
-        priority: dto.priority,
+        type: dto.type ?? 'TASK',
+        priority: dto.priority ?? 'MEDIUM',
         severity: dto.severity,
         assigneeId: dto.assigneeId,
         reporterId,
@@ -109,6 +201,7 @@ export class IssuesService {
         parentId: dto.parentId,
         storyPoints: dto.storyPoints,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
+        status: dto.status ?? IssueStatus.TODO,
       },
       include: {
         assignee: { select: { id: true, firstName: true, lastName: true } },
@@ -184,6 +277,26 @@ export class IssuesService {
     return issue;
   }
 
+  async updateBoardTaskStatus(
+    projectId: string,
+    taskId: string,
+    companyId: string,
+    userId: string,
+    status: string,
+  ) {
+    const issue = await this.prisma.issue.findFirst({
+      where: { id: taskId, projectId, project: { companyId } },
+    });
+    if (!issue) throw new NotFoundException('Task not found');
+
+    const normalized = status.toUpperCase().replace(/-/g, '_') as IssueStatus;
+    if (!Object.values(IssueStatus).includes(normalized)) {
+      throw new BadRequestException(`Invalid status: ${status}`);
+    }
+
+    return this.transition(taskId, companyId, userId, { status: normalized });
+  }
+
   async remove(id: string, companyId: string) {
     await this.findOne(id, companyId);
     await this.prisma.issue.delete({ where: { id } });
@@ -191,7 +304,7 @@ export class IssuesService {
   }
 
   async addComment(id: string, companyId: string, authorId: string, dto: CreateCommentDto) {
-    const issue = await this.findOne(id, companyId);
+    await this.findOne(id, companyId);
     return this.prisma.comment.create({
       data: {
         issueId: id,
@@ -199,8 +312,56 @@ export class IssuesService {
         body: dto.body,
         parentId: dto.parentId,
       },
-      include: { author: { select: { id: true, firstName: true, lastName: true, avatar: true } } },
+      include: {
+        author: { select: { id: true, firstName: true, lastName: true, avatar: true } },
+      },
     });
+  }
+
+  async addAttachment(
+    id: string,
+    companyId: string,
+    uploadedById: string,
+    file: Express.Multer.File,
+  ) {
+    await this.findOne(id, companyId);
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Please choose a file to upload');
+    }
+
+    const key = this.storage.generateKey(`issues/${id}`, file.originalname);
+    const { url } = await this.storage.upload(key, file.buffer, file.mimetype);
+
+    return this.prisma.attachment.create({
+      data: {
+        issueId: id,
+        uploadedById,
+        name: file.originalname,
+        mimeType: file.mimetype,
+        size: file.size,
+        storageKey: key,
+        storageUrl: url,
+      },
+      include: {
+        uploadedBy: { select: { id: true, firstName: true, lastName: true } },
+      },
+    });
+  }
+
+  async deleteAttachment(issueId: string, attachmentId: string, companyId: string) {
+    await this.findOne(issueId, companyId);
+    const attachment = await this.prisma.attachment.findFirst({
+      where: { id: attachmentId, issueId },
+    });
+    if (!attachment) throw new NotFoundException('Attachment not found');
+
+    try {
+      await this.storage.delete(attachment.storageKey);
+    } catch {
+      /* ignore */
+    }
+    await this.prisma.attachment.delete({ where: { id: attachmentId } });
+    return { message: 'Attachment deleted' };
   }
 
   async addWatcher(id: string, companyId: string, userId: string) {

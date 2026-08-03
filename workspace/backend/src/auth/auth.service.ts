@@ -204,6 +204,26 @@ export class AuthService {
       throw new UnauthorizedException('Account suspended');
     }
 
+    // Ensure client role has create/comment/upload permissions (existing accounts)
+    const clientUserRole = await this.prisma.userRole.findFirst({
+      where: { userId: user.id, role: { slug: 'client' } },
+      include: { role: true },
+    });
+    if (clientUserRole) {
+      const perms = await this.prisma.permission.findMany({
+        where: { slug: { in: ROLE_PERMISSIONS.client } },
+      });
+      if (perms.length) {
+        await this.prisma.rolePermission.createMany({
+          data: perms.map((p) => ({
+            roleId: clientUserRole.roleId,
+            permissionId: p.id,
+          })),
+          skipDuplicates: true,
+        });
+      }
+    }
+
     await this.prisma.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date(), lastLoginIp: ip },
@@ -311,6 +331,9 @@ export class AuthService {
           isSystem: true,
         },
       });
+    }
+    // Keep client permissions in sync (create / comment / upload)
+    {
       const perms = await this.prisma.permission.findMany({
         where: { slug: { in: ROLE_PERMISSIONS.client } },
       });

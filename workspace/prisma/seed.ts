@@ -160,7 +160,14 @@ async function main() {
         : slug === 'viewer'
           ? ['projects:read', 'issues:read', 'dashboard:read', 'search:read']
           : slug === 'client'
-            ? ['projects:read', 'issues:read', 'documents:read', 'nda:read']
+            ? [
+                'projects:read',
+                'issues:read',
+                'issues:create',
+                'documents:read',
+                'documents:manage',
+                'nda:read',
+              ]
             : slug === 'developer'
               ? ['projects:read', 'issues:create', 'issues:manage', 'issues:read', 'sprints:read', 'search:read', 'documents:read']
               : slug === 'qa'
@@ -222,6 +229,27 @@ async function main() {
     });
   }
   console.log(`OK ${Object.keys(roleMap).length} roles`);
+
+  // Sync client permissions on every company (existing + Vedha)
+  const clientPermSlugs = [
+    'projects:read',
+    'issues:read',
+    'issues:create',
+    'documents:read',
+    'documents:manage',
+    'nda:read',
+  ];
+  const clientPerms = allPermissions.filter((p) => clientPermSlugs.includes(p.slug));
+  const allClientRoles = await prisma.role.findMany({ where: { slug: 'client' } });
+  for (const role of allClientRoles) {
+    await prisma.rolePermission.createMany({
+      data: clientPerms.map((p) => ({ roleId: role.id, permissionId: p.id })),
+      skipDuplicates: true,
+    });
+  }
+  if (allClientRoles.length) {
+    console.log(`OK synced client permissions on ${allClientRoles.length} company role(s)`);
+  }
 
   const passwordHash = await bcrypt.hash(SUPER_ADMIN_PASSWORD, 12);
 

@@ -1,10 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bug, MessageSquare, Send } from "lucide-react";
+import {
+  ArrowLeft,
+  Bug,
+  MessageSquare,
+  Send,
+  Paperclip,
+  Upload,
+  FileText,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,10 +26,18 @@ import { issuesApi } from "@/lib/api";
 import { formatRelativeTime, getInitials } from "@/lib/utils";
 import { toast } from "sonner";
 
+function personName(p?: { firstName?: string; lastName?: string; name?: string } | string | null) {
+  if (!p) return "—";
+  if (typeof p === "string") return p;
+  if (p.name) return p.name;
+  return `${p.firstName || ""} ${p.lastName || ""}`.trim() || "—";
+}
+
 export default function IssueDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const [comment, setComment] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -30,7 +47,7 @@ export default function IssueDetailPage() {
   });
 
   const commentMutation = useMutation({
-    mutationFn: (content: string) => issuesApi.addComment(id, content),
+    mutationFn: (body: string) => issuesApi.addComment(id, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["issue", id] });
       setComment("");
@@ -39,10 +56,35 @@ export default function IssueDetailPage() {
     onError: () => toast.error("Failed to add comment"),
   });
 
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => issuesApi.uploadAttachment(id, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["issue", id] });
+      toast.success("File uploaded");
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Upload failed");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (attachmentId: string) => issuesApi.deleteAttachment(id, attachmentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["issue", id] });
+      toast.success("Attachment removed");
+    },
+    onError: () => toast.error("Failed to delete attachment"),
+  });
+
   const issue = data?.data?.data ?? data?.data ?? null;
 
   if (isLoading) {
-    return <div className="space-y-6"><Skeleton className="h-10 w-64" /><Skeleton className="h-48 w-full" /></div>;
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-10 w-64" />
+        <Skeleton className="h-48 w-full" />
+      </div>
+    );
   }
 
   if (!issue) {
@@ -51,24 +93,34 @@ export default function IssueDetailPage() {
         icon={Bug}
         title="Issue not found"
         description="This issue doesn't exist or you don't have access to it."
-        actionLabel="Back to issues"
-        actionHref="/issues"
+        actionLabel="Back to projects"
+        actionHref="/projects"
       />
     );
   }
+
+  const backHref = issue.project?.id
+    ? `/projects/${issue.project.id}/board`
+    : "/issues";
+
+  const comments = Array.isArray(issue.comments) ? issue.comments : [];
+  const attachments = Array.isArray(issue.attachments) ? issue.attachments : [];
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href="/issues"><ArrowLeft className="h-4 w-4" /></Link>
+          <Link href={backHref}>
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
         </Button>
         <div className="flex-1">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex flex-wrap items-center gap-2 mb-1">
             <Bug className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">#{issue.id}</span>
+            <span className="text-sm text-muted-foreground">{issue.key || `#${issue.id}`}</span>
             {issue.priority && <Badge variant="destructive">{issue.priority}</Badge>}
             {issue.status && <Badge variant="info">{issue.status}</Badge>}
+            {issue.type && <Badge variant="outline">{issue.type}</Badge>}
           </div>
           <h1 className="font-display text-2xl font-bold">{issue.title}</h1>
         </div>
@@ -77,34 +129,134 @@ export default function IssueDetailPage() {
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <Card>
-            <CardHeader><CardTitle className="text-base">Description</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle className="text-base">Description</CardTitle>
+            </CardHeader>
             <CardContent>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">{issue.description || "No description provided."}</p>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                {issue.description || "No description provided."}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Paperclip className="h-4 w-4" /> Attachments ({attachments.length})
+              </CardTitle>
+              <div>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadMutation.mutate(file);
+                    e.target.value = "";
+                  }}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={uploadMutation.isPending}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <Upload className="h-4 w-4 mr-1" />
+                  {uploadMutation.isPending ? "Uploading…" : "Upload"}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {attachments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No files attached yet.</p>
+              ) : (
+                attachments.map(
+                  (a: {
+                    id: string;
+                    name: string;
+                    storageUrl?: string | null;
+                    size?: number;
+                    uploadedBy?: { firstName?: string; lastName?: string };
+                  }) => (
+                    <div
+                      key={a.id}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0">
+                          {a.storageUrl ? (
+                            <a
+                              href={a.storageUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="truncate text-sm font-medium hover:underline"
+                            >
+                              {a.name}
+                            </a>
+                          ) : (
+                            <p className="truncate text-sm font-medium">{a.name}</p>
+                          )}
+                          <p className="text-[11px] text-muted-foreground">
+                            {personName(a.uploadedBy)}
+                            {a.size ? ` · ${(a.size / 1024).toFixed(1)} KB` : ""}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="shrink-0 text-muted-foreground"
+                        onClick={() => deleteMutation.mutate(a.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ),
+                )
+              )}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <MessageSquare className="h-4 w-4" /> Comments ({issue.comments?.length || 0})
+                <MessageSquare className="h-4 w-4" /> Comments ({comments.length})
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {issue.comments?.length > 0 ? (
-                issue.comments.map((c: { id: string; author: string; content: string; createdAt: string }) => (
-                  <div key={c.id} className="flex gap-3">
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback className="text-xs bg-primary/10 text-primary">{getInitials(c.author)}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{c.author}</span>
-                        <span className="text-xs text-muted-foreground">{formatRelativeTime(c.createdAt)}</span>
+              {comments.length > 0 ? (
+                comments.map(
+                  (c: {
+                    id: string;
+                    body?: string;
+                    content?: string;
+                    createdAt: string;
+                    author?: { firstName?: string; lastName?: string } | string;
+                  }) => {
+                    const author = personName(c.author);
+                    return (
+                      <div key={c.id} className="flex gap-3">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                            {getInitials(author)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">{author}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {formatRelativeTime(c.createdAt)}
+                            </span>
+                          </div>
+                          <p className="text-sm mt-1 whitespace-pre-wrap">
+                            {c.body || c.content}
+                          </p>
+                        </div>
                       </div>
-                      <p className="text-sm mt-1">{c.content}</p>
-                    </div>
-                  </div>
-                ))
+                    );
+                  },
+                )
               ) : (
                 <p className="text-sm text-muted-foreground">No comments yet.</p>
               )}
@@ -119,7 +271,7 @@ export default function IssueDetailPage() {
               </div>
               <Button
                 size="sm"
-                disabled={!comment.trim()}
+                disabled={!comment.trim() || commentMutation.isPending}
                 onClick={() => commentMutation.mutate(comment)}
               >
                 <Send className="h-4 w-4 mr-1" /> Comment
@@ -130,16 +282,35 @@ export default function IssueDetailPage() {
 
         <div className="space-y-4">
           <Card>
-            <CardHeader><CardTitle className="text-sm">Details</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle className="text-sm">Details</CardTitle>
+            </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <div className="flex justify-between"><span className="text-muted-foreground">Assignee</span><span>{issue.assignee || "—"}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Reporter</span><span>{issue.reporter || "—"}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Project</span><span>{issue.project || "—"}</span></div>
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground">Assignee</span>
+                <span className="text-right">{personName(issue.assignee)}</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground">Reporter</span>
+                <span className="text-right">{personName(issue.reporter)}</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground">Project</span>
+                <span className="text-right">
+                  {issue.project?.name || issue.project || "—"}
+                </span>
+              </div>
               {issue.type && (
-                <div className="flex justify-between"><span className="text-muted-foreground">Type</span><Badge variant="outline">{issue.type}</Badge></div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Type</span>
+                  <Badge variant="outline">{issue.type}</Badge>
+                </div>
               )}
               {issue.createdAt && (
-                <div className="flex justify-between"><span className="text-muted-foreground">Created</span><span>{formatRelativeTime(issue.createdAt)}</span></div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Created</span>
+                  <span>{formatRelativeTime(issue.createdAt)}</span>
+                </div>
               )}
             </CardContent>
           </Card>

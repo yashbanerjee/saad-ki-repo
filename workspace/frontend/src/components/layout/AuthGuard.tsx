@@ -23,7 +23,6 @@ const STAFF_ONLY_PREFIXES = [
   "/admin",
   "/onboarding",
   "/nda",
-  "/issues",
 ];
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {

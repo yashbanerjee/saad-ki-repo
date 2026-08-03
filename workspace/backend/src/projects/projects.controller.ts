@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ProjectsService } from './projects.service';
+import { IssuesService } from '../issues/issues.service';
 import {
   CreateProjectDto,
   UpdateProjectDto,
@@ -24,13 +25,24 @@ import {
 import { CurrentUser, AuthenticatedUser, Permissions } from '../common/decorators';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { ParseCuidPipe } from '../common/pipes/parse-cuid.pipe';
+import { IsString } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+
+class UpdateBoardTaskDto {
+  @ApiProperty()
+  @IsString()
+  status: string;
+}
 
 @ApiTags('projects')
 @ApiBearerAuth()
 @Controller('projects')
 @UseGuards(PermissionsGuard)
 export class ProjectsController {
-  constructor(private projectsService: ProjectsService) {}
+  constructor(
+    private projectsService: ProjectsService,
+    private issuesService: IssuesService,
+  ) {}
 
   @Get()
   @Permissions('projects:read')
@@ -56,6 +68,30 @@ export class ProjectsController {
   @Permissions('projects:read')
   findOne(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.projectsService.findOne(id, user.companyId!);
+  }
+
+  @Get(':id/board')
+  @Permissions('issues:read')
+  getBoard(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    const isClient = user.roles?.includes('client') ?? false;
+    return this.issuesService.getBoard(id, user.companyId!, isClient);
+  }
+
+  @Patch(':id/tasks/:taskId')
+  @Permissions('issues:read')
+  updateBoardTask(
+    @Param('id', ParseCuidPipe) id: string,
+    @Param('taskId', ParseCuidPipe) taskId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateBoardTaskDto,
+  ) {
+    return this.issuesService.updateBoardTaskStatus(
+      id,
+      taskId,
+      user.companyId!,
+      user.id,
+      dto.status,
+    );
   }
 
   @Post()

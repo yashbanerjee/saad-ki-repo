@@ -95,7 +95,7 @@ const mobileLinks = [
   { href: "/dashboard", label: "Dashboard", roles: ["admin", "manager", "member"] as const },
   { href: "/client-portal", label: "Dashboard", roles: ["client"] as const },
   { href: "/projects", label: "Projects", roles: ["admin", "manager", "member", "client"] as const },
-  { href: "/issues", label: "Issues", roles: ["admin", "manager", "member"] as const },
+  { href: "/issues", label: "Issues", roles: ["admin", "manager", "member", "client"] as const },
   { href: "/documents", label: "Documents", roles: ["admin", "manager", "member", "client"] as const },
   { href: "/clients", label: "Clients", roles: ["admin", "manager", "member"] as const },
   { href: "/team", label: "Team", roles: ["admin", "manager"] as const },

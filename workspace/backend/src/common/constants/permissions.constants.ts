@@ -79,7 +79,12 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'search:read', 'documents:read',
   ],
   client: [
-    'projects:read', 'issues:read', 'documents:read', 'documents:manage', 'nda:read',
+    'projects:read',
+    'issues:read',
+    'issues:create',
+    'documents:read',
+    'documents:manage',
+    'nda:read',
   ],
   viewer: [
     'projects:read', 'issues:read', 'dashboard:read', 'search:read',

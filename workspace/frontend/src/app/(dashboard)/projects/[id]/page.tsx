@@ -79,7 +79,7 @@ export default function ProjectDetailPage() {
       desc: "Timeline, milestones, client tasks & share link",
       primary: true,
     },
-    { href: `/projects/${id}/board`, label: "Board", icon: Kanban, desc: "Internal Kanban board" },
+    { href: `/projects/${id}/board`, label: "Board", icon: Kanban, desc: "Kanban board — create tasks, Testing & more" },
     { href: `/projects/${id}/backlog`, label: "Backlog", icon: List, desc: "Internal task list" },
     { href: `/projects/${id}/sprints`, label: "Sprints", icon: Zap, desc: "Sprint planning" },
   ];

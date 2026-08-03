@@ -8,8 +8,12 @@ import {
   Param,
   Query,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { IssuesService } from './issues.service';
 import {
   CreateIssueDto,
@@ -22,6 +26,12 @@ import { CurrentUser, AuthenticatedUser, Permissions } from '../common/decorator
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { ParseCuidPipe } from '../common/pipes/parse-cuid.pipe';
+import { memoryStorage } from 'multer';
+
+const uploadMulterOptions = {
+  storage: memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+};
 
 @ApiTags('issues')
 @ApiBearerAuth()
@@ -63,7 +73,7 @@ export class IssuesController {
   }
 
   @Post(':id/transition')
-  @Permissions('issues:manage')
+  @Permissions('issues:read')
   transition(
     @Param('id', ParseCuidPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -79,13 +89,42 @@ export class IssuesController {
   }
 
   @Post(':id/comments')
-  @Permissions('issues:manage')
+  @Permissions('issues:read')
   addComment(
     @Param('id', ParseCuidPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateCommentDto,
   ) {
     return this.issuesService.addComment(id, user.companyId!, user.id, dto);
+  }
+
+  @Post(':id/attachments')
+  @Permissions('issues:read')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file', uploadMulterOptions))
+  addAttachment(
+    @Param('id', ParseCuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('Please choose a file to upload');
+    return this.issuesService.addAttachment(id, user.companyId!, user.id, file);
+  }
+
+  @Delete(':id/attachments/:attachmentId')
+  @Permissions('issues:read')
+  deleteAttachment(
+    @Param('id', ParseCuidPipe) id: string,
+    @Param('attachmentId', ParseCuidPipe) attachmentId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.issuesService.deleteAttachment(id, attachmentId, user.companyId!);
   }
 
   @Post(':id/watchers')

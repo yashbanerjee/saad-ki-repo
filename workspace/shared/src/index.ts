@@ -69,8 +69,19 @@ export enum FieldType {
 export const BOARD_COLUMNS: { status: IssueStatus; label: string; color: string }[] = [
   { status: IssueStatus.TODO, label: 'To Do', color: '#94a3b8' },
   { status: IssueStatus.IN_PROGRESS, label: 'In Progress', color: '#3b82f6' },
+  { status: IssueStatus.TESTING, label: 'Testing', color: '#06b6d4' },
   { status: IssueStatus.CODE_REVIEW, label: 'Code Review', color: '#8b5cf6' },
   { status: IssueStatus.READY_FOR_QA, label: 'Ready for QA', color: '#f59e0b' },
+  { status: IssueStatus.QA_FAILED, label: 'QA Failed', color: '#ef4444' },
+  { status: IssueStatus.READY_FOR_RELEASE, label: 'Ready for Release', color: '#14b8a6' },
+  { status: IssueStatus.DONE, label: 'Done', color: '#22c55e' },
+];
+
+/** Simplified columns for client portal boards */
+export const CLIENT_BOARD_COLUMNS: { status: IssueStatus; label: string; color: string }[] = [
+  { status: IssueStatus.TODO, label: 'To Do', color: '#94a3b8' },
+  { status: IssueStatus.IN_PROGRESS, label: 'In Progress', color: '#3b82f6' },
+  { status: IssueStatus.TESTING, label: 'Testing', color: '#06b6d4' },
   { status: IssueStatus.DONE, label: 'Done', color: '#22c55e' },
 ];
 

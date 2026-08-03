@@ -64,6 +64,11 @@ export class CreateIssueDto {
   @IsOptional()
   @IsDateString()
   dueDate?: string;
+
+  @ApiPropertyOptional({ enum: IssueStatus })
+  @IsOptional()
+  @IsEnum(IssueStatus)
+  status?: IssueStatus;
 }
 
 export class UpdateIssueDto {

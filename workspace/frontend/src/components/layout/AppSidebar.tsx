@@ -146,9 +146,9 @@ export function AppSidebar() {
       item.href === "/dashboard" ? { ...item, href: homeHref } : item,
     ),
   ).filter((item) => {
-    // Clients: keep a focused nav (no staff Issues board)
+    // Clients: focused nav + Issues for board/task access
     if (!isClient) return true;
-    return ["Dashboard", "Projects", "Documents"].includes(item.title);
+    return ["Dashboard", "Projects", "Issues", "Documents"].includes(item.title);
   });
 
   // Clients must never see CRM or Client Portal
