@@ -18,6 +18,7 @@ import {
   CreateClientOnboardingFormDto,
   ListClientsQueryDto,
   UpdateClientDto,
+  UpdateClientSetupDto,
 } from './dto/client.dto';
 import { CurrentUser, AuthenticatedUser, Permissions } from '../common/decorators';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
@@ -57,6 +58,35 @@ export class ClientsController {
     return this.clientsService.create(user.companyId!, user.id, dto);
   }
 
+  @Post(':id/setup/enable')
+  @Permissions('clients:manage')
+  enableSetup(
+    @Param('id', ParseCuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.clientsService.enableSetup(id, user.companyId!);
+  }
+
+  @Post(':id/setup')
+  @Permissions('clients:manage')
+  updateSetup(
+    @Param('id', ParseCuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateClientSetupDto,
+  ) {
+    return this.clientsService.updateSetup(id, user.companyId!, dto);
+  }
+
+  @Post(':id/create-login')
+  @Permissions('clients:manage')
+  createLogin(
+    @Param('id', ParseCuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateClientLoginDto,
+  ) {
+    return this.clientsService.createLogin(id, user.companyId!, dto);
+  }
+
   @Post(':id/onboarding-forms/assign')
   @Permissions('clients:manage')
   assignForm(
@@ -90,16 +120,6 @@ export class ClientsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.clientsService.unassignOnboardingForm(id, user.companyId!, assignmentId);
-  }
-
-  @Post(':id/create-login')
-  @Permissions('clients:manage')
-  createLogin(
-    @Param('id', ParseCuidPipe) id: string,
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: CreateClientLoginDto,
-  ) {
-    return this.clientsService.createLogin(id, user.companyId!, dto);
   }
 
   @Patch(':id')

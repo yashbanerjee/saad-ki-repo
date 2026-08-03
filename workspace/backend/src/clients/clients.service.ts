@@ -14,7 +14,9 @@ import {
   CreateClientLoginDto,
   CreateClientOnboardingFormDto,
   ListClientsQueryDto,
+  SignSetupNdaDto,
   UpdateClientDto,
+  UpdateClientSetupDto,
 } from './dto/client.dto';
 import { paginate, paginatedResponse } from '../common/dto/pagination.dto';
 import {
@@ -59,12 +61,43 @@ export class ClientsService {
           _count: {
             select: { projects: true, deals: true, formAssignments: true },
           },
+          formAssignments: {
+            select: { status: true },
+          },
+          ndaSignatures: {
+            where: { status: 'SIGNED' },
+            select: { id: true },
+            take: 1,
+          },
         },
         orderBy: { name: 'asc' },
       }),
       this.prisma.client.count({ where }),
     ]);
-    return paginatedResponse(data, total, page, limit);
+
+    const mapped = data.map(({ formAssignments, ndaSignatures, ...c }) => {
+      const formsTotal = formAssignments.length;
+      const formsDone = formAssignments.filter((a) => a.status === 'COMPLETED').length;
+      const accountDone = !!c.userId;
+      const ndaDone = !!c.ndaSignedAt || ndaSignatures.length > 0;
+      const formsComplete = formsTotal === 0 || formsDone === formsTotal;
+      const setupComplete =
+        accountDone && formsComplete && (!c.requireNda || ndaDone);
+      return {
+        ...c,
+        setupProgress: {
+          accountDone,
+          formsDone,
+          formsTotal,
+          formsComplete,
+          ndaDone,
+          requireNda: c.requireNda,
+          setupComplete,
+        },
+      };
+    });
+
+    return paginatedResponse(mapped, total, page, limit);
   }
 
   async findOne(id: string, companyId: string) {
@@ -383,6 +416,7 @@ export class ClientsService {
       where: { id },
       data: {
         userId: user.id,
+        accountSetupAt: new Date(),
         ...(realEmail ? { email: realEmail } : {}),
         ...(phone ? { phone } : {}),
       },
@@ -398,5 +432,196 @@ export class ClientsService {
         ? 'Client login created'
         : 'Client login created — share the temporary password securely',
     };
+  }
+
+  async enableSetup(id: string, companyId: string) {
+    await this.findOne(id, companyId);
+    const client = await this.prisma.client.findFirst({ where: { id, companyId } });
+    const token = client?.setupToken || randomBytes(24).toString('hex');
+    return this.prisma.client.update({
+      where: { id },
+      data: { setupEnabled: true, setupToken: token },
+      select: {
+        id: true,
+        name: true,
+        setupToken: true,
+        setupEnabled: true,
+        requireNda: true,
+        ndaTemplateId: true,
+      },
+    });
+  }
+
+  async updateSetup(id: string, companyId: string, dto: UpdateClientSetupDto) {
+    await this.findOne(id, companyId);
+    if (dto.ndaTemplateId) {
+      const tpl = await this.prisma.ndaTemplate.findFirst({
+        where: { id: dto.ndaTemplateId, companyId, isActive: true },
+      });
+      if (!tpl) throw new BadRequestException('NDA template not found');
+    }
+    return this.prisma.client.update({
+      where: { id },
+      data: {
+        ...(dto.requireNda !== undefined ? { requireNda: dto.requireNda } : {}),
+        ...(dto.ndaTemplateId !== undefined
+          ? { ndaTemplateId: dto.ndaTemplateId || null }
+          : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        setupToken: true,
+        setupEnabled: true,
+        requireNda: true,
+        ndaTemplateId: true,
+      },
+    });
+  }
+
+  async getSetupByToken(token: string) {
+    const client = await this.prisma.client.findFirst({
+      where: { setupToken: token, setupEnabled: true },
+      include: {
+        company: { select: { name: true } },
+        ndaTemplate: {
+          select: { id: true, title: true, content: true, version: true },
+        },
+        formAssignments: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            form: {
+              select: {
+                id: true,
+                title: true,
+                status: true,
+                secureToken: true,
+                description: true,
+              },
+            },
+          },
+        },
+        ndaSignatures: {
+          where: { status: 'SIGNED' },
+          take: 1,
+          select: { id: true, signedAt: true },
+        },
+      },
+    });
+    if (!client) throw new NotFoundException('Setup link not found or disabled');
+
+    // Auto-pick latest active NDA template if requireNda but none set
+    let ndaTemplate = client.ndaTemplate;
+    if (client.requireNda && !ndaTemplate) {
+      ndaTemplate = await this.prisma.ndaTemplate.findFirst({
+        where: { companyId: client.companyId, isActive: true },
+        orderBy: { updatedAt: 'desc' },
+        select: { id: true, title: true, content: true, version: true },
+      });
+    }
+
+    const forms = client.formAssignments
+      .filter((a) => a.form.status === 'PUBLISHED' || a.status === 'COMPLETED')
+      .map((a) => ({
+        assignmentId: a.id,
+        formId: a.form.id,
+        title: a.form.title,
+        description: a.form.description,
+        status: a.status,
+        secureToken: a.form.secureToken,
+        completed: a.status === 'COMPLETED',
+      }));
+
+    const accountDone = !!client.userId;
+    const formsComplete =
+      forms.length === 0 || forms.every((f) => f.completed);
+    const ndaDone = !!client.ndaSignedAt || client.ndaSignatures.length > 0;
+    const setupComplete =
+      accountDone && formsComplete && (!client.requireNda || ndaDone);
+
+    let currentStep: 'account' | 'forms' | 'nda' | 'done' = 'account';
+    if (!accountDone) currentStep = 'account';
+    else if (!formsComplete) currentStep = 'forms';
+    else if (client.requireNda && !ndaDone) currentStep = 'nda';
+    else currentStep = 'done';
+
+    return {
+      clientId: client.id,
+      clientName: client.name,
+      companyName: client.company.name,
+      emailHint: client.email?.endsWith('@client.taskflow.local')
+        ? null
+        : client.email,
+      phoneHint: client.phone,
+      accountDone,
+      forms,
+      formsComplete,
+      requireNda: client.requireNda,
+      ndaDone,
+      ndaTemplate: client.requireNda ? ndaTemplate : null,
+      setupComplete,
+      currentStep,
+    };
+  }
+
+  async signSetupNda(
+    token: string,
+    userId: string,
+    dto: SignSetupNdaDto,
+    ip?: string,
+    userAgent?: string,
+  ) {
+    const client = await this.prisma.client.findFirst({
+      where: { setupToken: token, setupEnabled: true },
+      include: {
+        ndaTemplate: true,
+        ndaSignatures: { where: { status: 'SIGNED' }, take: 1 },
+      },
+    });
+    if (!client) throw new NotFoundException('Setup link not found or disabled');
+    if (!client.requireNda) {
+      throw new BadRequestException('NDA is not required for this client');
+    }
+    if (client.userId !== userId) {
+      throw new BadRequestException('Sign in with the account created for this invite');
+    }
+    if (client.ndaSignedAt || client.ndaSignatures.length) {
+      return { message: 'NDA already signed', alreadySigned: true };
+    }
+
+    let templateId = client.ndaTemplateId;
+    if (!templateId) {
+      const tpl = await this.prisma.ndaTemplate.findFirst({
+        where: { companyId: client.companyId, isActive: true },
+        orderBy: { updatedAt: 'desc' },
+      });
+      if (!tpl) {
+        throw new BadRequestException(
+          'No NDA template is available — ask your agency to create one',
+        );
+      }
+      templateId = tpl.id;
+    }
+
+    const signature = await this.prisma.digitalSignature.create({
+      data: {
+        ndaTemplateId: templateId,
+        clientId: client.id,
+        userId,
+        status: 'SIGNED',
+        signatureType: dto.signatureType,
+        signatureData: dto.signatureData,
+        signedAt: new Date(),
+        ipAddress: ip,
+        userAgent,
+      },
+    });
+
+    await this.prisma.client.update({
+      where: { id: client.id },
+      data: { ndaSignedAt: new Date(), ndaTemplateId: templateId },
+    });
+
+    return { message: 'NDA signed', signatureId: signature.id };
   }
 }

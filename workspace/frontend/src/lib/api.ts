@@ -105,6 +105,7 @@ export const authApi = {
     phone?: string;
     password: string;
     portalToken?: string;
+    setupToken?: string;
   }) => api.post("/auth/register-client", data),
   forgotPassword: (email: string) =>
     api.post("/auth/forgot-password", { email }),
@@ -183,6 +184,19 @@ export const clientsApi = {
   ) => api.post(`/clients/${clientId}/onboarding-forms`, data),
   unassignOnboardingForm: (clientId: string, assignmentId: string) =>
     api.delete(`/clients/${clientId}/onboarding-forms/${assignmentId}`),
+  enableSetup: (clientId: string) => api.post(`/clients/${clientId}/setup/enable`),
+  updateSetup: (
+    clientId: string,
+    data: { requireNda?: boolean; ndaTemplateId?: string | null },
+  ) => api.post(`/clients/${clientId}/setup`, data),
+};
+
+export const setupApi = {
+  get: (token: string) => api.get(`/setup/${token}`),
+  signNda: (
+    token: string,
+    data: { signatureType: "DRAW" | "TYPE" | "UPLOAD"; signatureData: string },
+  ) => api.post(`/setup/${token}/nda`, data),
 };
 
 // Leads API

@@ -81,6 +81,11 @@ export class RegisterClientDto {
   @IsOptional()
   @IsString()
   portalToken?: string;
+
+  @ApiPropertyOptional({ description: 'Client setup journey token from agency invite link' })
+  @IsOptional()
+  @IsString()
+  setupToken?: string;
 }
 
 export class RefreshTokenDto {

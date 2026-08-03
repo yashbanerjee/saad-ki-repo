@@ -1,6 +1,6 @@
 import { IsString, IsOptional, IsEmail, IsEnum, IsBoolean, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ClientType } from '@prisma/client';
+import { ClientType, SignatureType } from '@prisma/client';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 
 export class ListClientsQueryDto extends PaginationDto {
@@ -200,4 +200,26 @@ export class CreateClientOnboardingFormDto {
   @IsOptional()
   @IsBoolean()
   publish?: boolean;
+}
+
+export class UpdateClientSetupDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  requireNda?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  ndaTemplateId?: string | null;
+}
+
+export class SignSetupNdaDto {
+  @ApiProperty({ enum: SignatureType })
+  @IsEnum(SignatureType)
+  signatureType: SignatureType;
+
+  @ApiProperty({ description: 'Typed name or signature payload' })
+  @IsString()
+  signatureData: string;
 }

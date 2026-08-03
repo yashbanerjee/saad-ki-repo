@@ -248,7 +248,19 @@ export class AuthService {
     let companyId: string | null = null;
     let clientId: string | null = null;
 
-    if (dto.portalToken) {
+    if (dto.setupToken) {
+      const setupClient = await this.prisma.client.findFirst({
+        where: { setupToken: dto.setupToken, setupEnabled: true },
+      });
+      if (!setupClient) {
+        throw new BadRequestException('Invalid or disabled setup link');
+      }
+      if (setupClient.userId) {
+        throw new ConflictException('This client already has an account — please sign in');
+      }
+      companyId = setupClient.companyId;
+      clientId = setupClient.id;
+    } else if (dto.portalToken) {
       const project = await this.prisma.project.findFirst({
         where: { portalToken: dto.portalToken, portalEnabled: true },
         select: { companyId: true, clientId: true, client: true },
@@ -339,6 +351,7 @@ export class AuthService {
           where: { id: clientId },
           data: {
             userId: created.id,
+            accountSetupAt: new Date(),
             ...(emailRaw ? { email: emailRaw } : {}),
             ...(phone ? { phone } : {}),
             ...(firstName ? { firstName } : {}),

@@ -6,9 +6,11 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Building2,
+  CheckCircle2,
   ClipboardList,
   Copy,
   ExternalLink,
+  Link2,
   Mail,
   Phone,
   Plus,
@@ -20,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -50,6 +53,18 @@ interface Client {
   firstName?: string;
   lastName?: string;
   status: string;
+  setupToken?: string | null;
+  setupEnabled?: boolean;
+  requireNda?: boolean;
+  setupProgress?: {
+    accountDone: boolean;
+    formsDone: number;
+    formsTotal: number;
+    formsComplete: boolean;
+    ndaDone: boolean;
+    requireNda: boolean;
+    setupComplete: boolean;
+  };
   _count?: { projects?: number; formAssignments?: number };
 }
 
@@ -58,6 +73,11 @@ type ClientTypeFilter = "ALL" | "COMPANY" | "INDIVIDUAL";
 function publicFormUrl(token: string, clientId: string) {
   if (typeof window === "undefined") return "";
   return `${window.location.origin}/onboarding/public/${token}?clientId=${clientId}`;
+}
+
+function setupInviteUrl(token: string) {
+  if (typeof window === "undefined") return "";
+  return `${window.location.origin}/setup/${token}`;
 }
 
 export default function ClientsPage() {
@@ -214,6 +234,42 @@ export default function ClientsPage() {
       toast.error(Array.isArray(message) ? message.join(", ") : message);
     },
   });
+
+  const copySetupLink = async (client: Client) => {
+    try {
+      let token = client.setupEnabled ? client.setupToken : null;
+      if (!token) {
+        const res = await clientsApi.enableSetup(client.id);
+        const payload = res.data?.data ?? res.data;
+        token = payload?.setupToken as string;
+        queryClient.invalidateQueries({ queryKey: ["clients"] });
+      }
+      if (!token) throw new Error("No setup token");
+      await navigator.clipboard.writeText(setupInviteUrl(token));
+      toast.success("Setup link copied");
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Could not copy setup link";
+      toast.error(Array.isArray(message) ? message.join(", ") : message);
+    }
+  };
+
+  const toggleRequireNda = async (client: Client, requireNda: boolean) => {
+    try {
+      if (!client.setupEnabled) {
+        await clientsApi.enableSetup(client.id);
+      }
+      await clientsApi.updateSetup(client.id, { requireNda });
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+      toast.success(requireNda ? "NDA required in setup" : "NDA not required");
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Could not update setup";
+      toast.error(Array.isArray(message) ? message.join(", ") : message);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -431,7 +487,63 @@ export default function ClientsPage() {
                       {client._count?.projects ?? 0} projects
                     </span>
                   </div>
+
+                  {client.setupProgress && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      <Badge
+                        variant={client.setupProgress.accountDone ? "success" : "secondary"}
+                        className="text-[10px] gap-0.5"
+                      >
+                        {client.setupProgress.accountDone && (
+                          <CheckCircle2 className="h-3 w-3" />
+                        )}
+                        Account
+                      </Badge>
+                      <Badge
+                        variant={client.setupProgress.formsComplete ? "success" : "secondary"}
+                        className="text-[10px] gap-0.5"
+                      >
+                        {client.setupProgress.formsComplete && (
+                          <CheckCircle2 className="h-3 w-3" />
+                        )}
+                        Forms {client.setupProgress.formsDone}/
+                        {client.setupProgress.formsTotal}
+                      </Badge>
+                      {client.setupProgress.requireNda && (
+                        <Badge
+                          variant={client.setupProgress.ndaDone ? "success" : "secondary"}
+                          className="text-[10px] gap-0.5"
+                        >
+                          {client.setupProgress.ndaDone && (
+                            <CheckCircle2 className="h-3 w-3" />
+                          )}
+                          NDA
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between gap-2 rounded-md border px-2.5 py-2">
+                    <Label htmlFor={`nda-${client.id}`} className="text-xs font-normal">
+                      Require NDA
+                    </Label>
+                    <Switch
+                      id={`nda-${client.id}`}
+                      checked={!!client.requireNda}
+                      onCheckedChange={(v) => toggleRequireNda(client, v)}
+                    />
+                  </div>
+
                   <div className="flex flex-wrap gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="h-8 text-xs"
+                      onClick={() => copySetupLink(client)}
+                    >
+                      <Link2 className="h-3.5 w-3.5 mr-1" />
+                      Copy setup link
+                    </Button>
                     <Button
                       size="sm"
                       variant="outline"

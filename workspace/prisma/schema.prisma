@@ -751,6 +751,13 @@ model Client {
   registrationNo      String?
   logo           String?
   status         String     @default("active")
+  /// Shareable client onboarding setup journey
+  setupToken     String?    @unique
+  setupEnabled   Boolean    @default(false)
+  requireNda     Boolean    @default(false)
+  ndaTemplateId  String?
+  accountSetupAt DateTime?
+  ndaSignedAt    DateTime?
   metadata       Json       @default("{}")
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
@@ -758,6 +765,7 @@ model Client {
   company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   organization    Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   user            User?            @relation("ClientLoginUser", fields: [userId], references: [id], onDelete: SetNull)
+  ndaTemplate     NdaTemplate?     @relation("ClientSetupNda", fields: [ndaTemplateId], references: [id], onDelete: SetNull)
   convertedFromLead Lead?          @relation("LeadConvertedClient")
   projects        Project[]
   formSubmissions   FormSubmission[]
@@ -774,6 +782,7 @@ model Client {
   @@index([email])
   @@index([phone])
   @@index([type])
+  @@index([setupToken])
   @@map("clients")
 }
 
@@ -1281,8 +1290,9 @@ model NdaTemplate {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  company    Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  signatures DigitalSignature[]
+  company        Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  signatures     DigitalSignature[]
+  setupClients   Client[]           @relation("ClientSetupNda")
 
   @@index([companyId])
   @@map("nda_templates")
