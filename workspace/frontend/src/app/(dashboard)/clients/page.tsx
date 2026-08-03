@@ -552,52 +552,17 @@ export default function ClientsPage() {
                       </div>
                     ) : (
                       <>
-                        {accountDone ? (
+                        {accountDone && (
                           <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
                             <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                             Account setup completed
                           </div>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="default"
-                            className="h-8 text-xs w-full sm:w-auto"
-                            onClick={() => copySetupLink(client)}
-                          >
-                            <Link2 className="h-3.5 w-3.5 mr-1" />
-                            Copy setup link
-                          </Button>
                         )}
 
-                        {formsSubmitted ? (
+                        {formsSubmitted && (
                           <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
                             <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                             Onboarding form submitted
-                          </div>
-                        ) : (
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 text-xs"
-                              onClick={() => {
-                                setAssignClient(client);
-                                setAssignMode("assign");
-                                setAssignFormId("");
-                                setCreateFormTitle(`${client.name} onboarding`);
-                              }}
-                            >
-                              <ClipboardList className="h-3.5 w-3.5 mr-1" />
-                              Assign form
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-8 text-xs"
-                              onClick={() => setFormsClient(client)}
-                            >
-                              View forms
-                            </Button>
                           </div>
                         )}
 
@@ -608,17 +573,58 @@ export default function ClientsPage() {
                           </div>
                         )}
 
-                        {nextStepLabel && (
-                          <Button
-                            size="sm"
-                            variant="default"
-                            className="h-8 text-xs w-full sm:w-auto"
-                            onClick={() => copySetupLink(client)}
-                          >
-                            {nextStepLabel}
-                            <ArrowRight className="h-3.5 w-3.5 ml-1" />
-                          </Button>
-                        )}
+                        <div className="flex flex-wrap gap-2">
+                          {!accountDone && (
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="h-8 text-xs"
+                              onClick={() => copySetupLink(client)}
+                            >
+                              <Link2 className="h-3.5 w-3.5 mr-1" />
+                              Copy setup link
+                            </Button>
+                          )}
+
+                          {!formsSubmitted && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 text-xs"
+                                onClick={() => {
+                                  setAssignClient(client);
+                                  setAssignMode("assign");
+                                  setAssignFormId("");
+                                  setCreateFormTitle(`${client.name} onboarding`);
+                                }}
+                              >
+                                <ClipboardList className="h-3.5 w-3.5 mr-1" />
+                                Assign form
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 text-xs"
+                                onClick={() => setFormsClient(client)}
+                              >
+                                View forms
+                              </Button>
+                            </>
+                          )}
+
+                          {nextStepLabel && (
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="h-8 text-xs"
+                              onClick={() => copySetupLink(client)}
+                            >
+                              {nextStepLabel}
+                              <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                            </Button>
+                          )}
+                        </div>
                       </>
                     )}
                   </div>

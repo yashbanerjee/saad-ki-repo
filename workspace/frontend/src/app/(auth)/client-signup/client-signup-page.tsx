@@ -18,7 +18,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { authApi } from "@/lib/api";
 import { normalizeAuthUser, useAuthStore } from "@/lib/auth-store";
 import { toast } from "sonner";
@@ -27,20 +26,28 @@ const schema = z
   .object({
     firstName: z.string().min(1, "First name is required"),
     lastName: z.string().optional(),
-    mode: z.enum(["email", "phone"]),
     email: z.string().optional(),
     phone: z.string().optional(),
     password: z.string().min(8, "Password must be at least 8 characters"),
   })
   .superRefine((data, ctx) => {
-    if (data.mode === "email") {
-      if (!data.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
-        ctx.addIssue({ code: "custom", message: "Valid email required", path: ["email"] });
-      }
-    } else if (!data.phone || data.phone.replace(/\D/g, "").length < 7) {
+    const email = data.email?.trim() || "";
+    const phone = data.phone?.trim() || "";
+    if (!email && !phone) {
       ctx.addIssue({
         code: "custom",
-        message: "Valid mobile number required",
+        message: "Enter email or mobile number (or both)",
+        path: ["email"],
+      });
+      return;
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      ctx.addIssue({ code: "custom", message: "Enter a valid email", path: ["email"] });
+    }
+    if (phone && phone.replace(/\D/g, "").length < 7) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Enter a valid mobile number",
         path: ["phone"],
       });
     }
@@ -58,15 +65,11 @@ export default function ClientSignupPage() {
   const {
     register,
     handleSubmit,
-    setValue,
-    watch,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { mode: "email", firstName: "", lastName: "", password: "" },
+    defaultValues: { firstName: "", lastName: "", email: "", phone: "", password: "" },
   });
-
-  const mode = watch("mode");
 
   const onSubmit = async (data: FormData) => {
     setLoading(true);
@@ -74,8 +77,8 @@ export default function ClientSignupPage() {
       const res = await authApi.registerClient({
         firstName: data.firstName,
         lastName: data.lastName || undefined,
-        email: data.mode === "email" ? data.email : undefined,
-        phone: data.mode === "phone" ? data.phone : undefined,
+        email: data.email?.trim() || undefined,
+        phone: data.phone?.trim() || undefined,
         password: data.password,
         portalToken,
       });
@@ -104,7 +107,7 @@ export default function ClientSignupPage() {
         </div>
         <CardTitle className="text-2xl">Create client account</CardTitle>
         <CardDescription>
-          Sign up with email or mobile — then log in anytime
+          Enter email, mobile, or both — then log in anytime
           {portalToken ? " to follow your project" : ""}
         </CardDescription>
       </CardHeader>
@@ -124,37 +127,28 @@ export default function ClientSignupPage() {
             </div>
           </div>
 
-          <Tabs
-            value={mode}
-            onValueChange={(v) => setValue("mode", v as "email" | "phone")}
-          >
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="email">Email</TabsTrigger>
-              <TabsTrigger value="phone">Mobile</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div className="space-y-2">
+            <Label>Email</Label>
+            <Input type="email" placeholder="you@email.com" {...register("email")} />
+            {errors.email && (
+              <p className="text-xs text-destructive">{errors.email.message}</p>
+            )}
+          </div>
 
-          {mode === "email" ? (
-            <div className="space-y-2">
-              <Label>Email</Label>
-              <Input type="email" placeholder="you@email.com" {...register("email")} />
-              {errors.email && (
-                <p className="text-xs text-destructive">{errors.email.message}</p>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <Label>Mobile number</Label>
-              <Input
-                type="tel"
-                placeholder="+971 50 000 0000"
-                {...register("phone")}
-              />
-              {errors.phone && (
-                <p className="text-xs text-destructive">{errors.phone.message}</p>
-              )}
-            </div>
-          )}
+          <div className="space-y-2">
+            <Label>Mobile number</Label>
+            <Input
+              type="tel"
+              placeholder="+971 50 000 0000"
+              {...register("phone")}
+            />
+            {errors.phone && (
+              <p className="text-xs text-destructive">{errors.phone.message}</p>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              At least one of email or mobile is required.
+            </p>
+          </div>
 
           <div className="space-y-2">
             <Label>Password</Label>

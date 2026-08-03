@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -28,7 +28,6 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SignaturePad } from "@/components/features/SignaturePad";
 import { authApi, setupApi } from "@/lib/api";
 import { normalizeAuthUser, useAuthStore } from "@/lib/auth-store";
@@ -39,20 +38,28 @@ const accountSchema = z
   .object({
     firstName: z.string().min(1, "First name is required"),
     lastName: z.string().optional(),
-    mode: z.enum(["email", "phone"]),
     email: z.string().optional(),
     phone: z.string().optional(),
     password: z.string().min(8, "Password must be at least 8 characters"),
   })
   .superRefine((data, ctx) => {
-    if (data.mode === "email") {
-      if (!data.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
-        ctx.addIssue({ code: "custom", message: "Valid email required", path: ["email"] });
-      }
-    } else if (!data.phone || data.phone.replace(/\D/g, "").length < 7) {
+    const email = data.email?.trim() || "";
+    const phone = data.phone?.trim() || "";
+    if (!email && !phone) {
       ctx.addIssue({
         code: "custom",
-        message: "Valid mobile number required",
+        message: "Enter email or mobile number (or both)",
+        path: ["email"],
+      });
+      return;
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      ctx.addIssue({ code: "custom", message: "Enter a valid email", path: ["email"] });
+    }
+    if (phone && phone.replace(/\D/g, "").length < 7) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Enter a valid mobile number",
         path: ["phone"],
       });
     }
@@ -120,23 +127,29 @@ export default function ClientSetupPage() {
   const {
     register,
     handleSubmit,
-    setValue,
-    watch,
+    reset,
     formState: { errors },
   } = useForm<AccountForm>({
     resolver: zodResolver(accountSchema),
-    defaultValues: { mode: "email", firstName: "", lastName: "", password: "" },
+    defaultValues: { firstName: "", lastName: "", email: "", phone: "", password: "" },
   });
 
-  const mode = watch("mode");
+  useEffect(() => {
+    if (!setup) return;
+    reset((prev) => ({
+      ...prev,
+      email: setup.emailHint || prev.email || "",
+      phone: setup.phoneHint || prev.phone || "",
+    }));
+  }, [setup, reset]);
 
   const registerMutation = useMutation({
     mutationFn: (form: AccountForm) =>
       authApi.registerClient({
         firstName: form.firstName,
         lastName: form.lastName || undefined,
-        email: form.mode === "email" ? form.email : undefined,
-        phone: form.mode === "phone" ? form.phone : undefined,
+        email: form.email?.trim() || undefined,
+        phone: form.phone?.trim() || undefined,
         password: form.password,
         setupToken: token,
       }),
@@ -259,7 +272,7 @@ export default function ClientSetupPage() {
             <CardHeader>
               <CardTitle>Create your account</CardTitle>
               <CardDescription>
-                Use email or mobile. You&apos;ll use this to sign in later.
+                Enter email, mobile, or both. You&apos;ll use either to sign in later.
               </CardDescription>
             </CardHeader>
             <form onSubmit={handleSubmit((v) => registerMutation.mutate(v))}>
@@ -278,43 +291,32 @@ export default function ClientSetupPage() {
                   </div>
                 </div>
 
-                <Tabs
-                  value={mode}
-                  onValueChange={(v) => setValue("mode", v as "email" | "phone")}
-                >
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="email">Email</TabsTrigger>
-                    <TabsTrigger value="phone">Mobile</TabsTrigger>
-                  </TabsList>
-                </Tabs>
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input
+                    type="email"
+                    placeholder={setup.emailHint || "you@email.com"}
+                    {...register("email")}
+                  />
+                  {errors.email && (
+                    <p className="text-xs text-destructive">{errors.email.message}</p>
+                  )}
+                </div>
 
-                {mode === "email" ? (
-                  <div className="space-y-2">
-                    <Label>Email</Label>
-                    <Input
-                      type="email"
-                      placeholder={setup.emailHint || "you@email.com"}
-                      defaultValue={setup.emailHint || ""}
-                      {...register("email")}
-                    />
-                    {errors.email && (
-                      <p className="text-xs text-destructive">{errors.email.message}</p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <Label>Mobile number</Label>
-                    <Input
-                      type="tel"
-                      placeholder={setup.phoneHint || "+971 50 000 0000"}
-                      defaultValue={setup.phoneHint || ""}
-                      {...register("phone")}
-                    />
-                    {errors.phone && (
-                      <p className="text-xs text-destructive">{errors.phone.message}</p>
-                    )}
-                  </div>
-                )}
+                <div className="space-y-2">
+                  <Label>Mobile number</Label>
+                  <Input
+                    type="tel"
+                    placeholder={setup.phoneHint || "+971 50 000 0000"}
+                    {...register("phone")}
+                  />
+                  {errors.phone && (
+                    <p className="text-xs text-destructive">{errors.phone.message}</p>
+                  )}
+                  <p className="text-[11px] text-muted-foreground">
+                    At least one of email or mobile is required.
+                  </p>
+                </div>
 
                 <div className="space-y-2">
                   <Label>Password</Label>

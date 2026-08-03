@@ -49,7 +49,7 @@ export class LoginDto {
   password: string;
 }
 
-/** Client self-service account (email and/or mobile) */
+/** Client self-service account (email and/or mobile — at least one required) */
 export class RegisterClientDto {
   @ApiProperty()
   @IsString()
@@ -62,12 +62,14 @@ export class RegisterClientDto {
   lastName?: string;
 
   @ApiPropertyOptional()
-  @ValidateIf((o: RegisterClientDto) => !o.phone)
+  @IsOptional()
+  @ValidateIf((o: RegisterClientDto) => !!o.email)
   @IsEmail()
   email?: string;
 
   @ApiPropertyOptional()
-  @ValidateIf((o: RegisterClientDto) => !o.email)
+  @IsOptional()
+  @ValidateIf((o: RegisterClientDto) => !!o.phone)
   @IsString()
   @MinLength(7)
   phone?: string;
