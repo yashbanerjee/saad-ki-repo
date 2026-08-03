@@ -15,6 +15,7 @@ import { AuthService } from './auth.service';
 import { Public, CurrentUser, AuthenticatedUser } from '../common/decorators';
 import {
   RegisterCompanyDto,
+  RegisterClientDto,
   LoginDto,
   RefreshTokenDto,
   ForgotPasswordDto,
@@ -32,6 +33,22 @@ export class AuthController {
   @Post('register-company')
   async registerCompany(@Body() dto: RegisterCompanyDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const result = await this.authService.registerCompany(
+      dto,
+      req.ip,
+      req.headers['user-agent'],
+    );
+    this.setRefreshCookie(res, result.refreshToken);
+    return result;
+  }
+
+  @Public()
+  @Post('register-client')
+  async registerClient(
+    @Body() dto: RegisterClientDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.registerClient(
       dto,
       req.ip,
       req.headers['user-agent'],

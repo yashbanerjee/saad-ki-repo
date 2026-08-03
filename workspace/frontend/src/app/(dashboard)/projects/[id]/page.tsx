@@ -3,7 +3,15 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Kanban, List, Zap, Users, Calendar, ArrowRight } from "lucide-react";
+import {
+  Kanban,
+  List,
+  Zap,
+  Users,
+  Calendar,
+  ArrowRight,
+  LayoutDashboard,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -45,9 +53,34 @@ export default function ProjectDetailPage() {
     );
   }
 
+  const clientName =
+    typeof project.client === "string"
+      ? project.client
+      : project.client?.name ?? null;
+
+  const team =
+    project.team ??
+    (project.members ?? []).map(
+      (m: { user?: { firstName?: string; lastName?: string; email?: string } }) => ({
+        name:
+          [m.user?.firstName, m.user?.lastName].filter(Boolean).join(" ") ||
+          m.user?.email ||
+          "Member",
+      }),
+    );
+
+  const progress = project.progressPercent ?? project.progress ?? 0;
+
   const navItems = [
-    { href: `/projects/${id}/board`, label: "Board", icon: Kanban, desc: "Kanban task board" },
-    { href: `/projects/${id}/backlog`, label: "Backlog", icon: List, desc: "Prioritized task list" },
+    {
+      href: `/projects/${id}/client-progress`,
+      label: "Client Progress",
+      icon: LayoutDashboard,
+      desc: "Timeline, milestones, client tasks & share link",
+      primary: true,
+    },
+    { href: `/projects/${id}/board`, label: "Board", icon: Kanban, desc: "Internal Kanban board" },
+    { href: `/projects/${id}/backlog`, label: "Backlog", icon: List, desc: "Internal task list" },
     { href: `/projects/${id}/sprints`, label: "Sprints", icon: Zap, desc: "Sprint planning" },
   ];
 
@@ -59,17 +92,24 @@ export default function ProjectDetailPage() {
             <h1 className="font-display text-2xl font-bold">{project.name}</h1>
             {project.status && <Badge variant="success">{project.status}</Badge>}
           </div>
-          {project.client && <p className="text-muted-foreground">{project.client}</p>}
+          {clientName && <p className="text-muted-foreground">{clientName}</p>}
         </div>
-        {project.team?.length > 0 && (
-          <div className="flex -space-x-2">
-            {project.team.map((member: { name: string }) => (
-              <Avatar key={member.name} className="h-8 w-8 border-2 border-background">
-                <AvatarFallback className="text-xs bg-primary/10 text-primary">{getInitials(member.name)}</AvatarFallback>
-              </Avatar>
-            ))}
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          {team.length > 0 && (
+            <div className="flex -space-x-2">
+              {team.map((member: { name: string }) => (
+                <Avatar key={member.name} className="h-8 w-8 border-2 border-background">
+                  <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                    {getInitials(member.name)}
+                  </AvatarFallback>
+                </Avatar>
+              ))}
+            </div>
+          )}
+          <Button asChild>
+            <Link href={`/projects/${id}/client-progress`}>Client Progress</Link>
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -80,32 +120,42 @@ export default function ProjectDetailPage() {
         <CardContent>
           <div className="grid sm:grid-cols-3 gap-6">
             <div>
-              <p className="text-sm text-muted-foreground">Progress</p>
-              <p className="text-2xl font-bold font-display text-primary">{project.progress ?? 0}%</p>
+              <p className="text-sm text-muted-foreground">Client progress</p>
+              <p className="text-2xl font-bold font-display text-primary">{progress}%</p>
               <div className="h-2 rounded-full bg-muted mt-2 overflow-hidden">
-                <div className="h-full bg-primary rounded-full" style={{ width: `${project.progress ?? 0}%` }} />
+                <div
+                  className="h-full bg-primary rounded-full"
+                  style={{ width: `${progress}%` }}
+                />
               </div>
             </div>
-            {(project.startDate || project.dueDate) && (
-              <div>
-                <p className="text-sm text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3" /> Timeline</p>
-                <p className="text-sm mt-1">
-                  {project.startDate ? formatDate(project.startDate) : "—"} — {project.dueDate ? formatDate(project.dueDate) : "—"}
-                </p>
-              </div>
-            )}
             <div>
-              <p className="text-sm text-muted-foreground flex items-center gap-1"><Users className="h-3 w-3" /> Team</p>
-              <p className="text-sm mt-1">{project.team?.length || 0} members</p>
+              <p className="text-sm text-muted-foreground flex items-center gap-1">
+                <Calendar className="h-3 w-3" /> Timeline
+              </p>
+              <p className="text-sm mt-1">
+                {project.startDate ? formatDate(project.startDate) : "—"} —{" "}
+                {project.endDate ? formatDate(project.endDate) : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground flex items-center gap-1">
+                <Users className="h-3 w-3" /> Team
+              </p>
+              <p className="text-sm mt-1">{team.length || 0} members</p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid sm:grid-cols-3 gap-4">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {navItems.map((item) => (
           <Link key={item.href} href={item.href}>
-            <Card className="hover:shadow-md transition-all hover:border-primary/50 cursor-pointer h-full">
+            <Card
+              className={`hover:shadow-md transition-all hover:border-primary/50 cursor-pointer h-full ${
+                item.primary ? "border-primary/40 bg-primary/5" : ""
+              }`}
+            >
               <CardContent className="p-6 flex items-center gap-4">
                 <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
                   <item.icon className="h-5 w-5 text-primary" />

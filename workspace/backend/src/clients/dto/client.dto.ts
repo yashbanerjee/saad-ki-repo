@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEmail, IsEnum, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsEmail, IsEnum, IsBoolean, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ClientType } from '@prisma/client';
 import { PaginationDto } from '../../common/dto/pagination.dto';
@@ -88,6 +88,24 @@ export class CreateClientDto {
   @IsOptional()
   @IsString()
   createFormTitle?: string;
+}
+
+export class CreateClientLoginDto {
+  @ApiPropertyOptional({ description: 'Override email; defaults to client email' })
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiPropertyOptional({ description: 'Override phone; defaults to client phone' })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional({ description: 'If omitted, a temporary password is generated' })
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  password?: string;
 }
 
 export class UpdateClientDto {

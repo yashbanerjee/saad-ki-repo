@@ -14,6 +14,7 @@ import { ClientsService } from './clients.service';
 import {
   AssignOnboardingFormDto,
   CreateClientDto,
+  CreateClientLoginDto,
   CreateClientOnboardingFormDto,
   ListClientsQueryDto,
   UpdateClientDto,
@@ -89,6 +90,16 @@ export class ClientsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.clientsService.unassignOnboardingForm(id, user.companyId!, assignmentId);
+  }
+
+  @Post(':id/create-login')
+  @Permissions('clients:manage')
+  createLogin(
+    @Param('id', ParseCuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateClientLoginDto,
+  ) {
+    return this.clientsService.createLogin(id, user.companyId!, dto);
   }
 
   @Patch(':id')

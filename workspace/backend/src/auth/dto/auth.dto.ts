@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength, IsOptional } from 'class-validator';
+import { IsEmail, IsString, MinLength, IsOptional, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class RegisterCompanyDto {
@@ -33,13 +33,54 @@ export class RegisterCompanyDto {
 }
 
 export class LoginDto {
-  @ApiProperty()
-  @IsEmail()
-  email: string;
+  /** @deprecated Prefer `identifier` — kept for backward compatibility */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @ApiPropertyOptional({ description: 'Email address or mobile number' })
+  @IsOptional()
+  @IsString()
+  identifier?: string;
 
   @ApiProperty()
   @IsString()
   password: string;
+}
+
+/** Client self-service account (email and/or mobile) */
+export class RegisterClientDto {
+  @ApiProperty()
+  @IsString()
+  @MinLength(1)
+  firstName: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  lastName?: string;
+
+  @ApiPropertyOptional()
+  @ValidateIf((o: RegisterClientDto) => !o.phone)
+  @IsEmail()
+  email?: string;
+
+  @ApiPropertyOptional()
+  @ValidateIf((o: RegisterClientDto) => !o.email)
+  @IsString()
+  @MinLength(7)
+  phone?: string;
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(8)
+  password: string;
+
+  @ApiPropertyOptional({ description: 'Project portal token to join the right company/client' })
+  @IsOptional()
+  @IsString()
+  portalToken?: string;
 }
 
 export class RefreshTokenDto {

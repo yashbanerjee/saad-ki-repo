@@ -89,15 +89,23 @@ api.interceptors.response.use(
 
 // Auth API
 export const authApi = {
-  login: (email: string, password: string) =>
-    api.post("/auth/login", { email, password }),
+  login: (identifier: string, password: string) =>
+    api.post("/auth/login", { identifier, email: identifier.includes("@") ? identifier : undefined, password }),
   register: (data: {
     companyName: string;
     firstName: string;
     lastName: string;
     email: string;
     password: string;
-  }) => api.post("/auth/register", data),
+  }) => api.post("/auth/register-company", data),
+  registerClient: (data: {
+    firstName: string;
+    lastName?: string;
+    email?: string;
+    phone?: string;
+    password: string;
+    portalToken?: string;
+  }) => api.post("/auth/register-client", data),
   forgotPassword: (email: string) =>
     api.post("/auth/forgot-password", { email }),
   resetPassword: (token: string, password: string) =>
@@ -110,14 +118,36 @@ export const authApi = {
 export const projectsApi = {
   list: (params?: Record<string, unknown>) =>
     api.get("/projects", { params }),
+  myClientProjects: () => api.get("/projects/my/client"),
   get: (id: string) => api.get(`/projects/${id}`),
   create: (data: Record<string, unknown>) => api.post("/projects", data),
   update: (id: string, data: Record<string, unknown>) =>
-    api.put(`/projects/${id}`, data),
+    api.patch(`/projects/${id}`, data),
   delete: (id: string) => api.delete(`/projects/${id}`),
   getBoard: (id: string) => api.get(`/projects/${id}/board`),
   updateTaskStatus: (projectId: string, taskId: string, status: string) =>
     api.patch(`/projects/${projectId}/tasks/${taskId}`, { status }),
+  enablePortal: (id: string) => api.post(`/projects/${id}/portal/enable`),
+  rotatePortal: (id: string) => api.post(`/projects/${id}/portal/rotate`),
+  disablePortal: (id: string) => api.post(`/projects/${id}/portal/disable`),
+  listMilestones: (id: string) => api.get(`/projects/${id}/milestones`),
+  createMilestone: (id: string, data: Record<string, unknown>) =>
+    api.post(`/projects/${id}/milestones`, data),
+  updateMilestone: (id: string, milestoneId: string, data: Record<string, unknown>) =>
+    api.patch(`/projects/${id}/milestones/${milestoneId}`, data),
+  deleteMilestone: (id: string, milestoneId: string) =>
+    api.delete(`/projects/${id}/milestones/${milestoneId}`),
+  listClientTasks: (id: string) => api.get(`/projects/${id}/client-tasks`),
+  createClientTask: (id: string, data: Record<string, unknown>) =>
+    api.post(`/projects/${id}/client-tasks`, data),
+  updateClientTask: (id: string, taskId: string, data: Record<string, unknown>) =>
+    api.patch(`/projects/${id}/client-tasks/${taskId}`, data),
+  deleteClientTask: (id: string, taskId: string) =>
+    api.delete(`/projects/${id}/client-tasks/${taskId}`),
+};
+
+export const portalApi = {
+  get: (token: string) => api.get(`/portal/${token}`),
 };
 
 // Issues API
@@ -141,6 +171,10 @@ export const clientsApi = {
   update: (id: string, data: Record<string, unknown>) => api.patch(`/clients/${id}`, data),
   listOnboardingForms: (clientId: string) =>
     api.get(`/clients/${clientId}/onboarding-forms`),
+  createLogin: (
+    clientId: string,
+    data?: { email?: string; phone?: string; password?: string },
+  ) => api.post(`/clients/${clientId}/create-login`, data ?? {}),
   assignOnboardingForm: (clientId: string, data: { formId: string; notes?: string }) =>
     api.post(`/clients/${clientId}/onboarding-forms/assign`, data),
   createOnboardingForm: (

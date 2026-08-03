@@ -18,7 +18,13 @@ const protectedRoutes = [
   "/search",
 ];
 
-const authRoutes = ["/login", "/register", "/forgot-password", "/reset-password"];
+const authRoutes = [
+  "/login",
+  "/register",
+  "/client-signup",
+  "/forgot-password",
+  "/reset-password",
+];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -29,8 +35,9 @@ export function middleware(request: NextRequest) {
   );
   const isAuthRoute = authRoutes.some((route) => pathname.startsWith(route));
   const isPublicOnboarding = pathname.startsWith("/onboarding/public/");
+  const isPublicPortal = pathname.startsWith("/portal/");
 
-  if (isPublicOnboarding) {
+  if (isPublicOnboarding || isPublicPortal) {
     return NextResponse.next();
   }
 

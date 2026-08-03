@@ -1,4 +1,15 @@
-import { IsString, IsOptional, IsEnum, MinLength, IsInt, Min, Max } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsEnum,
+  MinLength,
+  IsInt,
+  Min,
+  Max,
+  IsDateString,
+  IsNumber,
+  IsIn,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ProjectStatus } from '@prisma/client';
@@ -23,6 +34,16 @@ export class CreateProjectDto {
   @IsOptional()
   @IsString()
   clientId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
 }
 
 export class UpdateProjectDto {
@@ -44,7 +65,17 @@ export class UpdateProjectDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  clientId?: string;
+  clientId?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  startDate?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  endDate?: string | null;
 }
 
 export class AddProjectMemberDto {
@@ -88,4 +119,128 @@ export class ListProjectsQueryDto {
   @IsOptional()
   @IsString()
   status?: string;
+}
+
+export class CreateMilestoneDto {
+  @ApiProperty()
+  @IsString()
+  name: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  dueDate?: string;
+
+  @ApiPropertyOptional({ enum: ['PLANNED', 'IN_PROGRESS', 'DONE'] })
+  @IsOptional()
+  @IsIn(['PLANNED', 'IN_PROGRESS', 'DONE'])
+  status?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  sortOrder?: number;
+}
+
+export class UpdateMilestoneDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  dueDate?: string | null;
+
+  @ApiPropertyOptional({ enum: ['PLANNED', 'IN_PROGRESS', 'DONE'] })
+  @IsOptional()
+  @IsIn(['PLANNED', 'IN_PROGRESS', 'DONE'])
+  status?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  sortOrder?: number;
+}
+
+export class CreateClientTaskDto {
+  @ApiProperty()
+  @IsString()
+  title: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  milestoneId?: string;
+
+  @ApiPropertyOptional({ enum: ['TODO', 'IN_PROGRESS', 'DONE'] })
+  @IsOptional()
+  @IsIn(['TODO', 'IN_PROGRESS', 'DONE'])
+  status?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  estimatedHours?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  sortOrder?: number;
+}
+
+export class UpdateClientTaskDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  milestoneId?: string | null;
+
+  @ApiPropertyOptional({ enum: ['TODO', 'IN_PROGRESS', 'DONE'] })
+  @IsOptional()
+  @IsIn(['TODO', 'IN_PROGRESS', 'DONE'])
+  status?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  estimatedHours?: number | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  sortOrder?: number;
 }

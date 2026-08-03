@@ -20,11 +20,12 @@ import {
 } from '../common/constants/permissions.constants';
 import {
   RegisterCompanyDto,
+  RegisterClientDto,
   LoginDto,
   ResetPasswordDto,
   VerifyEmailDto,
 } from './dto/auth.dto';
-import { AuditAction } from '@prisma/client';
+import { AuditAction, ClientType } from '@prisma/client';
 
 @Injectable()
 export class AuthService {
@@ -41,6 +42,23 @@ export class AuthService {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '');
+  }
+
+  /** Keep digits and leading + for mobile login matching */
+  normalizePhone(phone: string): string {
+    const trimmed = phone.trim();
+    const hasPlus = trimmed.startsWith('+');
+    const digits = trimmed.replace(/\D/g, '');
+    return hasPlus ? `+${digits}` : digits;
+  }
+
+  private looksLikeEmail(value: string): boolean {
+    return value.includes('@');
+  }
+
+  private phonePlaceholderEmail(phone: string): string {
+    const digits = phone.replace(/\D/g, '');
+    return `m.${digits}@client.taskflow.local`;
   }
 
   async registerCompany(dto: RegisterCompanyDto, ip?: string, userAgent?: string) {
@@ -150,13 +168,32 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, ip?: string, userAgent?: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-      include: {
-        roles: { include: { role: true } },
-        company: true,
-      },
-    });
+    const raw = (dto.identifier || dto.email || '').trim();
+    if (!raw) throw new BadRequestException('Email or mobile number is required');
+
+    const user = this.looksLikeEmail(raw)
+      ? await this.prisma.user.findUnique({
+          where: { email: raw.toLowerCase() },
+          include: {
+            roles: { include: { role: true } },
+            company: true,
+            linkedClient: { select: { id: true, name: true } },
+          },
+        })
+      : await this.prisma.user.findFirst({
+          where: {
+            OR: [
+              { phone: this.normalizePhone(raw) },
+              { phone: raw.replace(/\D/g, '') },
+              { phone: raw },
+            ],
+          },
+          include: {
+            roles: { include: { role: true } },
+            company: true,
+            linkedClient: { select: { id: true, name: true } },
+          },
+        });
 
     if (!user) throw new UnauthorizedException('Invalid credentials');
 
@@ -182,6 +219,172 @@ export class AuthService {
     });
 
     return { user: this.sanitizeUser(user), ...tokens };
+  }
+
+  async registerClient(dto: RegisterClientDto, ip?: string, userAgent?: string) {
+    const emailRaw = dto.email?.trim().toLowerCase();
+    const phoneRaw = dto.phone?.trim();
+    if (!emailRaw && !phoneRaw) {
+      throw new BadRequestException('Provide an email or mobile number');
+    }
+
+    const phone = phoneRaw ? this.normalizePhone(phoneRaw) : undefined;
+    if (phone && phone.replace(/\D/g, '').length < 7) {
+      throw new BadRequestException('Enter a valid mobile number');
+    }
+
+    const email = emailRaw || (phone ? this.phonePlaceholderEmail(phone) : '');
+
+    const existingEmail = await this.prisma.user.findUnique({ where: { email } });
+    if (existingEmail) throw new ConflictException('An account with this email already exists');
+
+    if (phone) {
+      const existingPhone = await this.prisma.user.findUnique({ where: { phone } });
+      if (existingPhone) {
+        throw new ConflictException('An account with this mobile number already exists');
+      }
+    }
+
+    let companyId: string | null = null;
+    let clientId: string | null = null;
+
+    if (dto.portalToken) {
+      const project = await this.prisma.project.findFirst({
+        where: { portalToken: dto.portalToken, portalEnabled: true },
+        select: { companyId: true, clientId: true, client: true },
+      });
+      if (!project) {
+        throw new BadRequestException('Invalid or disabled project link');
+      }
+      companyId = project.companyId;
+      clientId = project.clientId;
+    }
+
+    // Match existing CRM client by email/phone (prefer portal company)
+    if (!clientId) {
+      const match = await this.prisma.client.findFirst({
+        where: {
+          userId: null,
+          ...(companyId ? { companyId } : {}),
+          OR: [
+            ...(emailRaw ? [{ email: { equals: emailRaw, mode: 'insensitive' as const } }] : []),
+            ...(phone
+              ? [{ phone }, { phone: phone.replace(/\D/g, '') }, { phone: phoneRaw! }]
+              : []),
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (match) {
+        companyId = match.companyId;
+        clientId = match.id;
+      }
+    }
+
+    if (!companyId) {
+      throw new BadRequestException(
+        'Open your project link first, or ask your agency to create your login',
+      );
+    }
+
+    let clientRole = await this.prisma.role.findFirst({
+      where: { companyId, slug: 'client' },
+    });
+    if (!clientRole) {
+      clientRole = await this.prisma.role.create({
+        data: {
+          companyId,
+          name: ROLE_NAMES.client || 'Client',
+          slug: 'client',
+          isSystem: true,
+        },
+      });
+      const perms = await this.prisma.permission.findMany({
+        where: { slug: { in: ROLE_PERMISSIONS.client } },
+      });
+      if (perms.length) {
+        await this.prisma.rolePermission.createMany({
+          data: perms.map((p) => ({ roleId: clientRole!.id, permissionId: p.id })),
+          skipDuplicates: true,
+        });
+      }
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, 12);
+    const firstName = dto.firstName.trim();
+    const lastName = (dto.lastName || '').trim() || 'Client';
+
+    const user = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          companyId,
+          email,
+          phone: phone || undefined,
+          passwordHash,
+          firstName,
+          lastName,
+          status: 'ACTIVE',
+          emailVerified: !!emailRaw,
+          emailVerifiedAt: emailRaw ? new Date() : undefined,
+          roles: { create: { roleId: clientRole!.id } },
+        },
+        include: {
+          roles: { include: { role: true } },
+          company: true,
+        },
+      });
+
+      if (clientId) {
+        await tx.client.update({
+          where: { id: clientId },
+          data: {
+            userId: created.id,
+            ...(emailRaw ? { email: emailRaw } : {}),
+            ...(phone ? { phone } : {}),
+            ...(firstName ? { firstName } : {}),
+            ...(lastName && lastName !== 'Client' ? { lastName } : {}),
+          },
+        });
+      } else {
+        const name = [firstName, lastName !== 'Client' ? lastName : ''].filter(Boolean).join(' ');
+        await tx.client.create({
+          data: {
+            companyId,
+            userId: created.id,
+            type: ClientType.INDIVIDUAL,
+            name: name || firstName,
+            firstName,
+            lastName: lastName !== 'Client' ? lastName : undefined,
+            email: emailRaw || email,
+            phone: phone || undefined,
+          },
+        });
+      }
+
+      return created;
+    });
+
+    const withClient = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      include: {
+        roles: { include: { role: true } },
+        company: true,
+        linkedClient: { select: { id: true, name: true } },
+      },
+    });
+
+    const tokens = await this.issueTokens(user.id, ip, userAgent);
+    await this.audit.log({
+      companyId,
+      userId: user.id,
+      action: AuditAction.CREATE,
+      entityType: 'User',
+      entityId: user.id,
+      ipAddress: ip,
+      userAgent,
+    });
+
+    return { user: this.sanitizeUser(withClient!), ...tokens };
   }
 
   async refresh(userId: string, tokenId: string, ip?: string, userAgent?: string) {
@@ -284,6 +487,7 @@ export class AuthService {
       where: { id: userId },
       include: {
         company: true,
+        linkedClient: { select: { id: true, name: true } },
         roles: { include: { role: { include: { permissions: { include: { permission: true } } } } } },
       },
     });
@@ -359,8 +563,9 @@ export class AuthService {
     companyId?: string | null;
     roles?: { role?: { slug?: string; name?: string } }[];
     company?: { name?: string } | null;
+    linkedClient?: { id: string; name: string } | null;
   }) {
-    const { passwordHash, twoFactorSecret, roles, company, ...rest } = user as Record<
+    const { passwordHash, twoFactorSecret, roles, company, linkedClient, ...rest } = user as Record<
       string,
       unknown
     > & {
@@ -368,6 +573,7 @@ export class AuthService {
       twoFactorSecret?: string;
       roles?: { role?: { slug?: string } }[];
       company?: { name?: string } | null;
+      linkedClient?: { id: string; name: string } | null;
     };
 
     const roleSlugs = (roles ?? [])
@@ -388,10 +594,13 @@ export class AuthService {
       name: `${user.firstName} ${user.lastName}`.trim(),
       firstName: user.firstName,
       lastName: user.lastName,
+      phone: user.phone,
       role,
       roles: roleSlugs,
       companyName: company?.name ?? null,
       companyId: user.companyId,
+      clientId: linkedClient?.id ?? null,
+      clientName: linkedClient?.name ?? null,
     };
   }
 }

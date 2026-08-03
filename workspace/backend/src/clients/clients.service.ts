@@ -1,15 +1,26 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ClientType, Prisma } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   AssignOnboardingFormDto,
   CreateClientDto,
+  CreateClientLoginDto,
   CreateClientOnboardingFormDto,
   ListClientsQueryDto,
   UpdateClientDto,
 } from './dto/client.dto';
 import { paginate, paginatedResponse } from '../common/dto/pagination.dto';
+import {
+  ROLE_NAMES,
+  ROLE_PERMISSIONS,
+} from '../common/constants/permissions.constants';
 
 @Injectable()
 export class ClientsService {
@@ -285,5 +296,107 @@ export class ClientsService {
     await this.findOne(id, companyId);
     await this.prisma.client.update({ where: { id }, data: { status: 'inactive' } });
     return { message: 'Client deactivated' };
+  }
+
+  private normalizePhone(phone: string): string {
+    const trimmed = phone.trim();
+    const hasPlus = trimmed.startsWith('+');
+    const digits = trimmed.replace(/\D/g, '');
+    return hasPlus ? `+${digits}` : digits;
+  }
+
+  /** Staff creates a login for a CRM client (email and/or mobile) */
+  async createLogin(id: string, companyId: string, dto: CreateClientLoginDto) {
+    const client = await this.findOne(id, companyId);
+    if (client.userId) {
+      throw new ConflictException('This client already has a login account');
+    }
+
+    const emailRaw = (dto.email || client.email || '').trim().toLowerCase();
+    const phoneRaw = (dto.phone || client.phone || '').trim();
+    const isPlaceholderEmail = emailRaw.endsWith('@client.taskflow.local');
+    const realEmail = emailRaw && !isPlaceholderEmail ? emailRaw : '';
+    const phone = phoneRaw ? this.normalizePhone(phoneRaw) : undefined;
+
+    if (!realEmail && !phone) {
+      throw new BadRequestException(
+        'Client needs an email or mobile number before creating a login',
+      );
+    }
+
+    const email =
+      realEmail ||
+      (phone ? `m.${phone.replace(/\D/g, '')}@client.taskflow.local` : emailRaw);
+
+    if (await this.prisma.user.findUnique({ where: { email } })) {
+      throw new ConflictException('A user with this email already exists');
+    }
+    if (phone && (await this.prisma.user.findUnique({ where: { phone } }))) {
+      throw new ConflictException('A user with this mobile number already exists');
+    }
+
+    let clientRole = await this.prisma.role.findFirst({
+      where: { companyId, slug: 'client' },
+    });
+    if (!clientRole) {
+      clientRole = await this.prisma.role.create({
+        data: {
+          companyId,
+          name: ROLE_NAMES.client || 'Client',
+          slug: 'client',
+          isSystem: true,
+        },
+      });
+      const perms = await this.prisma.permission.findMany({
+        where: { slug: { in: ROLE_PERMISSIONS.client } },
+      });
+      if (perms.length) {
+        await this.prisma.rolePermission.createMany({
+          data: perms.map((p) => ({ roleId: clientRole!.id, permissionId: p.id })),
+          skipDuplicates: true,
+        });
+      }
+    }
+
+    const tempPassword = dto.password || `Vedha@${randomBytes(3).toString('hex')}`;
+    const passwordHash = await bcrypt.hash(tempPassword, 12);
+    const firstName = client.firstName || client.name.split(' ')[0] || 'Client';
+    const lastName =
+      client.lastName || client.name.split(' ').slice(1).join(' ') || 'User';
+
+    const user = await this.prisma.user.create({
+      data: {
+        companyId,
+        email,
+        phone: phone || undefined,
+        passwordHash,
+        firstName,
+        lastName,
+        status: 'ACTIVE',
+        emailVerified: !!realEmail,
+        emailVerifiedAt: realEmail ? new Date() : undefined,
+        roles: { create: { roleId: clientRole.id } },
+      },
+    });
+
+    await this.prisma.client.update({
+      where: { id },
+      data: {
+        userId: user.id,
+        ...(realEmail ? { email: realEmail } : {}),
+        ...(phone ? { phone } : {}),
+      },
+    });
+
+    return {
+      userId: user.id,
+      email: realEmail || null,
+      phone: phone || null,
+      loginWith: realEmail || phone,
+      temporaryPassword: dto.password ? undefined : tempPassword,
+      message: dto.password
+        ? 'Client login created'
+        : 'Client login created — share the temporary password securely',
+    };
   }
 }

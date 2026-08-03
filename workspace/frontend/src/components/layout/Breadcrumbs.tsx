@@ -34,6 +34,8 @@ const routeLabels: Record<string, string> = {
   board: "Board",
   backlog: "Backlog",
   sprints: "Sprints",
+  "client-progress": "Client Progress",
+  portal: "Client Dashboard",
   builder: "Form Builder",
   public: "Public Form",
 };
