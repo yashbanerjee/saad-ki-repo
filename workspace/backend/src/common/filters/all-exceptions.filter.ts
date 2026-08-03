@@ -5,6 +5,7 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  PayloadTooLargeException,
 } from '@nestjs/common';
 import { Response } from 'express';
 
@@ -16,15 +17,26 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
 
-    const status =
+    const isPayloadTooLarge =
+      exception instanceof PayloadTooLargeException ||
+      (exception as { type?: string; status?: number; statusCode?: number })?.type ===
+        'entity.too.large' ||
+      (exception as { status?: number })?.status === 413 ||
+      (exception as { statusCode?: number })?.statusCode === 413;
+
+    let status =
       exception instanceof HttpException
         ? exception.getStatus()
-        : HttpStatus.INTERNAL_SERVER_ERROR;
+        : isPayloadTooLarge
+          ? HttpStatus.PAYLOAD_TOO_LARGE
+          : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    const message =
+    let message: string | object =
       exception instanceof HttpException
         ? exception.getResponse()
-        : 'Internal server error';
+        : isPayloadTooLarge
+          ? 'Upload is too large — keep files under 8 MB total'
+          : 'Internal server error';
 
     if (status === HttpStatus.INTERNAL_SERVER_ERROR) {
       this.logger.error(exception);

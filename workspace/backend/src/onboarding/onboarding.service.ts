@@ -1,6 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomBytes } from 'crypto';
-import { FieldType } from '@prisma/client';
+import { FieldType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateFormDto,
@@ -258,30 +262,53 @@ export class OnboardingService {
 
   async submitByToken(secureToken: string, dto: SubmitFormDto, ip?: string, userAgent?: string) {
     const form = await this.findByToken(secureToken);
-    const submission = await this.prisma.formSubmission.create({
-      data: {
-        formId: form.id,
-        clientId: dto.clientId,
-        status: 'SUBMITTED',
-        data: dto.data as object,
-        ipAddress: ip,
-        userAgent,
-        submittedAt: new Date(),
-      },
-    });
 
-    if (dto.clientId) {
-      await this.prisma.clientOnboardingAssignment.updateMany({
-        where: {
-          formId: form.id,
-          clientId: dto.clientId,
-          status: 'PENDING',
-        },
-        data: { status: 'COMPLETED' },
+    let clientId: string | undefined = dto.clientId?.trim() || undefined;
+    if (clientId) {
+      const client = await this.prisma.client.findFirst({
+        where: { id: clientId, companyId: form.companyId },
+        select: { id: true },
       });
+      if (!client) {
+        throw new BadRequestException('Invalid client for this form');
+      }
     }
 
-    return submission;
+    const payload = (dto.data && typeof dto.data === 'object' ? dto.data : {}) as object;
+
+    try {
+      const submission = await this.prisma.formSubmission.create({
+        data: {
+          formId: form.id,
+          clientId,
+          status: 'SUBMITTED',
+          data: payload,
+          ipAddress: ip,
+          userAgent,
+          submittedAt: new Date(),
+        },
+      });
+
+      if (clientId) {
+        await this.prisma.clientOnboardingAssignment.updateMany({
+          where: {
+            formId: form.id,
+            clientId,
+            status: 'PENDING',
+          },
+          data: { status: 'COMPLETED' },
+        });
+      }
+
+      return submission;
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+        if (err.code === 'P2003') {
+          throw new BadRequestException('Invalid client reference');
+        }
+      }
+      throw err;
+    }
   }
 
   async getSubmissions(formId: string, companyId: string) {
