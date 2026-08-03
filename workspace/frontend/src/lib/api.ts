@@ -507,10 +507,12 @@ export const documentsApi = {
 export const invoicesApi = {
   list: (params?: Record<string, unknown>) => api.get("/invoices", { params }),
   get: (id: string) => api.get(`/invoices/${id}`),
+  nextNumber: () => api.get("/invoices/next-number"),
   create: (data: Record<string, unknown>) => api.post("/invoices", data),
   createWithPdf: (data: {
     clientId: string;
     billingType: string;
+    number?: string;
     projectId?: string;
     milestoneId?: string;
     title?: string;
@@ -524,6 +526,7 @@ export const invoicesApi = {
     const formData = new FormData();
     formData.append("clientId", data.clientId);
     formData.append("billingType", data.billingType);
+    if (data.number) formData.append("number", data.number);
     if (data.projectId) formData.append("projectId", data.projectId);
     if (data.milestoneId) formData.append("milestoneId", data.milestoneId);
     if (data.title) formData.append("title", data.title);
@@ -550,6 +553,23 @@ export const invoicesApi = {
     api.patch(`/invoices/${id}`, data),
   send: (id: string) => api.post(`/invoices/${id}/send`),
   markPaid: (id: string) => api.post(`/invoices/${id}/mark-paid`),
+  generatePdf: (id: string) => api.post(`/invoices/${id}/generate-pdf`),
+  downloadPdf: async (id: string, filename?: string) => {
+    const res = await api.get(`/invoices/${id}/download`, {
+      responseType: "blob",
+      timeout: 120000,
+    });
+    const blob = new Blob([res.data], { type: "application/pdf" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename || `invoice-${id}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+    return res;
+  },
   uploadPdf: (id: string, file: File) => {
     const formData = new FormData();
     formData.append("file", file);

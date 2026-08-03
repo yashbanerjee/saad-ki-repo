@@ -47,6 +47,12 @@ export class CreateInvoiceDto {
   @IsString()
   clientId: string;
 
+  @ApiPropertyOptional({ description: 'Custom invoice number; auto-generated if omitted' })
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  number?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

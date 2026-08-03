@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   ExternalLink,
   FileText,
+  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,6 +73,20 @@ export default function InvoiceDetailPage() {
     },
   });
 
+  const downloadMutation = useMutation({
+    mutationFn: (filename: string) => invoicesApi.downloadPdf(id, filename),
+    onError: () => toast.error("Failed to download PDF"),
+  });
+
+  const generateMutation = useMutation({
+    mutationFn: () => invoicesApi.generatePdf(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["invoice", id] });
+      toast.success("PDF generated");
+    },
+    onError: () => toast.error("Failed to generate PDF"),
+  });
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -118,6 +133,16 @@ export default function InvoiceDetailPage() {
         </div>
         {canManage && (
           <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              disabled={downloadMutation.isPending}
+              onClick={() =>
+                downloadMutation.mutate(`${invoice.number || "invoice"}.pdf`)
+              }
+            >
+              <Download className="mr-1 h-4 w-4" />
+              {downloadMutation.isPending ? "Downloading…" : "Download PDF"}
+            </Button>
             {invoice.status === "DRAFT" && (
               <Button onClick={() => sendMutation.mutate()} disabled={sendMutation.isPending}>
                 <Send className="mr-1 h-4 w-4" /> Send to client
@@ -147,7 +172,27 @@ export default function InvoiceDetailPage() {
               <Upload className="mr-1 h-4 w-4" />
               {uploadMutation.isPending ? "Uploading…" : "Upload PDF"}
             </Button>
+            <Button
+              variant="outline"
+              disabled={generateMutation.isPending}
+              onClick={() => generateMutation.mutate()}
+            >
+              <FileText className="mr-1 h-4 w-4" />
+              {generateMutation.isPending ? "Generating…" : "Regenerate PDF"}
+            </Button>
           </div>
+        )}
+        {isClient && (
+          <Button
+            variant="outline"
+            disabled={downloadMutation.isPending}
+            onClick={() =>
+              downloadMutation.mutate(`${invoice.number || "invoice"}.pdf`)
+            }
+          >
+            <Download className="mr-1 h-4 w-4" />
+            {downloadMutation.isPending ? "Downloading…" : "Download PDF"}
+          </Button>
         )}
       </div>
 
@@ -246,16 +291,29 @@ export default function InvoiceDetailPage() {
                 <FileText className="h-4 w-4" /> PDF
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-2">
+              <Button
+                className="w-full"
+                variant="default"
+                disabled={downloadMutation.isPending}
+                onClick={() =>
+                  downloadMutation.mutate(`${invoice.number || "invoice"}.pdf`)
+                }
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Download invoice PDF
+              </Button>
               {invoice.pdfStorageUrl ? (
                 <Button className="w-full" variant="outline" asChild>
                   <a href={invoice.pdfStorageUrl} target="_blank" rel="noreferrer">
                     <ExternalLink className="mr-2 h-4 w-4" />
-                    {invoice.pdfName || "Open PDF"}
+                    {invoice.pdfName || "Open stored PDF"}
                   </a>
                 </Button>
               ) : (
-                <p className="text-sm text-muted-foreground">No PDF attached.</p>
+                <p className="text-sm text-muted-foreground">
+                  No stored PDF yet — download generates one on the fly.
+                </p>
               )}
             </CardContent>
           </Card>

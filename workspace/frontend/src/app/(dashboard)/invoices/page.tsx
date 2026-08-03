@@ -12,9 +12,11 @@ import {
   CheckCircle2,
   Trash2,
   ExternalLink,
+  Download,
+  Minus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,7 +50,10 @@ interface LineItem {
   unitPrice: number;
 }
 
-const statusVariant: Record<string, "secondary" | "info" | "success" | "destructive" | "warning"> = {
+const statusVariant: Record<
+  string,
+  "secondary" | "info" | "success" | "destructive" | "warning"
+> = {
   DRAFT: "secondary",
   SENT: "info",
   PAID: "success",
@@ -56,32 +61,43 @@ const statusVariant: Record<string, "secondary" | "info" | "success" | "destruct
   CANCELLED: "warning",
 };
 
+const emptyLine = (): LineItem => ({
+  description: "",
+  quantity: 1,
+  unitPrice: 0,
+});
+
 export default function InvoicesPage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const isClient = isClientUser(user);
-  const canManage = !isClient && (user?.role === "admin" || user?.role === "manager");
+  const canManage =
+    !isClient && (user?.role === "admin" || user?.role === "manager");
 
   const [open, setOpen] = useState(false);
+  const [invoiceNumber, setInvoiceNumber] = useState("");
   const [title, setTitle] = useState("");
   const [clientId, setClientId] = useState("");
   const [projectId, setProjectId] = useState("");
   const [milestoneId, setMilestoneId] = useState("");
-  const [billingType, setBillingType] = useState<BillingType>("MILESTONE");
+  const [billingType, setBillingType] = useState<BillingType>("CUSTOM");
   const [currency, setCurrency] = useState("AED");
   const [dueDate, setDueDate] = useState("");
   const [notes, setNotes] = useState("");
-  const [amount, setAmount] = useState("");
-  const [hours, setHours] = useState("1");
-  const [rate, setRate] = useState("");
-  const [lineDesc, setLineDesc] = useState("");
-  const [items, setItems] = useState<LineItem[]>([]);
+  const [items, setItems] = useState<LineItem[]>([emptyLine()]);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["invoices"],
     queryFn: () => invoicesApi.list({ limit: 100 }),
+    retry: false,
+  });
+
+  const { data: nextNumberData } = useQuery({
+    queryKey: ["invoices", "next-number"],
+    queryFn: () => invoicesApi.nextNumber(),
+    enabled: canManage && open,
     retry: false,
   });
 
@@ -102,7 +118,8 @@ export default function InvoicesPage() {
   const { data: milestonesData } = useQuery({
     queryKey: ["milestones", projectId],
     queryFn: () => projectsApi.listMilestones(projectId),
-    enabled: canManage && open && Boolean(projectId) && billingType === "MILESTONE",
+    enabled:
+      canManage && open && Boolean(projectId) && billingType === "MILESTONE",
     retry: false,
   });
 
@@ -126,82 +143,70 @@ export default function InvoicesPage() {
     return Array.isArray(raw) ? raw : [];
   }, [milestonesData]);
 
+  const suggestedNumber =
+    nextNumberData?.data?.number ??
+    nextNumberData?.data?.data?.number ??
+    "";
+
+  const displayNumber = invoiceNumber.trim() || suggestedNumber;
+
+  const subtotal = useMemo(
+    () =>
+      items.reduce(
+        (sum, row) =>
+          sum + (Number(row.quantity) || 0) * (Number(row.unitPrice) || 0),
+        0,
+      ),
+    [items],
+  );
+
   const resetForm = () => {
+    setInvoiceNumber("");
     setTitle("");
     setClientId("");
     setProjectId("");
     setMilestoneId("");
-    setBillingType("MILESTONE");
+    setBillingType("CUSTOM");
     setCurrency("AED");
     setDueDate("");
     setNotes("");
-    setAmount("");
-    setHours("1");
-    setRate("");
-    setLineDesc("");
-    setItems([]);
+    setItems([emptyLine()]);
     setPdfFile(null);
   };
 
-  const buildItems = (): LineItem[] => {
-    if (billingType === "HOURLY") {
-      const qty = Number(hours) || 0;
-      const unitPrice = Number(rate) || 0;
-      return [
-        {
-          description: lineDesc.trim() || "Professional services (hourly)",
-          quantity: qty,
-          unitPrice,
-        },
-      ];
-    }
-    if (billingType === "MILESTONE") {
-      const ms = milestones.find((m: { id: string }) => m.id === milestoneId);
-      return [
-        {
-          description:
-            lineDesc.trim() ||
-            (ms ? `Milestone: ${ms.name}` : "Milestone payment"),
-          quantity: 1,
-          unitPrice: Number(amount) || 0,
-        },
-      ];
-    }
-    if (billingType === "TASK") {
-      if (items.length) return items;
-      return [
-        {
-          description: lineDesc.trim() || "Task-based work",
-          quantity: 1,
-          unitPrice: Number(amount) || 0,
-        },
-      ];
-    }
-    return items.length
-      ? items
-      : [
-          {
-            description: lineDesc.trim() || "Invoice item",
-            quantity: 1,
-            unitPrice: Number(amount) || 0,
-          },
-        ];
+  const updateItem = (index: number, patch: Partial<LineItem>) => {
+    setItems((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, ...patch } : row)),
+    );
   };
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const built = buildItems();
+      const built = items
+        .map((row) => ({
+          description: row.description.trim() || "Line item",
+          quantity: Number(row.quantity) || 0,
+          unitPrice: Number(row.unitPrice) || 0,
+        }))
+        .filter((row) => row.quantity > 0 || row.unitPrice > 0 || row.description);
+
+      if (!built.length) {
+        throw new Error("Add at least one line item");
+      }
+
       const total = built.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
       return invoicesApi.createWithPdf({
         clientId,
+        number: displayNumber || undefined,
         projectId: projectId || undefined,
-        milestoneId: billingType === "MILESTONE" ? milestoneId || undefined : undefined,
+        milestoneId:
+          billingType === "MILESTONE" ? milestoneId || undefined : undefined,
         title: title.trim() || undefined,
         billingType,
         currency,
         dueDate: dueDate || undefined,
         notes: notes.trim() || undefined,
-        amount: total || Number(amount) || 0,
+        amount: total,
         items: built,
         file: pdfFile || undefined,
       });
@@ -210,10 +215,12 @@ export default function InvoicesPage() {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       setOpen(false);
       resetForm();
-      toast.success("Invoice created");
+      toast.success("Invoice created — PDF ready to download");
     },
-    onError: (err: { response?: { data?: { message?: string } } }) => {
-      toast.error(err?.response?.data?.message || "Failed to create invoice");
+    onError: (err: { message?: string; response?: { data?: { message?: string } } }) => {
+      toast.error(
+        err?.response?.data?.message || err?.message || "Failed to create invoice",
+      );
     },
   });
 
@@ -244,6 +251,12 @@ export default function InvoicesPage() {
     onError: () => toast.error("Failed to delete invoice"),
   });
 
+  const downloadMutation = useMutation({
+    mutationFn: ({ id, number }: { id: string; number: string }) =>
+      invoicesApi.downloadPdf(id, `${number}.pdf`),
+    onError: () => toast.error("Failed to download PDF"),
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -251,8 +264,8 @@ export default function InvoicesPage() {
           <h1 className="font-display text-2xl font-bold">Invoices</h1>
           <p className="text-muted-foreground text-sm">
             {isClient
-              ? "View invoices sent for your projects"
-              : "Create milestone, hourly, or task invoices — upload PDF or build in-app"}
+              ? "View and download invoices sent for your projects"
+              : "Build professional invoices with line items, invoice numbers, and PDF download"}
           </p>
         </div>
         {canManage && (
@@ -280,7 +293,7 @@ export default function InvoicesPage() {
           description={
             isClient
               ? "When your vendor sends an invoice, it will appear here."
-              : "Create an invoice for a client project — milestone, hourly, or task based."
+              : "Create an invoice with line items — then download a professional PDF."
           }
           actionLabel={canManage ? "Create invoice" : undefined}
           onAction={canManage ? () => setOpen(true) : undefined}
@@ -318,7 +331,9 @@ export default function InvoicesPage() {
                       <Badge variant="outline">{inv.billingType}</Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      {[inv.client?.name, inv.project?.name].filter(Boolean).join(" · ")}
+                      {[inv.client?.name, inv.project?.name]
+                        .filter(Boolean)
+                        .join(" · ")}
                       {inv.dueDate ? ` · Due ${formatDate(inv.dueDate)}` : ""}
                     </p>
                     {inv.pdfName && (
@@ -331,10 +346,27 @@ export default function InvoicesPage() {
                     <p className="font-display text-lg font-semibold tabular-nums mr-2">
                       {inv.currency} {Number(inv.amount).toLocaleString()}
                     </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={downloadMutation.isPending}
+                      onClick={() =>
+                        downloadMutation.mutate({
+                          id: inv.id,
+                          number: inv.number,
+                        })
+                      }
+                    >
+                      <Download className="mr-1 h-3.5 w-3.5" /> PDF
+                    </Button>
                     {inv.pdfStorageUrl && (
-                      <Button size="sm" variant="outline" asChild>
-                        <a href={inv.pdfStorageUrl} target="_blank" rel="noreferrer">
-                          <ExternalLink className="mr-1 h-3.5 w-3.5" /> PDF
+                      <Button size="sm" variant="ghost" asChild>
+                        <a
+                          href={inv.pdfStorageUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
                         </a>
                       </Button>
                     )}
@@ -377,80 +409,94 @@ export default function InvoicesPage() {
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Create invoice</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Billing type</Label>
-              <Select
-                value={billingType}
-                onValueChange={(v) => setBillingType(v as BillingType)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="MILESTONE">Milestone</SelectItem>
-                  <SelectItem value="HOURLY">Hourly</SelectItem>
-                  <SelectItem value="TASK">Task based</SelectItem>
-                  <SelectItem value="CUSTOM">Custom</SelectItem>
-                </SelectContent>
-              </Select>
+          <div className="space-y-5 py-2">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label>Invoice number</Label>
+                <Input
+                  value={invoiceNumber || suggestedNumber}
+                  onChange={(e) => setInvoiceNumber(e.target.value)}
+                  placeholder="INV-2026-0001"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Billing type</Label>
+                <Select
+                  value={billingType}
+                  onValueChange={(v) => setBillingType(v as BillingType)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CUSTOM">Custom</SelectItem>
+                    <SelectItem value="MILESTONE">Milestone</SelectItem>
+                    <SelectItem value="HOURLY">Hourly</SelectItem>
+                    <SelectItem value="TASK">Task based</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Title</Label>
+                <Input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="e.g. Sensia Phase 1"
+                />
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Title</Label>
-              <Input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Sensia Phase 1"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Client</Label>
-              <Select value={clientId} onValueChange={setClientId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select client" />
-                </SelectTrigger>
-                <SelectContent>
-                  {clients.map((c: { id: string; name: string }) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Project (optional)</Label>
-              <Select
-                value={projectId || "__none__"}
-                onValueChange={(v) => {
-                  const next = v === "__none__" ? "" : v;
-                  setProjectId(next);
-                  setMilestoneId("");
-                  if (next) {
-                    const p = projects.find((x: { id: string; clientId?: string }) => x.id === next);
-                    if (p?.clientId) setClientId(p.clientId);
-                  }
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select project" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">No project</SelectItem>
-                  {projects.map((p: { id: string; name: string; clientId?: string }) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Client</Label>
+                <Select value={clientId} onValueChange={setClientId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select client" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clients.map((c: { id: string; name: string }) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Project (optional)</Label>
+                <Select
+                  value={projectId || "__none__"}
+                  onValueChange={(v) => {
+                    const next = v === "__none__" ? "" : v;
+                    setProjectId(next);
+                    setMilestoneId("");
+                    if (next) {
+                      const p = projects.find(
+                        (x: { id: string; clientId?: string }) => x.id === next,
+                      );
+                      if (p?.clientId) setClientId(p.clientId);
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No project</SelectItem>
+                    {projects.map(
+                      (p: { id: string; name: string; clientId?: string }) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ),
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {billingType === "MILESTONE" && projectId && (
@@ -471,47 +517,132 @@ export default function InvoicesPage() {
               </div>
             )}
 
-            {billingType === "HOURLY" ? (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label>Hours</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.25"
-                    value={hours}
-                    onChange={(e) => setHours(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Rate ({currency})</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={rate}
-                    onChange={(e) => setRate(e.target.value)}
-                  />
-                </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Line items</Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setItems((prev) => [...prev, emptyLine()])}
+                >
+                  <Plus className="mr-1 h-3.5 w-3.5" /> Add item
+                </Button>
               </div>
-            ) : (
-              <div className="space-y-2">
-                <Label>Amount ({currency})</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                />
-              </div>
-            )}
 
-            <div className="space-y-2">
-              <Label>Line description</Label>
-              <Input
-                value={lineDesc}
-                onChange={(e) => setLineDesc(e.target.value)}
-                placeholder="What is this invoice for?"
-              />
+              <div className="overflow-x-auto rounded-md border">
+                <table className="w-full min-w-[560px] text-sm">
+                  <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Description</th>
+                      <th className="w-24 px-2 py-2 font-medium">Qty</th>
+                      <th className="w-32 px-2 py-2 font-medium">Rate</th>
+                      <th className="w-28 px-2 py-2 font-medium text-right">
+                        Amount
+                      </th>
+                      <th className="w-10 px-1 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((row, index) => {
+                      const line =
+                        (Number(row.quantity) || 0) *
+                        (Number(row.unitPrice) || 0);
+                      return (
+                        <tr key={index} className="border-t">
+                          <td className="px-2 py-1.5">
+                            <Input
+                              value={row.description}
+                              onChange={(e) =>
+                                updateItem(index, {
+                                  description: e.target.value,
+                                })
+                              }
+                              placeholder="Item or service"
+                              className="h-9"
+                            />
+                          </td>
+                          <td className="px-1 py-1.5">
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.25"
+                              value={row.quantity}
+                              onChange={(e) =>
+                                updateItem(index, {
+                                  quantity: Number(e.target.value),
+                                })
+                              }
+                              className="h-9"
+                            />
+                          </td>
+                          <td className="px-1 py-1.5">
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={row.unitPrice}
+                              onChange={(e) =>
+                                updateItem(index, {
+                                  unitPrice: Number(e.target.value),
+                                })
+                              }
+                              className="h-9"
+                            />
+                          </td>
+                          <td className="px-3 py-1.5 text-right tabular-nums font-medium">
+                            {line.toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </td>
+                          <td className="px-1 py-1.5">
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8"
+                              disabled={items.length <= 1}
+                              onClick={() =>
+                                setItems((prev) =>
+                                  prev.filter((_, i) => i !== index),
+                                )
+                              }
+                            >
+                              <Minus className="h-3.5 w-3.5" />
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-end">
+                <div className="w-full max-w-xs space-y-1 rounded-md border bg-muted/30 px-4 py-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span className="tabular-nums">
+                      {currency}{" "}
+                      {subtotal.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-base font-semibold">
+                    <span>Total</span>
+                    <span className="tabular-nums">
+                      {currency}{" "}
+                      {subtotal.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -540,7 +671,7 @@ export default function InvoicesPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Notes</Label>
+              <Label>Notes / payment terms</Label>
               <Textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
@@ -550,7 +681,7 @@ export default function InvoicesPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Upload invoice PDF (optional)</Label>
+              <Label>Upload custom PDF (optional)</Label>
               <input
                 ref={fileRef}
                 type="file"
@@ -565,10 +696,11 @@ export default function InvoicesPage() {
                 onClick={() => fileRef.current?.click()}
               >
                 <Upload className="mr-2 h-4 w-4" />
-                {pdfFile ? pdfFile.name : "Choose PDF"}
+                {pdfFile ? pdfFile.name : "Choose PDF (or auto-generate on create)"}
               </Button>
               <p className="text-[11px] text-muted-foreground">
-                You can create the invoice in-app and/or attach a PDF to send to the client.
+                Leave empty to auto-generate a professional invoice PDF you can
+                download anytime.
               </p>
             </div>
           </div>
@@ -577,10 +709,10 @@ export default function InvoicesPage() {
               Cancel
             </Button>
             <Button
-              disabled={!clientId || createMutation.isPending}
+              disabled={!clientId || createMutation.isPending || subtotal <= 0}
               onClick={() => createMutation.mutate()}
             >
-              {createMutation.isPending ? "Creating…" : "Create"}
+              {createMutation.isPending ? "Creating…" : "Create & generate PDF"}
             </Button>
           </DialogFooter>
         </DialogContent>

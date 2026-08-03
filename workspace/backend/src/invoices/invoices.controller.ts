@@ -7,14 +7,17 @@ import {
   Body,
   Param,
   Query,
+  Res,
   UseGuards,
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  Header,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { memoryStorage } from 'multer';
+import type { Response } from 'express';
 import { InvoicesService } from './invoices.service';
 import {
   CreateInvoiceDto,
@@ -53,6 +56,12 @@ export class InvoicesController {
     );
   }
 
+  @Get('next-number')
+  @Permissions('invoices:manage')
+  nextNumber(@CurrentUser() user: AuthenticatedUser) {
+    return this.invoicesService.nextNumber(user);
+  }
+
   @Get(':id')
   @Permissions('invoices:read')
   findOne(
@@ -60,6 +69,26 @@ export class InvoicesController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.invoicesService.findOne(id, user);
+  }
+
+  @Get(':id/download')
+  @Permissions('invoices:read')
+  @Header('Content-Type', 'application/pdf')
+  async download(
+    @Param('id', ParseCuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.invoicesService.generatePdfBuffer(
+      id,
+      user,
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename.replace(/"/g, '')}"`,
+    );
+    res.setHeader('Content-Length', buffer.length);
+    res.send(buffer);
   }
 
   @Post()
@@ -78,6 +107,7 @@ export class InvoicesController {
       properties: {
         file: { type: 'string', format: 'binary' },
         clientId: { type: 'string' },
+        number: { type: 'string' },
         projectId: { type: 'string' },
         milestoneId: { type: 'string' },
         title: { type: 'string' },
@@ -107,6 +137,7 @@ export class InvoicesController {
 
     const dto: CreateInvoiceDto = {
       clientId: body.clientId,
+      number: body.number || undefined,
       projectId: body.projectId || undefined,
       milestoneId: body.milestoneId || undefined,
       title: body.title || undefined,
@@ -147,6 +178,15 @@ export class InvoicesController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.invoicesService.markPaid(id, user);
+  }
+
+  @Post(':id/generate-pdf')
+  @Permissions('invoices:manage')
+  generatePdf(
+    @Param('id', ParseCuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.invoicesService.generateAndStorePdf(id, user);
   }
 
   @Post(':id/pdf')
