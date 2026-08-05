@@ -57,6 +57,16 @@ const ISSUE_STATUS_LABEL: Record<string, string> = {
   CUSTOM: "Other",
 };
 
+type PortalIssue = {
+  id: string;
+  key: string;
+  title: string;
+  type?: string;
+  priority?: string;
+  status?: string;
+  milestone?: { name: string } | null;
+};
+
 export default function PublicPortalPage() {
   const params = useParams();
   const token = params.token as string;
@@ -91,10 +101,12 @@ export default function PublicPortalPage() {
   const progress = portal.progressPercent ?? 0;
   const milestones = portal.milestones ?? [];
   const tasks = portal.tasks ?? [];
-  const issues = portal.issues ?? [];
+  const issues: PortalIssue[] = portal.issues ?? [];
   const documents = portal.documents ?? [];
-  const boardByStatus: Record<string, Array<Record<string, unknown>>> =
-    portal.boardByStatus ?? {};
+  const boardByStatus = (portal.boardByStatus ?? {}) as Record<
+    string,
+    PortalIssue[]
+  >;
   const statusKeys = [
     ...ISSUE_STATUS_ORDER.filter((s) => (boardByStatus[s]?.length ?? 0) > 0),
     ...Object.keys(boardByStatus).filter((s) => !ISSUE_STATUS_ORDER.includes(s)),
@@ -331,15 +343,7 @@ export default function PublicPortalPage() {
                       {ISSUE_STATUS_LABEL[status] ?? status} ({items.length})
                     </p>
                     <ul className="space-y-2">
-                      {items.map(
-                        (issue: {
-                          id: string;
-                          key: string;
-                          title: string;
-                          type?: string;
-                          priority?: string;
-                          milestone?: { name: string } | null;
-                        }) => (
+                      {items.map((issue) => (
                           <li
                             key={issue.id}
                             className="rounded-lg border bg-muted/20 px-3 py-2 text-sm"
@@ -366,8 +370,7 @@ export default function PublicPortalPage() {
                               </p>
                             )}
                           </li>
-                        ),
-                      )}
+                        ))}
                     </ul>
                   </div>
                 );
