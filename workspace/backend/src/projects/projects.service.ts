@@ -4,7 +4,9 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { randomBytes } from 'crypto';
+import { IssueStatus, IssueType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import {
   CreateProjectDto,
   UpdateProjectDto,
@@ -18,7 +20,10 @@ import { paginate, paginatedResponse } from '../common/dto/pagination.dto';
 
 @Injectable()
 export class ProjectsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private storage: StorageService,
+  ) {}
 
   private computeProgress(tasks: { status: string }[]) {
     if (!tasks.length) return 0;
@@ -571,5 +576,212 @@ export class ProjectsService {
     if (!existing) throw new NotFoundException('Client task not found');
     await this.prisma.clientTask.delete({ where: { id: taskId } });
     return { message: 'Client task deleted' };
+  }
+
+  // ── Public portal mutations (token-gated, no login) ─────
+
+  private async resolvePortalProject(token: string) {
+    if (!token?.trim()) throw new NotFoundException('Portal not found or disabled');
+    const project = await this.prisma.project.findFirst({
+      where: { portalToken: token, portalEnabled: true },
+      select: {
+        id: true,
+        key: true,
+        companyId: true,
+        clientId: true,
+        members: {
+          where: { role: 'owner' },
+          take: 1,
+          select: { userId: true },
+        },
+      },
+    });
+    if (!project) throw new NotFoundException('Portal not found or disabled');
+
+    let reporterId: string | undefined = project.members[0]?.userId;
+    if (!reporterId) {
+      const user = await this.prisma.user.findFirst({
+        where: { companyId: project.companyId },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      });
+      reporterId = user?.id;
+    }
+    if (!reporterId) {
+      throw new BadRequestException('Project has no owner to attribute client actions');
+    }
+
+    return {
+      projectId: project.id,
+      companyId: project.companyId,
+      clientId: project.clientId,
+      projectKey: project.key,
+      reporterId,
+    };
+  }
+
+  async portalCreateMilestone(token: string, dto: CreateMilestoneDto) {
+    const { projectId, companyId } = await this.resolvePortalProject(token);
+    return this.createMilestone(projectId, companyId, dto);
+  }
+
+  /** Creates a board task (issue) visible on the public Kanban + optional client task. */
+  async portalCreateTask(
+    token: string,
+    body: {
+      title: string;
+      description?: string;
+      status?: string;
+      priority?: string;
+      milestoneId?: string;
+    },
+  ) {
+    const { projectId, companyId, reporterId } = await this.resolvePortalProject(token);
+    const title = body.title?.trim();
+    if (!title) throw new BadRequestException('Title is required');
+
+    const allowedStatus = new Set([
+      'TODO',
+      'IN_PROGRESS',
+      'TESTING',
+      'CODE_REVIEW',
+      'READY_FOR_QA',
+      'DONE',
+    ]);
+    const status = allowedStatus.has(body.status || '')
+      ? (body.status as IssueStatus)
+      : IssueStatus.TODO;
+
+    const allowedPriority = new Set(['LOWEST', 'LOW', 'MEDIUM', 'HIGH', 'HIGHEST', 'CRITICAL']);
+    const priority = allowedPriority.has((body.priority || '').toUpperCase())
+      ? (body.priority!.toUpperCase() as
+          | 'LOWEST'
+          | 'LOW'
+          | 'MEDIUM'
+          | 'HIGH'
+          | 'HIGHEST'
+          | 'CRITICAL')
+      : 'MEDIUM';
+
+    if (body.milestoneId) {
+      const ms = await this.prisma.milestone.findFirst({
+        where: { id: body.milestoneId, projectId },
+      });
+      if (!ms) throw new BadRequestException('Milestone not found on this project');
+    }
+
+    const lastIssue = await this.prisma.issue.findFirst({
+      where: { projectId },
+      orderBy: { number: 'desc' },
+    });
+    const number = (lastIssue?.number ?? 0) + 1;
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId },
+      select: { key: true },
+    });
+    const key = `${project!.key}-${number}`;
+
+    const issue = await this.prisma.issue.create({
+      data: {
+        projectId,
+        number,
+        key,
+        title,
+        description: body.description?.trim() || undefined,
+        type: IssueType.TASK,
+        priority: priority as never,
+        status,
+        reporterId,
+        milestoneId: body.milestoneId || undefined,
+      },
+    });
+
+    // Mirror on client tasks list for progress tracking
+    await this.prisma.clientTask.create({
+      data: {
+        projectId,
+        title,
+        description: body.description?.trim() || undefined,
+        milestoneId: body.milestoneId || undefined,
+        status:
+          status === IssueStatus.DONE
+            ? 'DONE'
+            : status === IssueStatus.IN_PROGRESS
+              ? 'IN_PROGRESS'
+              : 'TODO',
+      },
+    });
+
+    return issue;
+  }
+
+  async portalUploadDocument(token: string, file: Express.Multer.File, name?: string) {
+    const { projectId, companyId, clientId, reporterId } =
+      await this.resolvePortalProject(token);
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Please choose a file to upload');
+    }
+
+    const key = this.storage.generateKey(
+      `companies/${companyId}/projects/${projectId}/portal`,
+      file.originalname || 'upload.bin',
+    );
+    const { url } = await this.storage.upload(
+      key,
+      file.buffer,
+      file.mimetype || 'application/octet-stream',
+    );
+
+    return this.prisma.document.create({
+      data: {
+        companyId,
+        projectId,
+        clientId: clientId || undefined,
+        uploadedById: reporterId,
+        name: (name || file.originalname || 'Upload').trim(),
+        originalName: file.originalname || 'upload.bin',
+        type: 'CUSTOM',
+        mimeType: file.mimetype || 'application/octet-stream',
+        size: file.size,
+        storageKey: key,
+        storageUrl: url,
+      },
+    });
+  }
+
+  async portalAddLink(
+    token: string,
+    body: { name: string; url: string },
+  ) {
+    const { projectId, companyId, clientId, reporterId } =
+      await this.resolvePortalProject(token);
+    const name = body.name?.trim();
+    const url = body.url?.trim();
+    if (!name) throw new BadRequestException('Link name is required');
+    if (!url) throw new BadRequestException('URL is required');
+    try {
+      // eslint-disable-next-line no-new
+      new URL(url);
+    } catch {
+      throw new BadRequestException('Enter a valid URL (include https://)');
+    }
+
+    const storageKey = `portal-link/${projectId}/${randomBytes(8).toString('hex')}`;
+    return this.prisma.document.create({
+      data: {
+        companyId,
+        projectId,
+        clientId: clientId || undefined,
+        uploadedById: reporterId,
+        name,
+        originalName: name,
+        type: 'CUSTOM',
+        mimeType: 'text/uri-list',
+        size: 0,
+        storageKey,
+        storageUrl: url,
+        metadata: { kind: 'external_link' } as Prisma.InputJsonValue,
+      },
+    });
   }
 }

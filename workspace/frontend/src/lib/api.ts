@@ -188,6 +188,29 @@ export const projectsApi = {
 
 export const portalApi = {
   get: (token: string) => api.get(`/portal/${token}`),
+  createMilestone: (token: string, data: Record<string, unknown>) =>
+    api.post(`/portal/${token}/milestones`, data),
+  createTask: (token: string, data: Record<string, unknown>) =>
+    api.post(`/portal/${token}/tasks`, data),
+  addLink: (token: string, data: { name: string; url: string }) =>
+    api.post(`/portal/${token}/links`, data),
+  uploadDocument: (token: string, file: File, name?: string) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (name) formData.append("name", name);
+    return api.post(`/portal/${token}/documents`, formData, {
+      headers: { "Content-Type": undefined as unknown as string },
+      timeout: 120000,
+      transformRequest: [
+        (body, headers) => {
+          if (headers && typeof headers === "object") {
+            delete (headers as Record<string, unknown>)["Content-Type"];
+          }
+          return body;
+        },
+      ],
+    });
+  },
 };
 
 // Issues API

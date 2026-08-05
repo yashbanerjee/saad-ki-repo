@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Calendar,
   CheckCircle2,
@@ -16,11 +16,33 @@ import {
   Kanban,
   Activity,
   Download,
+  Plus,
+  Copy,
+  Link2,
+  Upload,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   KanbanBoard,
   defaultColumns,
@@ -29,6 +51,7 @@ import {
 } from "@/components/features/KanbanBoard";
 import { portalApi } from "@/lib/api";
 import { formatDate, cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 const MILESTONE_LABEL: Record<string, string> = {
   PLANNED: "Planned",
@@ -59,6 +82,25 @@ function formatBytes(size?: number) {
 export default function PublicPortalPage() {
   const params = useParams();
   const token = params.token as string;
+  const queryClient = useQueryClient();
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const [taskOpen, setTaskOpen] = useState(false);
+  const [milestoneOpen, setMilestoneOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [taskForm, setTaskForm] = useState({
+    title: "",
+    description: "",
+    status: "TODO",
+    priority: "MEDIUM",
+    milestoneId: "",
+  });
+  const [milestoneForm, setMilestoneForm] = useState({
+    name: "",
+    description: "",
+    dueDate: "",
+  });
+  const [linkForm, setLinkForm] = useState({ name: "", url: "" });
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["portal", token],
@@ -68,10 +110,88 @@ export default function PublicPortalPage() {
 
   const portal = data?.data?.data ?? data?.data ?? null;
 
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["portal", token] });
+  };
+
+  const createTaskMutation = useMutation({
+    mutationFn: () =>
+      portalApi.createTask(token, {
+        title: taskForm.title.trim(),
+        description: taskForm.description.trim() || undefined,
+        status: taskForm.status,
+        priority: taskForm.priority,
+        milestoneId: taskForm.milestoneId || undefined,
+      }),
+    onSuccess: () => {
+      invalidate();
+      setTaskOpen(false);
+      setTaskForm({
+        title: "",
+        description: "",
+        status: "TODO",
+        priority: "MEDIUM",
+        milestoneId: "",
+      });
+      toast.success("Task created");
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Could not create task");
+    },
+  });
+
+  const createMilestoneMutation = useMutation({
+    mutationFn: () =>
+      portalApi.createMilestone(token, {
+        name: milestoneForm.name.trim(),
+        description: milestoneForm.description.trim() || undefined,
+        dueDate: milestoneForm.dueDate || undefined,
+      }),
+    onSuccess: () => {
+      invalidate();
+      setMilestoneOpen(false);
+      setMilestoneForm({ name: "", description: "", dueDate: "" });
+      toast.success("Milestone added");
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Could not add milestone");
+    },
+  });
+
+  const addLinkMutation = useMutation({
+    mutationFn: () =>
+      portalApi.addLink(token, {
+        name: linkForm.name.trim(),
+        url: linkForm.url.trim(),
+      }),
+    onSuccess: () => {
+      invalidate();
+      setLinkOpen(false);
+      setLinkForm({ name: "", url: "" });
+      toast.success("Link shared");
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Could not share link");
+    },
+  });
+
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => portalApi.uploadDocument(token, file),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Document uploaded");
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Upload failed");
+    },
+  });
+
   const boardColumns: KanbanColumn[] = useMemo(() => {
-    if (!portal) return defaultColumns.filter((c) =>
-      ["TODO", "IN_PROGRESS", "TESTING", "DONE"].includes(c.id),
-    );
+    if (!portal) {
+      return defaultColumns.filter((c) =>
+        ["TODO", "IN_PROGRESS", "TESTING", "DONE"].includes(c.id),
+      );
+    }
 
     const cols = portal.columns as
       | Array<{
@@ -100,50 +220,18 @@ export default function PublicPortalPage() {
           type: t.type,
           status: t.status || col.id,
           priority: mapPriority(t.priority),
-          dueDate: t.dueDate
-            ? formatDate(t.dueDate)
-            : undefined,
+          dueDate: t.dueDate ? formatDate(t.dueDate) : undefined,
         })),
       }));
     }
 
-    // Fallback: group portal.issues
-    const issues = (portal.issues ?? []) as Array<{
-      id: string;
-      key?: string;
-      title: string;
-      type?: string;
-      priority?: string;
-      status?: string;
-      dueDate?: string | null;
-    }>;
-
-    const mapStatus = (s?: string) => {
-      if (!s) return "TODO";
-      if (s === "IN_PROGRESS" || s === "BLOCKED") return "IN_PROGRESS";
-      if (["TESTING", "QA_FAILED"].includes(s)) return "TESTING";
-      if (s === "CODE_REVIEW") return "CODE_REVIEW";
-      if (["READY_FOR_QA", "READY_FOR_RELEASE"].includes(s)) return "READY_FOR_QA";
-      if (s === "DONE") return "DONE";
-      return "TODO";
-    };
-
-    const base = defaultColumns.map((c) => ({ ...c, tasks: [] as KanbanTask[] }));
-    for (const issue of issues) {
-      const colId = mapStatus(issue.status);
-      const col = base.find((c) => c.id === colId) || base[0];
-      col.tasks.push({
-        id: issue.id,
-        key: issue.key,
-        title: issue.title,
-        type: issue.type,
-        status: issue.status,
-        priority: mapPriority(issue.priority),
-        dueDate: issue.dueDate ? formatDate(issue.dueDate) : undefined,
-      });
-    }
-    return base;
+    return defaultColumns;
   }, [portal]);
+
+  const shareUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/portal/${token}`
+      : `/portal/${token}`;
 
   if (isLoading) {
     return (
@@ -181,20 +269,19 @@ export default function PublicPortalPage() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card/80 backdrop-blur sticky top-0 z-20">
-        <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between gap-3">
+        <div className="mx-auto max-w-7xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm font-medium text-primary min-w-0">
             <Sparkles className="h-4 w-4 shrink-0" />
             <span className="truncate">{portal.companyName || "TaskFlow by Vedha"}</span>
           </div>
           <Badge variant="secondary" className="shrink-0">
-            Client project view · No login
+            Collaborative project view · No login
           </Badge>
         </div>
       </header>
 
       <div className="mx-auto max-w-7xl px-4 py-6 space-y-6">
-        {/* Project header — same role as logged-in project detail */}
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
           <div>
             <div className="flex flex-wrap items-center gap-2 mb-1">
               {portal.projectKey && (
@@ -218,9 +305,60 @@ export default function PublicPortalPage() {
               </p>
             )}
           </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => setTaskOpen(true)}>
+              <Plus className="h-4 w-4 mr-1" /> Create task
+            </Button>
+            <Button variant="outline" onClick={() => setMilestoneOpen(true)}>
+              <Layers className="h-4 w-4 mr-1" /> Add milestone
+            </Button>
+            <Button variant="outline" onClick={() => setLinkOpen(true)}>
+              <Link2 className="h-4 w-4 mr-1" /> Share link
+            </Button>
+            <Button
+              variant="outline"
+              disabled={uploadMutation.isPending}
+              onClick={() => fileRef.current?.click()}
+            >
+              <Upload className="h-4 w-4 mr-1" />
+              {uploadMutation.isPending ? "Uploading…" : "Upload document"}
+            </Button>
+            <input
+              ref={fileRef}
+              type="file"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) uploadMutation.mutate(file);
+                e.target.value = "";
+              }}
+            />
+          </div>
         </div>
 
-        {/* Overview stats — matches project overview cards */}
+        {/* Share this page */}
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">Share this project link</p>
+              <p className="text-xs font-mono text-muted-foreground break-all mt-0.5">
+                {shareUrl}
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                navigator.clipboard.writeText(shareUrl);
+                toast.success("Project link copied");
+              }}
+            >
+              <Copy className="h-3.5 w-3.5 mr-1" /> Copy link
+            </Button>
+          </CardContent>
+        </Card>
+
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Card className="!shadow-sm border-primary/20">
             <CardHeader className="pb-2">
@@ -311,24 +449,26 @@ export default function PublicPortalPage() {
                 {documents.length}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                Files shared on this project
+                Files & shared links
               </p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Kanban board — same component as logged-in board */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="font-display text-lg font-bold flex items-center gap-2">
                 <Kanban className="h-5 w-5 text-primary" />
                 Kanban board
               </h2>
               <p className="text-sm text-muted-foreground">
-                Live work status · read-only view
+                Live work status · create tasks with the button above
               </p>
             </div>
+            <Button size="sm" onClick={() => setTaskOpen(true)}>
+              <Plus className="h-3.5 w-3.5 mr-1" /> New task
+            </Button>
           </div>
           <KanbanBoard
             initialColumns={boardColumns}
@@ -338,20 +478,34 @@ export default function PublicPortalPage() {
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">
-          {/* Documents with links */}
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <FileText className="h-4 w-4" /> Document links
-              </CardTitle>
-              <CardDescription>
-                Open or download project files
-              </CardDescription>
+            <CardHeader className="pb-2 flex flex-row items-start justify-between gap-2">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <FileText className="h-4 w-4" /> Documents & links
+                </CardTitle>
+                <CardDescription>
+                  Upload files or share external links
+                </CardDescription>
+              </div>
+              <div className="flex gap-1 shrink-0">
+                <Button size="sm" variant="outline" onClick={() => setLinkOpen(true)}>
+                  <Link2 className="h-3.5 w-3.5 mr-1" /> Link
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={uploadMutation.isPending}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <Upload className="h-3.5 w-3.5 mr-1" /> File
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {documents.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4 text-center">
-                  No documents shared yet.
+                  No documents yet. Upload a file or share a link.
                 </p>
               ) : (
                 <ul className="space-y-2">
@@ -366,6 +520,7 @@ export default function PublicPortalPage() {
                     }) => {
                       const label = doc.originalName || doc.name;
                       const href = doc.storageUrl;
+                      const isLink = doc.mimeType === "text/uri-list";
                       return (
                         <li key={doc.id}>
                           {href ? (
@@ -376,13 +531,19 @@ export default function PublicPortalPage() {
                               className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-sm hover:bg-muted/40 transition-colors"
                             >
                               <div className="min-w-0 flex items-center gap-2">
-                                <Download className="h-4 w-4 shrink-0 text-primary" />
+                                {isLink ? (
+                                  <Link2 className="h-4 w-4 shrink-0 text-primary" />
+                                ) : (
+                                  <Download className="h-4 w-4 shrink-0 text-primary" />
+                                )}
                                 <div className="min-w-0">
                                   <p className="font-medium truncate">{label}</p>
                                   <p className="text-[11px] text-muted-foreground">
-                                    {[doc.mimeType, formatBytes(doc.size)]
-                                      .filter(Boolean)
-                                      .join(" · ")}
+                                    {isLink
+                                      ? "External link"
+                                      : [doc.mimeType, formatBytes(doc.size)]
+                                          .filter(Boolean)
+                                          .join(" · ")}
                                   </p>
                                 </div>
                               </div>
@@ -392,7 +553,6 @@ export default function PublicPortalPage() {
                             <div className="flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm text-muted-foreground">
                               <FileText className="h-4 w-4 shrink-0" />
                               <span className="truncate">{label}</span>
-                              <span className="text-[11px] ml-auto">Unavailable</span>
                             </div>
                           )}
                         </li>
@@ -404,17 +564,21 @@ export default function PublicPortalPage() {
             </CardContent>
           </Card>
 
-          {/* Milestones */}
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Layers className="h-4 w-4" /> Milestones
-              </CardTitle>
+            <CardHeader className="pb-2 flex flex-row items-start justify-between gap-2">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Layers className="h-4 w-4" /> Milestones
+                </CardTitle>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => setMilestoneOpen(true)}>
+                <Plus className="h-3.5 w-3.5 mr-1" /> Add
+              </Button>
             </CardHeader>
             <CardContent>
               {milestones.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4 text-center">
-                  No milestones yet.
+                  No milestones yet. Add one to track phase goals.
                 </p>
               ) : (
                 <ul className="space-y-3">
@@ -476,7 +640,7 @@ export default function PublicPortalPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
-                <ListTodo className="h-4 w-4" /> Client tasks
+                <ListTodo className="h-4 w-4" /> Client task list
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -515,9 +679,6 @@ export default function PublicPortalPage() {
                         )}
                         <p className="text-xs text-muted-foreground">
                           {t.milestone?.name ? `${t.milestone.name} · ` : ""}
-                          {t.estimatedHours != null
-                            ? `${Number(t.estimatedHours)} hrs · `
-                            : ""}
                           {TASK_LABEL[t.status] ?? t.status}
                         </p>
                       </div>
@@ -530,9 +691,220 @@ export default function PublicPortalPage() {
         )}
 
         <p className="text-center text-xs text-muted-foreground pt-2 pb-8">
-          Powered by TaskFlow by Vedha · Shared link (no account required)
+          Powered by TaskFlow by Vedha · Shared collaborative link (no account required)
         </p>
       </div>
+
+      {/* Create task */}
+      <Dialog open={taskOpen} onOpenChange={setTaskOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create task</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-2">
+              <Label>Title</Label>
+              <Input
+                value={taskForm.title}
+                onChange={(e) =>
+                  setTaskForm((f) => ({ ...f, title: e.target.value }))
+                }
+                placeholder="What needs to be done?"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea
+                value={taskForm.description}
+                onChange={(e) =>
+                  setTaskForm((f) => ({ ...f, description: e.target.value }))
+                }
+                rows={3}
+                placeholder="Details…"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select
+                  value={taskForm.status}
+                  onValueChange={(v) =>
+                    setTaskForm((f) => ({ ...f, status: v }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="TODO">Todo</SelectItem>
+                    <SelectItem value="IN_PROGRESS">In progress</SelectItem>
+                    <SelectItem value="TESTING">Testing</SelectItem>
+                    <SelectItem value="DONE">Done</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Priority</Label>
+                <Select
+                  value={taskForm.priority}
+                  onValueChange={(v) =>
+                    setTaskForm((f) => ({ ...f, priority: v }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="LOW">Low</SelectItem>
+                    <SelectItem value="MEDIUM">Medium</SelectItem>
+                    <SelectItem value="HIGH">High</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {milestones.length > 0 && (
+              <div className="space-y-2">
+                <Label>Milestone (optional)</Label>
+                <Select
+                  value={taskForm.milestoneId || "none"}
+                  onValueChange={(v) =>
+                    setTaskForm((f) => ({
+                      ...f,
+                      milestoneId: v === "none" ? "" : v,
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {milestones.map((m: { id: string; name: string }) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTaskOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!taskForm.title.trim() || createTaskMutation.isPending}
+              onClick={() => createTaskMutation.mutate()}
+            >
+              {createTaskMutation.isPending ? "Creating…" : "Create task"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add milestone */}
+      <Dialog open={milestoneOpen} onOpenChange={setMilestoneOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add milestone</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-2">
+              <Label>Name</Label>
+              <Input
+                value={milestoneForm.name}
+                onChange={(e) =>
+                  setMilestoneForm((f) => ({ ...f, name: e.target.value }))
+                }
+                placeholder="e.g. Design approval"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Due date</Label>
+              <Input
+                type="date"
+                value={milestoneForm.dueDate}
+                onChange={(e) =>
+                  setMilestoneForm((f) => ({ ...f, dueDate: e.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea
+                value={milestoneForm.description}
+                onChange={(e) =>
+                  setMilestoneForm((f) => ({
+                    ...f,
+                    description: e.target.value,
+                  }))
+                }
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMilestoneOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                !milestoneForm.name.trim() || createMilestoneMutation.isPending
+              }
+              onClick={() => createMilestoneMutation.mutate()}
+            >
+              {createMilestoneMutation.isPending ? "Adding…" : "Add milestone"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Share external link */}
+      <Dialog open={linkOpen} onOpenChange={setLinkOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Share a link</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-2">
+              <Label>Name</Label>
+              <Input
+                value={linkForm.name}
+                onChange={(e) =>
+                  setLinkForm((f) => ({ ...f, name: e.target.value }))
+                }
+                placeholder="e.g. Figma designs"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>URL</Label>
+              <Input
+                value={linkForm.url}
+                onChange={(e) =>
+                  setLinkForm((f) => ({ ...f, url: e.target.value }))
+                }
+                placeholder="https://…"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLinkOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                !linkForm.name.trim() ||
+                !linkForm.url.trim() ||
+                addLinkMutation.isPending
+              }
+              onClick={() => addLinkMutation.mutate()}
+            >
+              {addLinkMutation.isPending ? "Sharing…" : "Share link"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
