@@ -179,11 +179,69 @@ function TaskOverlay({ task }: { task: KanbanTask }) {
   );
 }
 
+function StaticTask({ task }: { task: KanbanTask }) {
+  return (
+    <div className="group relative z-10 overflow-hidden rounded-xl border border-border bg-background p-3 shadow-sm">
+      <div
+        className={cn(
+          "absolute left-0 top-0 h-full w-1 rounded-l-xl",
+          priorityBar[task.priority],
+        )}
+      />
+      <div className="min-w-0 pl-2">
+        {task.key && (
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {task.key}
+          </p>
+        )}
+        <p className="text-sm font-medium leading-snug text-foreground">{task.title}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <Badge
+            variant={priorityColors[task.priority]}
+            className="text-[10px] capitalize"
+          >
+            {task.priority}
+          </Badge>
+          {task.type && (
+            <Badge variant="outline" className="text-[10px]">
+              {task.type}
+            </Badge>
+          )}
+          {task.labels?.map((label) => (
+            <Badge key={label} variant="outline" className="text-[10px]">
+              {label}
+            </Badge>
+          ))}
+        </div>
+        {(task.dueDate || task.assignee) && (
+          <div className="mt-2.5 flex items-center gap-2">
+            {task.assignee && (
+              <Avatar className="h-6 w-6 border border-border">
+                <AvatarFallback className="bg-vedha-teal/15 text-[9px] text-vedha-teal dark:bg-vedha-teal/30 dark:text-vedha-cyan">
+                  {getInitials(task.assignee)}
+                </AvatarFallback>
+              </Avatar>
+            )}
+            {task.dueDate && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                <Calendar className="h-3 w-3" />
+                {task.dueDate}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface KanbanBoardProps {
   initialColumns?: KanbanColumn[];
   onTaskMove?: (taskId: string, fromColumn: string, toColumn: string) => void;
   onAddTask?: (columnId: string) => void;
   canCreate?: boolean;
+  /** Public / client view — no drag, no add task */
+  readOnly?: boolean;
   taskHref?: (task: KanbanTask) => string;
 }
 
@@ -229,6 +287,7 @@ export function KanbanBoard({
   onTaskMove,
   onAddTask,
   canCreate = true,
+  readOnly = false,
   taskHref,
 }: KanbanBoardProps) {
   const [columns, setColumns] = useState(initialColumns);
@@ -247,11 +306,13 @@ export function KanbanBoard({
     columns.find((col) => col.tasks.some((t) => t.id === taskId));
 
   const handleDragStart = (event: DragStartEvent) => {
+    if (readOnly) return;
     const task = event.active.data.current?.task as KanbanTask;
     setActiveTask(task);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
+    if (readOnly) return;
     const { active, over } = event;
     setActiveTask(null);
     if (!over) return;
@@ -281,6 +342,38 @@ export function KanbanBoard({
 
     onTaskMove?.(activeId, sourceColumn.id, destColumn.id);
   };
+
+  if (readOnly) {
+    return (
+      <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin">
+        {columns.map((column) => (
+          <div key={column.id} className="w-80 flex-shrink-0">
+            <Card className="h-full border-border !bg-muted/50 !shadow-none">
+              <CardHeader className="pb-3 pt-4 px-4">
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-sm font-semibold tracking-wide text-foreground">
+                    {column.title || "Column"}
+                  </CardTitle>
+                  <Badge variant="secondary">{column.tasks.length}</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="min-h-[220px] space-y-2.5 px-3 pb-3">
+                {column.tasks.length === 0 ? (
+                  <p className="text-xs text-muted-foreground px-1 py-4 text-center">
+                    No items
+                  </p>
+                ) : (
+                  column.tasks.map((task) => (
+                    <StaticTask key={task.id} task={task} />
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <DndContext

@@ -355,14 +355,55 @@ export class ProjectsService {
         ),
       ).length,
       todo: project.issues.filter((i) => i.status === 'TODO').length,
+      testing: project.issues.filter((i) =>
+        ['TESTING', 'CODE_REVIEW', 'READY_FOR_QA', 'QA_FAILED', 'READY_FOR_RELEASE'].includes(
+          i.status,
+        ),
+      ).length,
+      blocked: project.issues.filter((i) => i.status === 'BLOCKED').length,
     };
 
-    // Group issues by status for a simple public board view
+    // Client-facing board columns (same as staff board layout)
+    const boardColumns = [
+      { id: 'TODO', title: 'Todo' },
+      { id: 'IN_PROGRESS', title: 'In Progress' },
+      { id: 'TESTING', title: 'Testing' },
+      { id: 'CODE_REVIEW', title: 'Code Review' },
+      { id: 'READY_FOR_QA', title: 'Ready for QA' },
+      { id: 'DONE', title: 'Done' },
+    ];
+
+    const mapIssueColumn = (status: string) => {
+      if (status === 'TODO') return 'TODO';
+      if (status === 'IN_PROGRESS' || status === 'BLOCKED') return 'IN_PROGRESS';
+      if (['TESTING', 'QA_FAILED'].includes(status)) return 'TESTING';
+      if (status === 'CODE_REVIEW') return 'CODE_REVIEW';
+      if (['READY_FOR_QA', 'READY_FOR_RELEASE'].includes(status)) return 'READY_FOR_QA';
+      if (status === 'DONE') return 'DONE';
+      return 'TODO';
+    };
+
     const boardByStatus: Record<string, typeof project.issues> = {};
+    for (const col of boardColumns) boardByStatus[col.id] = [];
     for (const issue of project.issues) {
-      if (!boardByStatus[issue.status]) boardByStatus[issue.status] = [];
-      boardByStatus[issue.status].push(issue);
+      const col = mapIssueColumn(issue.status);
+      boardByStatus[col].push(issue);
     }
+
+    const columns = boardColumns.map((col) => ({
+      id: col.id,
+      title: col.title,
+      tasks: (boardByStatus[col.id] || []).map((issue) => ({
+        id: issue.id,
+        key: issue.key,
+        title: issue.title,
+        type: issue.type,
+        status: issue.status,
+        priority: issue.priority,
+        dueDate: issue.dueDate,
+        milestone: issue.milestone,
+      })),
+    }));
 
     return {
       projectName: project.name,
@@ -379,7 +420,8 @@ export class ProjectsService {
       issues: project.issues,
       issueCounts,
       boardByStatus,
-      documents: project.documents.filter((d) => Boolean(d.storageUrl)),
+      columns,
+      documents: project.documents,
       ...progress,
       progressPercent,
     };
