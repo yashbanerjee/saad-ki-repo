@@ -267,6 +267,7 @@ export class ProjectsService {
       where: { portalToken: token, portalEnabled: true },
       select: {
         id: true,
+        key: true,
         name: true,
         description: true,
         status: true,
@@ -297,19 +298,75 @@ export class ProjectsService {
             milestone: { select: { id: true, name: true } },
           },
         },
+        issues: {
+          where: { status: { not: 'CANCELLED' } },
+          orderBy: [{ order: 'asc' }, { updatedAt: 'desc' }],
+          take: 200,
+          select: {
+            id: true,
+            key: true,
+            title: true,
+            description: true,
+            type: true,
+            status: true,
+            priority: true,
+            dueDate: true,
+            milestone: { select: { id: true, name: true } },
+          },
+        },
+        documents: {
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          select: {
+            id: true,
+            name: true,
+            originalName: true,
+            mimeType: true,
+            size: true,
+            storageUrl: true,
+            type: true,
+            createdAt: true,
+          },
+        },
         company: { select: { name: true } },
       },
     });
     if (!project) throw new NotFoundException('Portal not found or disabled');
 
     const progress = this.progressPayload(project.milestones, project.clientTasks);
+    // If no client tasks, fall back to board issue completion
+    let progressPercent = progress.progressPercent;
+    if (!project.clientTasks.length && project.issues.length) {
+      const done = project.issues.filter((i) => i.status === 'DONE').length;
+      progressPercent = Math.round((done / project.issues.length) * 100);
+    }
+
     const now = Date.now();
     const endMs = project.endDate ? new Date(project.endDate).getTime() : null;
     const daysRemaining =
       endMs != null ? Math.ceil((endMs - now) / (1000 * 60 * 60 * 24)) : null;
 
+    const issueCounts = {
+      total: project.issues.length,
+      done: project.issues.filter((i) => i.status === 'DONE').length,
+      inProgress: project.issues.filter((i) =>
+        ['IN_PROGRESS', 'TESTING', 'CODE_REVIEW', 'READY_FOR_QA', 'READY_FOR_RELEASE'].includes(
+          i.status,
+        ),
+      ).length,
+      todo: project.issues.filter((i) => i.status === 'TODO').length,
+    };
+
+    // Group issues by status for a simple public board view
+    const boardByStatus: Record<string, typeof project.issues> = {};
+    for (const issue of project.issues) {
+      if (!boardByStatus[issue.status]) boardByStatus[issue.status] = [];
+      boardByStatus[issue.status].push(issue);
+    }
+
     return {
       projectName: project.name,
+      projectKey: project.key,
       description: project.description,
       status: project.status,
       companyName: project.company.name,
@@ -319,7 +376,12 @@ export class ProjectsService {
       daysRemaining,
       milestones: project.milestones,
       tasks: project.clientTasks,
+      issues: project.issues,
+      issueCounts,
+      boardByStatus,
+      documents: project.documents.filter((d) => Boolean(d.storageUrl)),
       ...progress,
+      progressPercent,
     };
   }
 

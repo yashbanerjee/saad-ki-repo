@@ -37,9 +37,10 @@ export function middleware(request: NextRequest) {
   const isAuthRoute = authRoutes.some((route) => pathname.startsWith(route));
   const isPublicOnboarding = pathname.startsWith("/onboarding/public/");
   const isPublicPortal = pathname.startsWith("/portal/");
+  const isPublicShare = pathname.startsWith("/share/");
   const isPublicSetup = pathname.startsWith("/setup/");
 
-  if (isPublicOnboarding || isPublicPortal || isPublicSetup) {
+  if (isPublicOnboarding || isPublicPortal || isPublicShare || isPublicSetup) {
     return NextResponse.next();
   }
 

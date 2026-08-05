@@ -354,9 +354,10 @@ export default function ClientProgressPage() {
         {/* Share link */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Client link</CardTitle>
+            <CardTitle className="text-base">Client share link</CardTitle>
             <CardDescription>
-              Copy and send this link to the client (WhatsApp / email). No login needed.
+              Copy and send this link (WhatsApp / email). Client opens it with no login
+              and sees project details, milestones, tasks, work items, and files.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
