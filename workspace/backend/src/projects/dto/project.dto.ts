@@ -9,10 +9,34 @@ import {
   IsDateString,
   IsNumber,
   IsIn,
+  IsArray,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ProjectStatus } from '@prisma/client';
+
+function normalizeTags(value: unknown): string[] | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const raw = Array.isArray(value)
+    ? value
+    : String(value)
+        .split(',')
+        .map((s) => s.trim());
+  const tags = raw
+    .map((t) => String(t).trim())
+    .filter(Boolean)
+    .map((t) => t.slice(0, 40));
+  // unique case-insensitive, keep first casing
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of tags) {
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+  }
+  return out.slice(0, 20);
+}
 
 export class CreateProjectDto {
   @ApiPropertyOptional({ description: 'Optional; auto-generated from name when omitted' })
@@ -34,6 +58,13 @@ export class CreateProjectDto {
   @IsOptional()
   @IsString()
   clientId?: string;
+
+  @ApiPropertyOptional({ type: [String], description: 'e.g. Vedha, F&S, Web, App Dev, ERP' })
+  @IsOptional()
+  @Transform(({ value }) => normalizeTags(value))
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -66,6 +97,13 @@ export class UpdateProjectDto {
   @IsOptional()
   @IsString()
   clientId?: string | null;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @Transform(({ value }) => normalizeTags(value))
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -119,6 +157,11 @@ export class ListProjectsQueryDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @ApiPropertyOptional({ description: 'Filter projects that include this tag' })
+  @IsOptional()
+  @IsString()
+  tag?: string;
 }
 
 export class CreateMilestoneDto {

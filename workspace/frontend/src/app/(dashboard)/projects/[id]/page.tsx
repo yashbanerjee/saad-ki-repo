@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState, KeyboardEvent } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,6 +17,8 @@ import {
   RefreshCw,
   ExternalLink,
   PowerOff,
+  Tag,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,14 +26,29 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Input } from "@/components/ui/input";
 import { projectsApi } from "@/lib/api";
 import { formatDate, getInitials } from "@/lib/utils";
 import { toast } from "sonner";
+
+const TAG_SUGGESTIONS = [
+  "Vedha",
+  "F&S",
+  "Web",
+  "App Dev",
+  "ERP",
+  "Mobile",
+  "UI/UX",
+  "Maintenance",
+];
 
 export default function ProjectDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const queryClient = useQueryClient();
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
+  const [tagsDirty, setTagsDirty] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["project", id],
@@ -38,12 +56,68 @@ export default function ProjectDetailPage() {
     retry: false,
   });
 
+  const { data: tagsData } = useQuery({
+    queryKey: ["project-tags"],
+    queryFn: () => projectsApi.listTags(),
+    retry: false,
+  });
+
   const project = data?.data?.data ?? data?.data ?? null;
+
+  useEffect(() => {
+    if (!project || tagsDirty) return;
+    setTags(Array.isArray(project.tags) ? project.tags : []);
+  }, [project, tagsDirty]);
+
+  const knownTags = useMemo(() => {
+    const raw = tagsData?.data?.data ?? tagsData?.data ?? [];
+    const fromApi = Array.isArray(raw) ? (raw as string[]) : [];
+    return Array.from(new Set([...TAG_SUGGESTIONS, ...fromApi, ...tags])).sort((a, b) =>
+      a.localeCompare(b),
+    );
+  }, [tagsData, tags]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["project", id] });
     queryClient.invalidateQueries({ queryKey: ["projects"] });
+    queryClient.invalidateQueries({ queryKey: ["project-tags"] });
   };
+
+  const addTag = (raw: string) => {
+    const t = raw.trim().slice(0, 40);
+    if (!t) return;
+    setTags((prev) => {
+      if (prev.some((p) => p.toLowerCase() === t.toLowerCase())) return prev;
+      return [...prev, t].slice(0, 20);
+    });
+    setTagInput("");
+    setTagsDirty(true);
+  };
+
+  const removeTag = (tag: string) => {
+    setTags((prev) => prev.filter((t) => t !== tag));
+    setTagsDirty(true);
+  };
+
+  const onTagKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addTag(tagInput);
+    } else if (e.key === "Backspace" && !tagInput && tags.length) {
+      setTags((prev) => prev.slice(0, -1));
+      setTagsDirty(true);
+    }
+  };
+
+  const saveTags = useMutation({
+    mutationFn: () => projectsApi.update(id, { tags }),
+    onSuccess: () => {
+      setTagsDirty(false);
+      invalidate();
+      toast.success("Tags updated");
+    },
+    onError: () => toast.error("Could not update tags"),
+  });
 
   const enablePortal = useMutation({
     mutationFn: () => projectsApi.enablePortal(id),
@@ -152,6 +226,15 @@ export default function ProjectDetailPage() {
             {project.status && <Badge variant="success">{project.status}</Badge>}
           </div>
           {clientName && <p className="text-muted-foreground">{clientName}</p>}
+          {tags.length > 0 && !tagsDirty && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {tags.map((t) => (
+                <Badge key={t} variant="outline" className="text-[11px] font-normal">
+                  {t}
+                </Badge>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-3">
           {team.length > 0 && (
@@ -170,6 +253,79 @@ export default function ProjectDetailPage() {
           </Button>
         </div>
       </div>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Tag className="h-4 w-4" /> Tags
+          </CardTitle>
+          <CardDescription>
+            Mark client brand (Vedha, F&S) or type (Web, App Dev, ERP). Used to filter the projects list.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="rounded-md border px-2 py-1.5 focus-within:ring-1 focus-within:ring-ring">
+            <div className="flex flex-wrap gap-1.5 mb-1.5 empty:mb-0">
+              {tags.map((tag) => (
+                <Badge key={tag} variant="outline" className="text-[11px] font-normal gap-1 pr-1">
+                  {tag}
+                  <button
+                    type="button"
+                    className="rounded-full p-0.5 hover:bg-muted"
+                    onClick={() => removeTag(tag)}
+                    aria-label={`Remove ${tag}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+            <Input
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              onKeyDown={onTagKeyDown}
+              onBlur={() => {
+                if (tagInput.trim()) addTag(tagInput);
+              }}
+              placeholder="Type tag and press Enter"
+              className="border-0 shadow-none focus-visible:ring-0 h-8 px-1"
+            />
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {knownTags
+              .filter((s) => !tags.some((t) => t.toLowerCase() === s.toLowerCase()))
+              .slice(0, 16)
+              .map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => addTag(s)}
+                  className="text-[11px] rounded-full border px-2 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  + {s}
+                </button>
+              ))}
+          </div>
+          {tagsDirty && (
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => saveTags.mutate()} disabled={saveTags.isPending}>
+                {saveTags.isPending ? "Saving…" : "Save tags"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setTags(Array.isArray(project.tags) ? project.tags : []);
+                  setTagInput("");
+                  setTagsDirty(false);
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Share client link — no login required for client */}
       <Card className="border-primary/30 bg-primary/5">

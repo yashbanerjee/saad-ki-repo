@@ -156,6 +156,7 @@ export const authApi = {
 export const projectsApi = {
   list: (params?: Record<string, unknown>) =>
     api.get("/projects", { params }),
+  listTags: () => api.get("/projects/tags"),
   myClientProjects: () => api.get("/projects/my/client"),
   get: (id: string) => api.get(`/projects/${id}`),
   create: (data: Record<string, unknown>) => api.post("/projects", data),

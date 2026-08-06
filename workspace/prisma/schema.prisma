@@ -1345,6 +1345,8 @@ model Project {
   name          String
   description   String?
   status        ProjectStatus @default(PLANNING)
+  /// Free-form tags e.g. Vedha, F&S, Web, App Dev, ERP
+  tags          String[]      @default([])
   startDate     DateTime?
   endDate       DateTime?
   avatar        String?

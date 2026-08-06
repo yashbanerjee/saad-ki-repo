@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, KeyboardEvent } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, FolderKanban, MoreHorizontal, Calendar } from "lucide-react";
+import { Plus, FolderKanban, MoreHorizontal, Calendar, X, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -35,7 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { clientsApi, projectsApi } from "@/lib/api";
-import { formatDate } from "@/lib/utils";
+import { formatDate, cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 const statusVariant = {
@@ -47,16 +47,64 @@ const statusVariant = {
   CANCELLED: "secondary" as const,
 };
 
+/** Suggested tags for client brands / project types */
+const TAG_SUGGESTIONS = [
+  "Vedha",
+  "F&S",
+  "Web",
+  "App Dev",
+  "ERP",
+  "Mobile",
+  "UI/UX",
+  "Maintenance",
+];
+
 interface Project {
   id: string;
   name: string;
   status: string;
+  tags?: string[];
   client?: { id: string; name: string } | string | null;
   progressPercent?: number;
   progress?: number;
   endDate?: string;
   startDate?: string;
   _count?: { clientTasks?: number; issues?: number };
+}
+
+function TagChips({
+  tags,
+  onRemove,
+  className,
+}: {
+  tags: string[];
+  onRemove?: (tag: string) => void;
+  className?: string;
+}) {
+  if (!tags.length) return null;
+  return (
+    <div className={cn("flex flex-wrap gap-1.5", className)}>
+      {tags.map((tag) => (
+        <Badge key={tag} variant="outline" className="text-[11px] font-normal gap-1 pr-1">
+          {tag}
+          {onRemove && (
+            <button
+              type="button"
+              className="rounded-full p-0.5 hover:bg-muted"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onRemove(tag);
+              }}
+              aria-label={`Remove ${tag}`}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </Badge>
+      ))}
+    </div>
+  );
 }
 
 export default function ProjectsPage() {
@@ -66,11 +114,23 @@ export default function ProjectsPage() {
   const [clientId, setClientId] = useState("none");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
+  const [tagFilter, setTagFilter] = useState<string>("all");
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ["projects"],
-    queryFn: () => projectsApi.list(),
+    queryKey: ["projects", tagFilter],
+    queryFn: () =>
+      projectsApi.list(
+        tagFilter !== "all" ? { tag: tagFilter, limit: 100 } : { limit: 100 },
+      ),
+    retry: false,
+  });
+
+  const { data: tagsData } = useQuery({
+    queryKey: ["project-tags"],
+    queryFn: () => projectsApi.listTags(),
     retry: false,
   });
 
@@ -86,6 +146,32 @@ export default function ProjectsPage() {
     return Array.isArray(raw) ? raw : [];
   }, [clientsData]);
 
+  const knownTags = useMemo(() => {
+    const raw = tagsData?.data?.data ?? tagsData?.data ?? [];
+    const fromApi = Array.isArray(raw) ? (raw as string[]) : [];
+    const set = new Set([...TAG_SUGGESTIONS, ...fromApi, ...tags]);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [tagsData, tags]);
+
+  const addTag = (raw: string) => {
+    const t = raw.trim().slice(0, 40);
+    if (!t) return;
+    setTags((prev) => {
+      if (prev.some((p) => p.toLowerCase() === t.toLowerCase())) return prev;
+      return [...prev, t].slice(0, 20);
+    });
+    setTagInput("");
+  };
+
+  const onTagKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addTag(tagInput);
+    } else if (e.key === "Backspace" && !tagInput && tags.length) {
+      setTags((prev) => prev.slice(0, -1));
+    }
+  };
+
   const createMutation = useMutation({
     mutationFn: () =>
       projectsApi.create({
@@ -94,9 +180,11 @@ export default function ProjectsPage() {
         clientId: clientId !== "none" ? clientId : undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
+        tags: tags.length ? tags : undefined,
       }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["project-tags"] });
       toast.success("Project created");
       setOpen(false);
       setName("");
@@ -104,6 +192,8 @@ export default function ProjectsPage() {
       setClientId("none");
       setStartDate("");
       setEndDate("");
+      setTags([]);
+      setTagInput("");
       const created = res?.data?.data ?? res?.data;
       if (created?.id) {
         window.location.href = `/projects/${created.id}/client-progress`;
@@ -126,11 +216,11 @@ export default function ProjectsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold">Projects</h1>
-          <p className="text-muted-foreground">
-            Manage projects and share client progress dashboards
+          <p className="text-muted-foreground text-sm">
+            Tags help separate clients (Vedha, F&S) and types (Web, App Dev, ERP)
           </p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
@@ -139,11 +229,11 @@ export default function ProjectsPage() {
               <Plus className="h-4 w-4 mr-1" /> New Project
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>Create Project</DialogTitle>
               <DialogDescription>
-                Add a project, attach a client, and set the timeline
+                Add a project, tags, client, and timeline
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -154,6 +244,42 @@ export default function ProjectsPage() {
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Website Redesign"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1.5">
+                  <Tag className="h-3.5 w-3.5" /> Tags
+                </Label>
+                <div className="rounded-md border px-2 py-1.5 focus-within:ring-1 focus-within:ring-ring">
+                  <TagChips
+                    tags={tags}
+                    onRemove={(t) => setTags((prev) => prev.filter((x) => x !== t))}
+                    className="mb-1.5"
+                  />
+                  <Input
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={onTagKeyDown}
+                    onBlur={() => {
+                      if (tagInput.trim()) addTag(tagInput);
+                    }}
+                    placeholder="Type tag and press Enter (e.g. Vedha, Web)"
+                    className="border-0 shadow-none focus-visible:ring-0 h-8 px-1"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  {TAG_SUGGESTIONS.filter(
+                    (s) => !tags.some((t) => t.toLowerCase() === s.toLowerCase()),
+                  ).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => addTag(s)}
+                      className="text-[11px] rounded-full border px-2 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    >
+                      + {s}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Client</Label>
@@ -213,6 +339,28 @@ export default function ProjectsPage() {
         </Dialog>
       </div>
 
+      {/* Tag filter */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-muted-foreground mr-1">Filter by tag:</span>
+        <Button
+          size="sm"
+          variant={tagFilter === "all" ? "default" : "outline"}
+          onClick={() => setTagFilter("all")}
+        >
+          All
+        </Button>
+        {knownTags.map((t) => (
+          <Button
+            key={t}
+            size="sm"
+            variant={tagFilter === t ? "default" : "outline"}
+            onClick={() => setTagFilter(t)}
+          >
+            {t}
+          </Button>
+        ))}
+      </div>
+
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -226,10 +374,16 @@ export default function ProjectsPage() {
       ) : projects.length === 0 ? (
         <EmptyState
           icon={FolderKanban}
-          title="No projects yet"
-          description="Create your first project to start tracking client progress."
-          actionLabel="New Project"
-          onAction={() => setOpen(true)}
+          title={tagFilter !== "all" ? "No projects with this tag" : "No projects yet"}
+          description={
+            tagFilter !== "all"
+              ? "Try another tag, or clear the filter."
+              : "Create your first project and add tags like Vedha, F&S, Web, or ERP."
+          }
+          actionLabel={tagFilter !== "all" ? "Clear filter" : "New Project"}
+          onAction={
+            tagFilter !== "all" ? () => setTagFilter("all") : () => setOpen(true)
+          }
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -241,6 +395,7 @@ export default function ProjectsPage() {
             const progress = project.progressPercent ?? project.progress ?? 0;
             const taskCount =
               project._count?.clientTasks ?? project._count?.issues ?? 0;
+            const projectTags = project.tags ?? [];
             return (
               <Card
                 key={project.id}
@@ -248,11 +403,11 @@ export default function ProjectsPage() {
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="h-9 w-9 shrink-0 rounded-lg bg-primary/10 flex items-center justify-center">
                         <FolderKanban className="h-4 w-4 text-primary" />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <CardTitle className="text-base">
                           <Link
                             href={`/projects/${project.id}`}
@@ -262,7 +417,9 @@ export default function ProjectsPage() {
                           </Link>
                         </CardTitle>
                         {clientName && (
-                          <CardDescription className="text-xs">{clientName}</CardDescription>
+                          <CardDescription className="text-xs truncate">
+                            {clientName}
+                          </CardDescription>
                         )}
                       </div>
                     </div>
@@ -271,7 +428,7 @@ export default function ProjectsPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 opacity-0 group-hover:opacity-100"
+                          className="h-8 w-8 opacity-0 group-hover:opacity-100 shrink-0"
                         >
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
@@ -291,6 +448,9 @@ export default function ProjectsPage() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
+                  {projectTags.length > 0 && (
+                    <TagChips tags={projectTags} className="mt-2" />
+                  )}
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center justify-between mb-3">

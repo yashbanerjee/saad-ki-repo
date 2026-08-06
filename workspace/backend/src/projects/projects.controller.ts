@@ -55,7 +55,14 @@ export class ProjectsController {
       query.page,
       query.limit,
       query.status,
+      query.tag,
     );
+  }
+
+  @Get('tags')
+  @Permissions('projects:read')
+  listTags(@CurrentUser() user: AuthenticatedUser) {
+    return this.projectsService.listTags(user.companyId!);
   }
 
   @Get('my/client')

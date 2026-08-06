@@ -77,11 +77,25 @@ export class ProjectsService {
     }));
   }
 
-  async findAll(companyId: string, page = 1, limit = 20, status?: string) {
+  async findAll(
+    companyId: string,
+    page = 1,
+    limit = 20,
+    status?: string,
+    tag?: string,
+  ) {
     const { skip, take } = paginate(page, limit);
+    const tagFilter = tag?.trim();
     const where = {
       companyId,
       ...(status ? { status: status as never } : {}),
+      ...(tagFilter
+        ? {
+            tags: {
+              has: tagFilter,
+            },
+          }
+        : {}),
     };
     const [data, total] = await Promise.all([
       this.prisma.project.findMany({
@@ -104,6 +118,21 @@ export class ProjectsService {
     }));
 
     return paginatedResponse(mapped, total, page, limit);
+  }
+
+  /** Distinct tags used across company projects (for filters / suggestions) */
+  async listTags(companyId: string) {
+    const rows = await this.prisma.project.findMany({
+      where: { companyId },
+      select: { tags: true },
+    });
+    const set = new Set<string>();
+    for (const row of rows) {
+      for (const t of row.tags || []) {
+        if (t?.trim()) set.add(t.trim());
+      }
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
   }
 
   async findOne(id: string, companyId: string) {
@@ -163,6 +192,7 @@ export class ProjectsService {
         name: dto.name,
         description: dto.description,
         clientId: dto.clientId,
+        tags: dto.tags ?? [],
         startDate: dto.startDate ? new Date(dto.startDate) : undefined,
         endDate: dto.endDate ? new Date(dto.endDate) : undefined,
         members: { create: { userId, role: 'owner' } },
@@ -183,6 +213,7 @@ export class ProjectsService {
         ...(dto.description !== undefined ? { description: dto.description } : {}),
         ...(dto.status !== undefined ? { status: dto.status } : {}),
         ...(dto.clientId !== undefined ? { clientId: dto.clientId || null } : {}),
+        ...(dto.tags !== undefined ? { tags: dto.tags } : {}),
         ...(dto.startDate !== undefined
           ? { startDate: dto.startDate ? new Date(dto.startDate) : null }
           : {}),
