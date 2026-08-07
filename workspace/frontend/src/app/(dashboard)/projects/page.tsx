@@ -196,7 +196,7 @@ export default function ProjectsPage() {
       setTagInput("");
       const created = res?.data?.data ?? res?.data;
       if (created?.id) {
-        window.location.href = `/projects/${created.id}/client-progress`;
+        window.location.href = `/projects/${created.id}`;
       }
     },
     onError: (err: unknown) => {
@@ -435,12 +435,7 @@ export default function ProjectsPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem asChild>
-                          <Link href={`/projects/${project.id}`}>View</Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                          <Link href={`/projects/${project.id}/client-progress`}>
-                            Client Progress
-                          </Link>
+                          <Link href={`/projects/${project.id}`}>Overview</Link>
                         </DropdownMenuItem>
                         <DropdownMenuItem asChild>
                           <Link href={`/projects/${project.id}/board`}>Board</Link>

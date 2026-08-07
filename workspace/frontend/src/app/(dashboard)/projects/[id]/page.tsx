@@ -1,34 +1,45 @@
 "use client";
 
-import { useEffect, useMemo, useState, KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, KeyboardEvent } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Kanban,
-  List,
-  Zap,
-  Users,
-  Calendar,
   ArrowRight,
-  LayoutDashboard,
-  Link2,
+  Calendar,
   Copy,
-  RefreshCw,
   ExternalLink,
+  FileText,
+  Link2,
+  Loader2,
   PowerOff,
+  RefreshCw,
   Tag,
+  Upload,
+  Users,
   X,
+  Kanban,
+  Eye,
+  EyeOff,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
-import { projectsApi } from "@/lib/api";
-import { formatDate, getInitials } from "@/lib/utils";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { clientsApi, documentsApi, projectsApi } from "@/lib/api";
+import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 
 const TAG_SUGGESTIONS = [
@@ -42,13 +53,80 @@ const TAG_SUGGESTIONS = [
   "Maintenance",
 ];
 
+const PROJECT_STATUSES = [
+  "PLANNING",
+  "ACTIVE",
+  "ON_HOLD",
+  "COMPLETED",
+  "ARCHIVED",
+  "CANCELLED",
+];
+
+function CreateClientLoginButton({
+  clientId,
+  onDone,
+}: {
+  clientId: string;
+  onDone: () => void;
+}) {
+  const mutation = useMutation({
+    mutationFn: () => clientsApi.createLogin(clientId, {}),
+    onSuccess: (res) => {
+      const result = res?.data?.data ?? res?.data ?? {};
+      onDone();
+      const loginWith = result.loginWith || result.email || result.phone;
+      const temp = result.temporaryPassword;
+      toast.success(
+        temp
+          ? `Login created for ${loginWith}. Temp password: ${temp}`
+          : `Login created for ${loginWith}`,
+        { duration: 12000 },
+      );
+    },
+    onError: (err: unknown) => {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Could not create login";
+      toast.error(Array.isArray(message) ? message.join(", ") : message);
+    },
+  });
+
+  return (
+    <Button
+      size="sm"
+      variant="secondary"
+      disabled={mutation.isPending}
+      onClick={() => mutation.mutate()}
+    >
+      {mutation.isPending ? "Creating…" : "Create client login"}
+    </Button>
+  );
+}
+
+function toDateInput(value?: string | null) {
+  if (!value) return "";
+  return new Date(value).toISOString().slice(0, 10);
+}
+
 export default function ProjectDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const queryClient = useQueryClient();
+  const fileRef = useRef<HTMLInputElement>(null);
+
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [tagsDirty, setTagsDirty] = useState(false);
+  const [settings, setSettings] = useState({
+    name: "",
+    description: "",
+    status: "PLANNING",
+    clientId: "none",
+    startDate: "",
+    endDate: "",
+  });
+  const [settingsDirty, setSettingsDirty] = useState(false);
+  const [shareClientUpload, setShareClientUpload] = useState(true);
 
   const { data, isLoading } = useQuery({
     queryKey: ["project", id],
@@ -56,67 +134,55 @@ export default function ProjectDetailPage() {
     retry: false,
   });
 
-  const { data: tagsData } = useQuery({
-    queryKey: ["project-tags"],
-    queryFn: () => projectsApi.listTags(),
+  const { data: clientsData } = useQuery({
+    queryKey: ["clients", "for-project"],
+    queryFn: () => clientsApi.list({ limit: 100 }),
     retry: false,
   });
 
   const project = data?.data?.data ?? data?.data ?? null;
 
-  useEffect(() => {
-    if (!project || tagsDirty) return;
-    setTags(Array.isArray(project.tags) ? project.tags : []);
-  }, [project, tagsDirty]);
+  const clients = useMemo(() => {
+    const raw = clientsData?.data?.data ?? clientsData?.data ?? [];
+    return Array.isArray(raw) ? raw : [];
+  }, [clientsData]);
 
-  const knownTags = useMemo(() => {
-    const raw = tagsData?.data?.data ?? tagsData?.data ?? [];
-    const fromApi = Array.isArray(raw) ? (raw as string[]) : [];
-    return Array.from(new Set([...TAG_SUGGESTIONS, ...fromApi, ...tags])).sort((a, b) =>
-      a.localeCompare(b),
-    );
-  }, [tagsData, tags]);
+  useEffect(() => {
+    if (!project) return;
+    if (!tagsDirty) setTags(Array.isArray(project.tags) ? project.tags : []);
+    if (!settingsDirty) {
+      setSettings({
+        name: project.name || "",
+        description: project.description || "",
+        status: project.status || "PLANNING",
+        clientId: project.clientId || project.client?.id || "none",
+        startDate: toDateInput(project.startDate),
+        endDate: toDateInput(project.endDate),
+      });
+    }
+  }, [project, tagsDirty, settingsDirty]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["project", id] });
     queryClient.invalidateQueries({ queryKey: ["projects"] });
     queryClient.invalidateQueries({ queryKey: ["project-tags"] });
+    queryClient.invalidateQueries({ queryKey: ["documents"] });
   };
 
-  const addTag = (raw: string) => {
-    const t = raw.trim().slice(0, 40);
-    if (!t) return;
-    setTags((prev) => {
-      if (prev.some((p) => p.toLowerCase() === t.toLowerCase())) return prev;
-      return [...prev, t].slice(0, 20);
-    });
-    setTagInput("");
-    setTagsDirty(true);
-  };
-
-  const removeTag = (tag: string) => {
-    setTags((prev) => prev.filter((t) => t !== tag));
-    setTagsDirty(true);
-  };
-
-  const onTagKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" || e.key === ",") {
-      e.preventDefault();
-      addTag(tagInput);
-    } else if (e.key === "Backspace" && !tagInput && tags.length) {
-      setTags((prev) => prev.slice(0, -1));
-      setTagsDirty(true);
-    }
-  };
-
-  const saveTags = useMutation({
-    mutationFn: () => projectsApi.update(id, { tags }),
+  const updateProject = useMutation({
+    mutationFn: (payload: Record<string, unknown>) => projectsApi.update(id, payload),
     onSuccess: () => {
       setTagsDirty(false);
+      setSettingsDirty(false);
       invalidate();
-      toast.success("Tags updated");
+      toast.success("Project saved");
     },
-    onError: () => toast.error("Could not update tags"),
+    onError: (err: unknown) => {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Could not save";
+      toast.error(Array.isArray(message) ? message.join(", ") : message);
+    },
   });
 
   const enablePortal = useMutation({
@@ -146,6 +212,70 @@ export default function ProjectDetailPage() {
     onError: () => toast.error("Could not disable link"),
   });
 
+  const uploadDoc = useMutation({
+    mutationFn: (file: File) =>
+      documentsApi.upload(file, {
+        name: file.name,
+        projectId: id,
+        clientId:
+          settings.clientId !== "none"
+            ? settings.clientId
+            : project?.clientId || undefined,
+        isClientVisible: shareClientUpload,
+      }),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Document uploaded");
+      if (fileRef.current) fileRef.current.value = "";
+    },
+    onError: (err: unknown) => {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Upload failed";
+      toast.error(Array.isArray(message) ? message.join(", ") : message);
+    },
+  });
+
+  const toggleVisibility = useMutation({
+    mutationFn: ({ docId, visible }: { docId: string; visible: boolean }) =>
+      documentsApi.update(docId, { isClientVisible: visible }),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Visibility updated");
+    },
+    onError: () => toast.error("Could not update visibility"),
+  });
+
+  const deleteDoc = useMutation({
+    mutationFn: (docId: string) => documentsApi.remove(docId),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Document deleted");
+    },
+    onError: () => toast.error("Could not delete"),
+  });
+
+  const addTag = (raw: string) => {
+    const t = raw.trim().slice(0, 40);
+    if (!t) return;
+    setTags((prev) => {
+      if (prev.some((p) => p.toLowerCase() === t.toLowerCase())) return prev;
+      return [...prev, t].slice(0, 20);
+    });
+    setTagInput("");
+    setTagsDirty(true);
+  };
+
+  const onTagKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addTag(tagInput);
+    } else if (e.key === "Backspace" && !tagInput && tags.length) {
+      setTags((prev) => prev.slice(0, -1));
+      setTagsDirty(true);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -166,67 +296,37 @@ export default function ProjectDetailPage() {
     );
   }
 
-  const clientName =
-    typeof project.client === "string"
-      ? project.client
-      : project.client?.name ?? null;
-
-  const team =
-    project.team ??
-    (project.members ?? []).map(
-      (m: { user?: { firstName?: string; lastName?: string; email?: string } }) => ({
-        name:
-          [m.user?.firstName, m.user?.lastName].filter(Boolean).join(" ") ||
-          m.user?.email ||
-          "Member",
-      }),
-    );
-
-  const progress = project.progressPercent ?? project.progress ?? 0;
+  const client = project.client;
+  const documents = Array.isArray(project.documents) ? project.documents : [];
+  const milestones = Array.isArray(project.milestones) ? project.milestones : [];
+  const issues = Array.isArray(project.issues) ? project.issues : [];
+  const progress = project.progressPercent ?? 0;
 
   const shareUrl =
     project.portalEnabled && project.portalToken
       ? `${typeof window !== "undefined" ? window.location.origin : ""}/portal/${project.portalToken}`
       : "";
 
-  const navItems = [
-    {
-      href: `/projects/${id}/client-progress`,
-      label: "Client Progress",
-      icon: LayoutDashboard,
-      desc: "Timeline, milestones, client tasks & share link",
-      primary: true,
-    },
-    {
-      href: `/projects/${id}/board`,
-      label: "Board",
-      icon: Kanban,
-      desc: "Kanban board — create tasks, Testing & more",
-    },
-    {
-      href: `/projects/${id}/backlog`,
-      label: "Backlog",
-      icon: List,
-      desc: "Internal task list",
-    },
-    {
-      href: `/projects/${id}/sprints`,
-      label: "Sprints",
-      icon: Zap,
-      desc: "Sprint planning",
-    },
-  ];
-
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <div className="flex items-center gap-3 mb-1">
+          <div className="flex flex-wrap items-center gap-2 mb-1">
             <h1 className="font-display text-2xl font-bold">{project.name}</h1>
             {project.status && <Badge variant="success">{project.status}</Badge>}
+            {project.key && (
+              <Badge variant="outline" className="font-mono text-xs">
+                {project.key}
+              </Badge>
+            )}
           </div>
-          {clientName && <p className="text-muted-foreground">{clientName}</p>}
-          {tags.length > 0 && !tagsDirty && (
+          <p className="text-sm text-muted-foreground">
+            {client?.name
+              ? `Client: ${client.name}`
+              : "No client linked yet — assign one below"}
+          </p>
+          {tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">
               {tags.map((t) => (
                 <Badge key={t} variant="outline" className="text-[11px] font-normal">
@@ -236,116 +336,71 @@ export default function ProjectDetailPage() {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          {team.length > 0 && (
-            <div className="flex -space-x-2">
-              {team.map((member: { name: string }) => (
-                <Avatar key={member.name} className="h-8 w-8 border-2 border-background">
-                  <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                    {getInitials(member.name)}
-                  </AvatarFallback>
-                </Avatar>
-              ))}
-            </div>
-          )}
+        <div className="flex flex-wrap gap-2">
           <Button asChild>
-            <Link href={`/projects/${id}/client-progress`}>Client Progress</Link>
+            <Link href={`/projects/${id}/board`}>
+              <Kanban className="h-4 w-4 mr-1" /> Project board
+            </Link>
           </Button>
         </div>
       </div>
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Tag className="h-4 w-4" /> Tags
-          </CardTitle>
-          <CardDescription>
-            Mark client brand (Vedha, F&S) or type (Web, App Dev, ERP). Used to filter the projects list.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="rounded-md border px-2 py-1.5 focus-within:ring-1 focus-within:ring-ring">
-            <div className="flex flex-wrap gap-1.5 mb-1.5 empty:mb-0">
-              {tags.map((tag) => (
-                <Badge key={tag} variant="outline" className="text-[11px] font-normal gap-1 pr-1">
-                  {tag}
-                  <button
-                    type="button"
-                    className="rounded-full p-0.5 hover:bg-muted"
-                    onClick={() => removeTag(tag)}
-                    aria-label={`Remove ${tag}`}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              ))}
+      {/* Work at a glance */}
+      <div className="grid sm:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Progress</p>
+            <p className="text-2xl font-bold font-display text-primary">{progress}%</p>
+            <div className="h-1.5 rounded-full bg-muted mt-2 overflow-hidden">
+              <div
+                className="h-full bg-primary rounded-full"
+                style={{ width: `${progress}%` }}
+              />
             </div>
-            <Input
-              value={tagInput}
-              onChange={(e) => setTagInput(e.target.value)}
-              onKeyDown={onTagKeyDown}
-              onBlur={() => {
-                if (tagInput.trim()) addTag(tagInput);
-              }}
-              placeholder="Type tag and press Enter"
-              className="border-0 shadow-none focus-visible:ring-0 h-8 px-1"
-            />
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {knownTags
-              .filter((s) => !tags.some((t) => t.toLowerCase() === s.toLowerCase()))
-              .slice(0, 16)
-              .map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => addTag(s)}
-                  className="text-[11px] rounded-full border px-2 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                >
-                  + {s}
-                </button>
-              ))}
-          </div>
-          {tagsDirty && (
-            <div className="flex gap-2">
-              <Button size="sm" onClick={() => saveTags.mutate()} disabled={saveTags.isPending}>
-                {saveTags.isPending ? "Saving…" : "Save tags"}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setTags(Array.isArray(project.tags) ? project.tags : []);
-                  setTagInput("");
-                  setTagsDirty(false);
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Milestones</p>
+            <p className="text-2xl font-bold font-display">{milestones.length}</p>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Group work like sprints
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Board tasks</p>
+            <p className="text-2xl font-bold font-display">{issues.length}</p>
+            <Button variant="link" className="h-auto p-0 text-xs" asChild>
+              <Link href={`/projects/${id}/board`}>
+                Open board <ArrowRight className="h-3 w-3 ml-0.5" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
 
-      {/* Share client link — no login required for client */}
+      {/* Client share link */}
       <Card className="border-primary/30 bg-primary/5">
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
             <Link2 className="h-4 w-4" /> Client share link
           </CardTitle>
           <CardDescription>
-            Generate a link and send it to the client (WhatsApp / email). They open
-            it and see this project&apos;s details — no login required.
+            Status:{" "}
+            <span className="font-medium text-foreground">
+              {project.portalEnabled && project.portalToken ? "Active" : "Off"}
+            </span>
+            . Send the link so the client can see progress, tasks, and shared documents — no
+            login required.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {!project.portalEnabled || !project.portalToken ? (
-            <Button
-              onClick={() => enablePortal.mutate()}
-              disabled={enablePortal.isPending}
-            >
+            <Button onClick={() => enablePortal.mutate()} disabled={enablePortal.isPending}>
               <Link2 className="h-4 w-4 mr-1" />
-              {enablePortal.isPending ? "Creating link…" : "Create client link"}
+              {enablePortal.isPending ? "Creating…" : "Create client link"}
             </Button>
           ) : (
             <>
@@ -384,77 +439,408 @@ export default function ProjectDetailPage() {
                   <PowerOff className="h-3.5 w-3.5 mr-1" /> Turn off
                 </Button>
               </div>
-              <p className="text-[11px] text-muted-foreground">
-                Public page shows: overview, timeline, milestones, client tasks,
-                work items, and project documents.
-              </p>
             </>
           )}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Overview</CardTitle>
-          {project.description && (
-            <CardDescription>{project.description}</CardDescription>
-          )}
-        </CardHeader>
-        <CardContent>
-          <div className="grid sm:grid-cols-3 gap-6">
-            <div>
-              <p className="text-sm text-muted-foreground">Client progress</p>
-              <p className="text-2xl font-bold font-display text-primary">
-                {progress}%
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Client profile */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Users className="h-4 w-4" /> Client profile
+            </CardTitle>
+            <CardDescription>Link a CRM client and see contact details</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-2">
+              <Label>Assigned client</Label>
+              <Select
+                value={settings.clientId}
+                onValueChange={(v) => {
+                  setSettings((s) => ({ ...s, clientId: v }));
+                  setSettingsDirty(true);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select client" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No client</SelectItem>
+                  {clients.map((c: { id: string; name: string }) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {client ? (
+              <div className="rounded-lg border p-3 text-sm space-y-1">
+                <p className="font-medium">{client.name}</p>
+                {client.email && (
+                  <p className="text-muted-foreground text-xs">{client.email}</p>
+                )}
+                {client.phone && (
+                  <p className="text-muted-foreground text-xs">{client.phone}</p>
+                )}
+                {client.companyName && (
+                  <p className="text-muted-foreground text-xs">{client.companyName}</p>
+                )}
+                <div className="pt-2 flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" asChild>
+                    <Link href={`/clients/${client.id}`}>Open client record</Link>
+                  </Button>
+                  {!client.userId && (
+                    <CreateClientLoginButton clientId={client.id} onDone={invalidate} />
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Pick a client above and save settings to attach their profile.
               </p>
-              <div className="h-2 rounded-full bg-muted mt-2 overflow-hidden">
-                <div
-                  className="h-full bg-primary rounded-full"
-                  style={{ width: `${progress}%` }}
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Settings + tags */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Project settings</CardTitle>
+            <CardDescription>Name, timeline, status — no billing</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-2">
+              <Label>Name</Label>
+              <Input
+                value={settings.name}
+                onChange={(e) => {
+                  setSettings((s) => ({ ...s, name: e.target.value }));
+                  setSettingsDirty(true);
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select
+                value={settings.status}
+                onValueChange={(v) => {
+                  setSettings((s) => ({ ...s, status: v }));
+                  setSettingsDirty(true);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PROJECT_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s.replace(/_/g, " ")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1">
+                  <Calendar className="h-3 w-3" /> Start
+                </Label>
+                <Input
+                  type="date"
+                  value={settings.startDate}
+                  onChange={(e) => {
+                    setSettings((s) => ({ ...s, startDate: e.target.value }));
+                    setSettingsDirty(true);
+                  }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>End</Label>
+                <Input
+                  type="date"
+                  value={settings.endDate}
+                  onChange={(e) => {
+                    setSettings((s) => ({ ...s, endDate: e.target.value }));
+                    setSettingsDirty(true);
+                  }}
                 />
               </div>
             </div>
-            <div>
-              <p className="text-sm text-muted-foreground flex items-center gap-1">
-                <Calendar className="h-3 w-3" /> Timeline
-              </p>
-              <p className="text-sm mt-1">
-                {project.startDate ? formatDate(project.startDate) : "—"} —{" "}
-                {project.endDate ? formatDate(project.endDate) : "—"}
-              </p>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea
+                value={settings.description}
+                onChange={(e) => {
+                  setSettings((s) => ({ ...s, description: e.target.value }));
+                  setSettingsDirty(true);
+                }}
+                rows={3}
+              />
             </div>
-            <div>
-              <p className="text-sm text-muted-foreground flex items-center gap-1">
-                <Users className="h-3 w-3" /> Team
-              </p>
-              <p className="text-sm mt-1">{team.length || 0} members</p>
+            {settingsDirty && (
+              <Button
+                size="sm"
+                disabled={updateProject.isPending || !settings.name.trim()}
+                onClick={() =>
+                  updateProject.mutate({
+                    name: settings.name.trim(),
+                    description: settings.description || undefined,
+                    status: settings.status,
+                    clientId: settings.clientId === "none" ? null : settings.clientId,
+                    startDate: settings.startDate || null,
+                    endDate: settings.endDate || null,
+                  })
+                }
+              >
+                {updateProject.isPending ? "Saving…" : "Save settings"}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Tags */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Tag className="h-4 w-4" /> Tags
+          </CardTitle>
+          <CardDescription>
+            Client brand (Vedha, F&S) or type (Web, App Dev, ERP)
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="rounded-md border px-2 py-1.5 focus-within:ring-1 focus-within:ring-ring">
+            <div className="flex flex-wrap gap-1.5 mb-1.5">
+              {tags.map((tag) => (
+                <Badge key={tag} variant="outline" className="text-[11px] gap-1 pr-1">
+                  {tag}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTags((p) => p.filter((x) => x !== tag));
+                      setTagsDirty(true);
+                    }}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
             </div>
+            <Input
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              onKeyDown={onTagKeyDown}
+              onBlur={() => {
+                if (tagInput.trim()) addTag(tagInput);
+              }}
+              placeholder="Type tag and press Enter"
+              className="border-0 shadow-none focus-visible:ring-0 h-8 px-1"
+            />
           </div>
+          <div className="flex flex-wrap gap-1.5">
+            {TAG_SUGGESTIONS.filter(
+              (s) => !tags.some((t) => t.toLowerCase() === s.toLowerCase()),
+            ).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => addTag(s)}
+                className="text-[11px] rounded-full border px-2 py-0.5 text-muted-foreground hover:bg-muted"
+              >
+                + {s}
+              </button>
+            ))}
+          </div>
+          {tagsDirty && (
+            <Button
+              size="sm"
+              disabled={updateProject.isPending}
+              onClick={() => updateProject.mutate({ tags })}
+            >
+              Save tags
+            </Button>
+          )}
         </CardContent>
       </Card>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {navItems.map((item) => (
-          <Link key={item.href} href={item.href}>
-            <Card
-              className={`hover:shadow-md transition-all hover:border-primary/50 cursor-pointer h-full ${
-                item.primary ? "border-primary/40 bg-primary/5" : ""
-              }`}
-            >
-              <CardContent className="p-6 flex items-center gap-4">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <item.icon className="h-5 w-5 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">{item.label}</p>
-                  <p className="text-xs text-muted-foreground">{item.desc}</p>
-                </div>
-                <ArrowRight className="h-4 w-4 text-muted-foreground" />
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
-      </div>
+      {/* Client documents */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                <FileText className="h-4 w-4" /> Client documents
+              </CardTitle>
+              <CardDescription>
+                Upload files for this project. Toggle “Show to client” for the share portal.
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="rounded"
+                  checked={shareClientUpload}
+                  onChange={(e) => setShareClientUpload(e.target.checked)}
+                />
+                New uploads visible to client
+              </label>
+              <input
+                ref={fileRef}
+                type="file"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadDoc.mutate(f);
+                }}
+              />
+              <Button
+                size="sm"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploadDoc.isPending}
+              >
+                {uploadDoc.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <Upload className="h-4 w-4 mr-1" />
+                )}
+                Upload
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {documents.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">
+              No project documents yet.
+            </p>
+          ) : (
+            <ul className="divide-y rounded-lg border">
+              {documents.map(
+                (doc: {
+                  id: string;
+                  name: string;
+                  originalName?: string;
+                  isClientVisible?: boolean;
+                  size?: number;
+                  mimeType?: string;
+                  createdAt?: string;
+                }) => (
+                  <li
+                    key={doc.id}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3 py-2.5 text-sm"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">
+                        {doc.originalName || doc.name}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {[doc.mimeType, doc.createdAt ? formatDate(doc.createdAt) : null]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        size="sm"
+                        variant={doc.isClientVisible ? "default" : "outline"}
+                        onClick={() =>
+                          toggleVisibility.mutate({
+                            docId: doc.id,
+                            visible: !doc.isClientVisible,
+                          })
+                        }
+                        title={
+                          doc.isClientVisible
+                            ? "Visible on client portal — click to hide"
+                            : "Hidden from client — click to show"
+                        }
+                      >
+                        {doc.isClientVisible ? (
+                          <>
+                            <Eye className="h-3.5 w-3.5 mr-1" /> Client can see
+                          </>
+                        ) : (
+                          <>
+                            <EyeOff className="h-3.5 w-3.5 mr-1" /> Hidden
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          if (confirm("Delete this document?")) deleteDoc.mutate(doc.id);
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </li>
+                ),
+              )}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Milestones preview */}
+      <Card>
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-base">Milestones</CardTitle>
+            <CardDescription>
+              Each milestone holds its own tasks on the board (like sprints)
+            </CardDescription>
+          </div>
+          <Button size="sm" asChild>
+            <Link href={`/projects/${id}/board`}>Manage on board</Link>
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {milestones.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No milestones yet — create them on the project board.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {milestones.map(
+                (m: {
+                  id: string;
+                  name: string;
+                  status?: string;
+                  dueDate?: string;
+                  _count?: { issues?: number };
+                }) => (
+                  <li
+                    key={m.id}
+                    className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
+                  >
+                    <div>
+                      <p className="font-medium">{m.name}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {m.status}
+                        {m.dueDate ? ` · due ${formatDate(m.dueDate)}` : ""}
+                      </p>
+                    </div>
+                    <Badge variant="secondary">
+                      {m._count?.issues ??
+                        issues.filter(
+                          (i: { milestoneId?: string }) => i.milestoneId === m.id,
+                        ).length}{" "}
+                      tasks
+                    </Badge>
+                  </li>
+                ),
+              )}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

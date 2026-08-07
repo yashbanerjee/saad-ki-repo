@@ -21,6 +21,7 @@ import {
   TransitionIssueDto,
   CreateCommentDto,
   IssueFilterDto,
+  CreateTimeEntryDto,
 } from './dto/issue.dto';
 import { CurrentUser, AuthenticatedUser, Permissions } from '../common/decorators';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
@@ -137,5 +138,34 @@ export class IssuesController {
   @Permissions('issues:read')
   removeWatcher(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.issuesService.removeWatcher(id, user.companyId!, user.id);
+  }
+
+  @Get(':id/time-entries')
+  @Permissions('issues:read')
+  listTimeEntries(
+    @Param('id', ParseCuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.issuesService.listTimeEntries(id, user.companyId!);
+  }
+
+  @Post(':id/time-entries')
+  @Permissions('issues:read')
+  addTimeEntry(
+    @Param('id', ParseCuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateTimeEntryDto,
+  ) {
+    return this.issuesService.addTimeEntry(id, user.companyId!, user.id, dto);
+  }
+
+  @Delete(':id/time-entries/:entryId')
+  @Permissions('issues:read')
+  removeTimeEntry(
+    @Param('id', ParseCuidPipe) id: string,
+    @Param('entryId', ParseCuidPipe) entryId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.issuesService.removeTimeEntry(id, entryId, user.companyId!);
   }
 }

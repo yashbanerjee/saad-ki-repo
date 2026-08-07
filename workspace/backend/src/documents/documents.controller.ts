@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Delete,
   Body,
   Param,
@@ -14,7 +15,11 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { DocumentsService, uploadMulterOptions } from './documents.service';
-import { CreateFolderDto, UploadDocumentDto } from './dto/document.dto';
+import {
+  CreateFolderDto,
+  UploadDocumentDto,
+  UpdateDocumentDto,
+} from './dto/document.dto';
 import { CurrentUser, AuthenticatedUser, Permissions } from '../common/decorators';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 
@@ -84,7 +89,18 @@ export class DocumentsController {
       clientId: dto.clientId,
       projectId: dto.projectId,
       folderId: dto.folderId,
+      isClientVisible: dto.isClientVisible,
     });
+  }
+
+  @Patch(':id')
+  @Permissions('documents:read')
+  update(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateDocumentDto,
+  ) {
+    return this.documentsService.updateDocument(id, user, dto);
   }
 
   @Get(':id')

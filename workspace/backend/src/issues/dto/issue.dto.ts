@@ -69,6 +69,16 @@ export class CreateIssueDto {
   @IsOptional()
   @IsEnum(IssueStatus)
   status?: IssueStatus;
+
+  @ApiPropertyOptional({ description: 'Milestone this task belongs to' })
+  @IsOptional()
+  @IsString()
+  milestoneId?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  estimatedHours?: number;
 }
 
 export class UpdateIssueDto {
@@ -109,13 +119,28 @@ export class UpdateIssueDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsString()
+  milestoneId?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsNumber()
   storyPoints?: number;
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsNumber()
+  estimatedHours?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsDateString()
   dueDate?: string;
+
+  @ApiPropertyOptional({ enum: IssueStatus })
+  @IsOptional()
+  @IsEnum(IssueStatus)
+  status?: IssueStatus;
 }
 
 export class TransitionIssueDto {
@@ -133,6 +158,22 @@ export class CreateCommentDto {
   @IsOptional()
   @IsString()
   parentId?: string;
+}
+
+export class CreateTimeEntryDto {
+  @ApiProperty({ description: 'Hours to log (e.g. 1.5)' })
+  @IsNumber()
+  hours: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  date?: string;
 }
 
 export class IssueFilterDto {
@@ -160,6 +201,11 @@ export class IssueFilterDto {
   @IsOptional()
   @IsString()
   sprintId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  milestoneId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

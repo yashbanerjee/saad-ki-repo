@@ -1254,6 +1254,8 @@ model Document {
   parentId     String?
   tags         String[]     @default([])
   metadata     Json         @default("{}")
+  /// When true, this document appears on the client share portal
+  isClientVisible Boolean   @default(false)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 

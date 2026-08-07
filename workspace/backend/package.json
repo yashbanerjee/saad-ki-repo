@@ -15,6 +15,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
+    "test:r2": "node ./scripts/r2-smoke-test.js",
     "prisma:generate": "prisma generate --schema=../prisma/schema.prisma",
     "prisma:migrate": "prisma migrate dev --schema=../prisma/schema.prisma",
     "prisma:migrate:deploy": "prisma migrate deploy --schema=../prisma/schema.prisma",

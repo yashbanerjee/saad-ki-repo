@@ -58,6 +58,16 @@ const uploadMulterOptions = {
 export class PortalController {
   constructor(private projectsService: ProjectsService) {}
 
+  /** Register nested route before bare :token so Nest matches download first */
+  @Public()
+  @Get(':token/documents/:documentId/download')
+  downloadDocument(
+    @Param('token') token: string,
+    @Param('documentId') documentId: string,
+  ) {
+    return this.projectsService.portalDownloadDocument(token, documentId);
+  }
+
   @Public()
   @Get(':token')
   getPortal(@Param('token') token: string) {

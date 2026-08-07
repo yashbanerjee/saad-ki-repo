@@ -147,18 +147,75 @@ export class ProjectsService {
             },
           },
         },
-        milestones: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
+        milestones: {
+          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+          include: {
+            _count: { select: { issues: true, clientTasks: true } },
+          },
+        },
         clientTasks: {
           orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
           include: { milestone: { select: { id: true, name: true } } },
         },
-        _count: { select: { issues: true, sprints: true, clientTasks: true, milestones: true } },
+        issues: {
+          where: { status: { not: 'CANCELLED' } },
+          orderBy: [{ order: 'asc' }, { updatedAt: 'desc' }],
+          take: 200,
+          select: {
+            id: true,
+            key: true,
+            title: true,
+            status: true,
+            priority: true,
+            type: true,
+            milestoneId: true,
+            estimatedHours: true,
+            loggedHours: true,
+            dueDate: true,
+            assignee: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+          },
+        },
+        documents: {
+          orderBy: { createdAt: 'desc' },
+          take: 100,
+          select: {
+            id: true,
+            name: true,
+            originalName: true,
+            mimeType: true,
+            size: true,
+            storageUrl: true,
+            isClientVisible: true,
+            type: true,
+            createdAt: true,
+            uploadedBy: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+          },
+        },
+        _count: {
+          select: {
+            issues: true,
+            sprints: true,
+            clientTasks: true,
+            milestones: true,
+            documents: true,
+          },
+        },
       },
     });
     if (!project) throw new NotFoundException('Project not found');
 
     const progress = this.progressPayload(project.milestones, project.clientTasks);
-    return { ...project, ...progress };
+    // Prefer issue-based progress when board tasks exist
+    let progressPercent = progress.progressPercent;
+    if (project.issues.length) {
+      const done = project.issues.filter((i) => i.status === 'DONE').length;
+      progressPercent = Math.round((done / project.issues.length) * 100);
+    }
+    return { ...project, ...progress, progressPercent };
   }
 
   async create(companyId: string, userId: string, dto: CreateProjectDto) {
@@ -351,6 +408,7 @@ export class ProjectsService {
           },
         },
         documents: {
+          where: { isClientVisible: true },
           orderBy: { createdAt: 'desc' },
           take: 50,
           select: {
@@ -457,7 +515,11 @@ export class ProjectsService {
       issueCounts,
       boardByStatus,
       columns,
-      documents: project.documents,
+      documents: project.documents.map((d) => ({
+        ...d,
+        // When no public CDN URL, client uses portal download endpoint
+        downloadable: true,
+      })),
       ...progress,
       progressPercent,
     };
@@ -753,31 +815,97 @@ export class ProjectsService {
       throw new BadRequestException('Please choose a file to upload');
     }
 
-    const key = this.storage.generateKey(
-      `companies/${companyId}/projects/${projectId}/portal`,
-      file.originalname || 'upload.bin',
-    );
-    const { url } = await this.storage.upload(
-      key,
-      file.buffer,
-      file.mimetype || 'application/octet-stream',
-    );
+    try {
+      const key = this.storage.generateKey(
+        `companies/${companyId}/projects/${projectId}/portal`,
+        file.originalname || 'upload.bin',
+      );
+      const { url } = await this.storage.upload(
+        key,
+        file.buffer,
+        file.mimetype || 'application/octet-stream',
+      );
 
-    return this.prisma.document.create({
-      data: {
-        companyId,
-        projectId,
-        clientId: clientId || undefined,
-        uploadedById: reporterId,
-        name: (name || file.originalname || 'Upload').trim(),
-        originalName: file.originalname || 'upload.bin',
-        type: 'CUSTOM',
-        mimeType: file.mimetype || 'application/octet-stream',
-        size: file.size,
-        storageKey: key,
-        storageUrl: url,
-      },
+      return this.prisma.document.create({
+        data: {
+          companyId,
+          projectId,
+          clientId: clientId || undefined,
+          uploadedById: reporterId,
+          name: (name || file.originalname || 'Upload').trim(),
+          originalName: file.originalname || 'upload.bin',
+          type: 'CUSTOM',
+          mimeType: file.mimetype || 'application/octet-stream',
+          size: file.size,
+          storageKey: key,
+          storageUrl: url,
+          isClientVisible: true,
+        },
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Upload failed — check storage configuration';
+      throw new BadRequestException(message);
+    }
+  }
+
+  /**
+   * Resolve a downloadable URL or payload for a portal document (public token auth).
+   */
+  async portalDownloadDocument(token: string, documentId: string) {
+    const project = await this.prisma.project.findFirst({
+      where: { portalToken: token, portalEnabled: true },
+      select: { id: true },
     });
+    if (!project) throw new NotFoundException('Portal not found or disabled');
+
+    const doc = await this.prisma.document.findFirst({
+      where: { id: documentId, projectId: project.id },
+    });
+    if (!doc) throw new NotFoundException('Document not found');
+
+    if (
+      doc.mimeType === 'text/uri-list' ||
+      doc.storageKey.startsWith('portal-link/')
+    ) {
+      if (!doc.storageUrl) throw new NotFoundException('Link not available');
+      return {
+        kind: 'url' as const,
+        url: doc.storageUrl,
+        name: doc.name,
+        mimeType: doc.mimeType,
+      };
+    }
+
+    if (doc.storageUrl) {
+      return {
+        kind: 'url' as const,
+        url: doc.storageUrl,
+        name: doc.originalName || doc.name,
+        mimeType: doc.mimeType,
+      };
+    }
+
+    const signed = await this.storage.getSignedUrl(doc.storageKey);
+    if (signed) {
+      return {
+        kind: 'url' as const,
+        url: signed,
+        name: doc.originalName || doc.name,
+        mimeType: doc.mimeType,
+      };
+    }
+
+    const buffer = await this.storage.getObjectBuffer(doc.storageKey);
+    return {
+      kind: 'base64' as const,
+      name: doc.originalName || doc.name,
+      mimeType: doc.mimeType || 'application/octet-stream',
+      content: buffer.toString('base64'),
+      size: buffer.length,
+    };
   }
 
   async portalAddLink(
@@ -811,6 +939,7 @@ export class ProjectsService {
         size: 0,
         storageKey,
         storageUrl: url,
+        isClientVisible: true,
         metadata: { kind: 'external_link' } as Prisma.InputJsonValue,
       },
     });

@@ -229,6 +229,7 @@ export class DocumentsService {
       clientId?: string;
       projectId?: string;
       folderId?: string;
+      isClientVisible?: boolean;
     },
   ) {
     if (!file?.buffer?.length) {
@@ -241,42 +242,104 @@ export class DocumentsService {
 
     if (isClient) {
       if (!linkedClientId) {
-        throw new ForbiddenException('No client profile linked to this account');
+        throw new ForbiddenException(
+          'No client profile linked to this account. Ask an admin to link your user to a client.',
+        );
       }
-    } else if (!user.permissions?.includes('documents:manage')) {
-      throw new ForbiddenException('Insufficient permissions');
+    } else {
+      const canUpload =
+        user.permissions?.includes('documents:manage') ||
+        user.permissions?.includes('documents:read') ||
+        this.isCompanyAdmin(user);
+      if (!canUpload) {
+        throw new ForbiddenException('Insufficient permissions to upload documents');
+      }
     }
 
     const clientId = isClient ? linkedClientId! : meta.clientId;
+    // Client uploads are always visible on their portal by default
+    const isClientVisible = isClient
+      ? true
+      : meta.isClientVisible === true;
 
     try {
       const key = this.storage.generateKey(
         `companies/${companyId}${clientId ? `/clients/${clientId}` : ''}`,
-        file.originalname,
+        file.originalname || 'upload.bin',
       );
-      const { url } = await this.storage.upload(key, file.buffer, file.mimetype);
+      const { url } = await this.storage.upload(
+        key,
+        file.buffer,
+        file.mimetype || 'application/octet-stream',
+      );
 
       return this.prisma.document.create({
         data: {
           companyId,
           uploadedById: user.id,
-          name: (meta.name || file.originalname).trim(),
-          originalName: file.originalname,
+          name: (meta.name || file.originalname || 'Upload').trim(),
+          originalName: file.originalname || 'upload.bin',
           type: meta.type ?? 'CUSTOM',
-          mimeType: file.mimetype,
+          mimeType: file.mimetype || 'application/octet-stream',
           size: file.size,
           storageKey: key,
           storageUrl: url,
           clientId: clientId || undefined,
           projectId: meta.projectId || undefined,
           folderId: meta.folderId || undefined,
+          isClientVisible,
         },
       });
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'Upload failed — check storage configuration';
+        err instanceof Error
+          ? err.message
+          : 'Upload failed — check storage configuration';
       throw new BadRequestException(message);
     }
+  }
+
+  async updateDocument(
+    id: string,
+    user: AuthenticatedUser,
+    data: {
+      name?: string;
+      isClientVisible?: boolean;
+      projectId?: string | null;
+      clientId?: string | null;
+    },
+  ) {
+    const doc = await this.prisma.document.findFirst({
+      where: { id, companyId: user.companyId! },
+    });
+    if (!doc) throw new NotFoundException('Document not found');
+
+    if (this.isClientUser(user)) {
+      throw new ForbiddenException('Clients cannot change document visibility settings');
+    }
+    if (
+      !user.permissions?.includes('documents:manage') &&
+      !user.permissions?.includes('documents:read') &&
+      !this.isCompanyAdmin(user)
+    ) {
+      throw new ForbiddenException('Insufficient permissions');
+    }
+
+    return this.prisma.document.update({
+      where: { id },
+      data: {
+        ...(data.name !== undefined ? { name: data.name.trim() } : {}),
+        ...(data.isClientVisible !== undefined
+          ? { isClientVisible: data.isClientVisible }
+          : {}),
+        ...(data.projectId !== undefined
+          ? { projectId: data.projectId || null }
+          : {}),
+        ...(data.clientId !== undefined
+          ? { clientId: data.clientId || null }
+          : {}),
+      },
+    });
   }
 
   async findOne(id: string, user: AuthenticatedUser) {
@@ -362,8 +425,47 @@ export class DocumentsService {
     if (!('storageKey' in doc) || !doc.storageKey) {
       throw new NotFoundException('File not available');
     }
-    const url = await this.storage.getSignedUrl(doc.storageKey);
-    return { kind: 'url', url, name: doc.name, mimeType: doc.mimeType };
+
+    // External portal links
+    if (
+      doc.mimeType === 'text/uri-list' ||
+      String(doc.storageKey).startsWith('portal-link/')
+    ) {
+      if (doc.storageUrl) {
+        return {
+          kind: 'url',
+          url: doc.storageUrl,
+          name: doc.name,
+          mimeType: doc.mimeType,
+        };
+      }
+      throw new NotFoundException('Link not available');
+    }
+
+    // Prefer a public/signed URL when available
+    if (doc.storageUrl) {
+      return {
+        kind: 'url',
+        url: doc.storageUrl,
+        name: doc.name,
+        mimeType: doc.mimeType,
+      };
+    }
+
+    const signed = await this.storage.getSignedUrl(doc.storageKey);
+    if (signed) {
+      return { kind: 'url', url: signed, name: doc.name, mimeType: doc.mimeType };
+    }
+
+    // Local (or private) storage: stream as base64 for the browser to save
+    const buffer = await this.storage.getObjectBuffer(doc.storageKey);
+    return {
+      kind: 'base64',
+      name: doc.originalName || doc.name,
+      mimeType: doc.mimeType || 'application/octet-stream',
+      content: buffer.toString('base64'),
+      size: buffer.length,
+    };
   }
 
   async remove(id: string, user: AuthenticatedUser) {
@@ -381,8 +483,14 @@ export class DocumentsService {
       if (!linkedClientId || doc.clientId !== linkedClientId) {
         throw new ForbiddenException('Not allowed to delete this document');
       }
-    } else if (!user.permissions?.includes('documents:manage')) {
-      throw new ForbiddenException('Insufficient permissions');
+    } else {
+      const canDelete =
+        user.permissions?.includes('documents:manage') ||
+        this.isCompanyAdmin(user) ||
+        doc.uploadedById === user.id;
+      if (!canDelete) {
+        throw new ForbiddenException('Insufficient permissions to delete documents');
+      }
     }
 
     try {

@@ -44,6 +44,17 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // Let the browser set multipart boundary for FormData
+  if (typeof FormData !== "undefined" && config.data instanceof FormData) {
+    if (config.headers) {
+      if (typeof config.headers.delete === "function") {
+        config.headers.delete("Content-Type");
+      } else {
+        delete (config.headers as Record<string, unknown>)["Content-Type"];
+        delete (config.headers as Record<string, unknown>)["content-type"];
+      }
+    }
+  }
   return config;
 });
 
@@ -200,18 +211,13 @@ export const portalApi = {
     formData.append("file", file);
     if (name) formData.append("name", name);
     return api.post(`/portal/${token}/documents`, formData, {
-      headers: { "Content-Type": undefined as unknown as string },
       timeout: 120000,
-      transformRequest: [
-        (body, headers) => {
-          if (headers && typeof headers === "object") {
-            delete (headers as Record<string, unknown>)["Content-Type"];
-          }
-          return body;
-        },
-      ],
     });
   },
+  downloadDocument: (token: string, documentId: string) =>
+    api.get(`/portal/${token}/documents/${documentId}/download`, {
+      timeout: 120000,
+    }),
 };
 
 // Issues API
@@ -230,20 +236,18 @@ export const issuesApi = {
     const formData = new FormData();
     formData.append("file", file);
     return api.post(`/issues/${id}/attachments`, formData, {
-      headers: { "Content-Type": undefined as unknown as string },
       timeout: 120000,
-      transformRequest: [
-        (data, headers) => {
-          if (headers && typeof headers === "object") {
-            delete (headers as Record<string, unknown>)["Content-Type"];
-          }
-          return data;
-        },
-      ],
     });
   },
   deleteAttachment: (id: string, attachmentId: string) =>
     api.delete(`/issues/${id}/attachments/${attachmentId}`),
+  listTimeEntries: (id: string) => api.get(`/issues/${id}/time-entries`),
+  addTimeEntry: (
+    id: string,
+    data: { hours: number; description?: string; date?: string },
+  ) => api.post(`/issues/${id}/time-entries`, data),
+  removeTimeEntry: (id: string, entryId: string) =>
+    api.delete(`/issues/${id}/time-entries/${entryId}`),
 };
 
 // Clients API
@@ -505,25 +509,31 @@ export const documentsApi = {
     api.get("/documents", { params }),
   folders: (params?: { parentId?: string }) =>
     api.get("/documents/folders", { params }),
-  upload: (file: File, meta?: { name?: string; clientId?: string; projectId?: string }) => {
+  upload: (
+    file: File,
+    meta?: {
+      name?: string;
+      clientId?: string;
+      projectId?: string;
+      isClientVisible?: boolean;
+    },
+  ) => {
     const formData = new FormData();
     formData.append("file", file);
     if (meta?.name) formData.append("name", meta.name);
     if (meta?.clientId) formData.append("clientId", meta.clientId);
     if (meta?.projectId) formData.append("projectId", meta.projectId);
+    if (meta?.isClientVisible !== undefined) {
+      formData.append("isClientVisible", String(meta.isClientVisible));
+    }
     return api.post("/documents/upload", formData, {
-      headers: { "Content-Type": undefined as unknown as string },
       timeout: 120000,
-      transformRequest: [(data, headers) => {
-        if (headers && typeof headers === "object") {
-          delete (headers as Record<string, unknown>)["Content-Type"];
-        }
-        return data;
-      }],
     });
   },
+  update: (id: string, data: Record<string, unknown>) =>
+    api.patch(`/documents/${id}`, data),
   get: (id: string) => api.get(`/documents/${id}`),
-  download: (id: string) => api.get(`/documents/${id}/download`),
+  download: (id: string) => api.get(`/documents/${id}/download`, { timeout: 120000 }),
   remove: (id: string) => api.delete(`/documents/${id}`),
 };
 

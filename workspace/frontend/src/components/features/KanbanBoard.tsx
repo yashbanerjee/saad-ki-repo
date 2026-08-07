@@ -39,6 +39,10 @@ export interface KanbanTask {
   progress?: number;
   status?: string;
   type?: string;
+  milestoneId?: string | null;
+  milestoneName?: string;
+  estimatedHours?: number | null;
+  loggedHours?: number | null;
 }
 
 export interface KanbanColumn {
@@ -63,17 +67,17 @@ export const defaultColumns: KanbanColumn[] = [
   { id: "TODO", title: "Todo", tasks: [] },
   { id: "IN_PROGRESS", title: "In Progress", tasks: [] },
   { id: "TESTING", title: "Testing", tasks: [] },
-  { id: "CODE_REVIEW", title: "Code Review", tasks: [] },
-  { id: "READY_FOR_QA", title: "Ready for QA", tasks: [] },
   { id: "DONE", title: "Done", tasks: [] },
 ];
 
 function SortableTask({
   task,
   href,
+  onTaskClick,
 }: {
   task: KanbanTask;
   href?: string;
+  onTaskClick?: (task: KanbanTask) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
@@ -84,6 +88,26 @@ function SortableTask({
     transform: CSS.Transform.toString(transform),
     transition,
   };
+
+  const meta = (
+    <>
+      {(task.milestoneName ||
+        task.loggedHours != null ||
+        task.estimatedHours != null) && (
+        <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px] text-muted-foreground">
+          {task.milestoneName && (
+            <span className="rounded border px-1.5 py-0.5">{task.milestoneName}</span>
+          )}
+          {(task.loggedHours != null || task.estimatedHours != null) && (
+            <span className="rounded border px-1.5 py-0.5">
+              {task.loggedHours ?? 0}h
+              {task.estimatedHours != null ? ` / ${task.estimatedHours}h` : " logged"}
+            </span>
+          )}
+        </div>
+      )}
+    </>
+  );
 
   const body = (
     <>
@@ -106,6 +130,7 @@ function SortableTask({
             </p>
           )}
           <p className="text-sm font-medium leading-snug text-foreground">{task.title}</p>
+          {meta}
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <Badge variant={priorityColors[task.priority]} className="text-[10px] capitalize">
               {task.priority}
@@ -147,12 +172,14 @@ function SortableTask({
     <div
       ref={setNodeRef}
       style={style}
-        className={cn(
-          "group relative z-10 overflow-hidden rounded-xl border border-border bg-background p-3 shadow-sm",
-          "cursor-grab active:cursor-grabbing transition-all duration-200",
-          "hover:border-vedha-teal/40 hover:shadow-md",
-          isDragging && "opacity-50 ring-2 ring-vedha-teal/25",
-        )}
+      className={cn(
+        "group relative z-10 overflow-hidden rounded-xl border border-border bg-background p-3 shadow-sm",
+        "cursor-grab active:cursor-grabbing transition-all duration-200",
+        "hover:border-vedha-teal/40 hover:shadow-md",
+        isDragging && "opacity-50 ring-2 ring-vedha-teal/25",
+        onTaskClick && "cursor-pointer",
+      )}
+      onClick={() => onTaskClick?.(task)}
     >
       {href ? (
         <Link href={href} className="block" onClick={(e) => e.stopPropagation()}>
@@ -239,6 +266,7 @@ interface KanbanBoardProps {
   initialColumns?: KanbanColumn[];
   onTaskMove?: (taskId: string, fromColumn: string, toColumn: string) => void;
   onAddTask?: (columnId: string) => void;
+  onTaskClick?: (task: KanbanTask) => void;
   canCreate?: boolean;
   /** Public / client view — no drag, no add task */
   readOnly?: boolean;
@@ -286,6 +314,7 @@ export function KanbanBoard({
   initialColumns = defaultColumns,
   onTaskMove,
   onAddTask,
+  onTaskClick,
   canCreate = true,
   readOnly = false,
   taskHref,
@@ -394,6 +423,7 @@ export function KanbanBoard({
                   key={task.id}
                   task={task}
                   href={taskHref?.(task)}
+                  onTaskClick={onTaskClick}
                 />
               ))}
             </SortableContext>

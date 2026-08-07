@@ -180,11 +180,65 @@ export default function PublicPortalPage() {
     onSuccess: () => {
       invalidate();
       toast.success("Document uploaded");
+      if (fileRef.current) fileRef.current.value = "";
     },
-    onError: (err: { response?: { data?: { message?: string } } }) => {
-      toast.error(err?.response?.data?.message || "Upload failed");
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const message = err?.response?.data?.message;
+      toast.error(
+        Array.isArray(message)
+          ? message.join(", ")
+          : message || "Upload failed",
+      );
     },
   });
+
+  const handlePortalDownload = async (doc: {
+    id: string;
+    name: string;
+    originalName?: string;
+    storageUrl?: string | null;
+    mimeType?: string;
+  }) => {
+    const isLink = doc.mimeType === "text/uri-list";
+    if (isLink && doc.storageUrl) {
+      window.open(doc.storageUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (doc.storageUrl && !doc.storageUrl.startsWith("/")) {
+      // Public CDN / absolute URL
+      window.open(doc.storageUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    try {
+      const res = await portalApi.downloadDocument(token, doc.id);
+      const payload = res.data?.data ?? res.data;
+      if (payload?.kind === "url" && payload.url) {
+        window.open(payload.url, "_blank", "noopener,noreferrer");
+        return;
+      }
+      if (payload?.kind === "base64" && payload.content) {
+        const binary = atob(payload.content);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], {
+          type: payload.mimeType || "application/octet-stream",
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = payload.name || doc.originalName || doc.name;
+        a.click();
+        URL.revokeObjectURL(url);
+        return;
+      }
+      toast.error("Download not available");
+    } catch {
+      toast.error("Could not download document");
+    }
+  };
 
   const boardColumns: KanbanColumn[] = useMemo(() => {
     if (!portal) {
@@ -519,42 +573,33 @@ export default function PublicPortalPage() {
                       mimeType?: string;
                     }) => {
                       const label = doc.originalName || doc.name;
-                      const href = doc.storageUrl;
                       const isLink = doc.mimeType === "text/uri-list";
                       return (
                         <li key={doc.id}>
-                          {href ? (
-                            <a
-                              href={href}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-sm hover:bg-muted/40 transition-colors"
-                            >
-                              <div className="min-w-0 flex items-center gap-2">
-                                {isLink ? (
-                                  <Link2 className="h-4 w-4 shrink-0 text-primary" />
-                                ) : (
-                                  <Download className="h-4 w-4 shrink-0 text-primary" />
-                                )}
-                                <div className="min-w-0">
-                                  <p className="font-medium truncate">{label}</p>
-                                  <p className="text-[11px] text-muted-foreground">
-                                    {isLink
-                                      ? "External link"
-                                      : [doc.mimeType, formatBytes(doc.size)]
-                                          .filter(Boolean)
-                                          .join(" · ")}
-                                  </p>
-                                </div>
+                          <button
+                            type="button"
+                            onClick={() => handlePortalDownload(doc)}
+                            className="w-full flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-sm hover:bg-muted/40 transition-colors text-left"
+                          >
+                            <div className="min-w-0 flex items-center gap-2">
+                              {isLink ? (
+                                <Link2 className="h-4 w-4 shrink-0 text-primary" />
+                              ) : (
+                                <Download className="h-4 w-4 shrink-0 text-primary" />
+                              )}
+                              <div className="min-w-0">
+                                <p className="font-medium truncate">{label}</p>
+                                <p className="text-[11px] text-muted-foreground">
+                                  {isLink
+                                    ? "External link"
+                                    : [doc.mimeType, formatBytes(doc.size)]
+                                        .filter(Boolean)
+                                        .join(" · ")}
+                                </p>
                               </div>
-                              <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                            </a>
-                          ) : (
-                            <div className="flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm text-muted-foreground">
-                              <FileText className="h-4 w-4 shrink-0" />
-                              <span className="truncate">{label}</span>
                             </div>
-                          )}
+                            <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          </button>
                         </li>
                       );
                     },

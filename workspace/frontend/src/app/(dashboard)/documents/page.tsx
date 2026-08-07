@@ -135,30 +135,50 @@ export default function DocumentsPage() {
   });
 
   const handleDownload = async (doc: DocItem) => {
-    try {
-      if (doc.kind === "nda" || doc.type === "NDA") {
-        const res = await documentsApi.download(doc.id);
-        const payload = res.data?.data ?? res.data;
-        if (payload?.kind === "inline" && payload.content) {
-          const blob = new Blob([payload.content], {
-            type: payload.mimeType || "text/plain",
-          });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = payload.name || `${doc.name}.txt`;
-          a.click();
-          URL.revokeObjectURL(url);
-          return;
-        }
+    const triggerBlobDownload = (blob: Blob, filename: string) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+
+    const base64ToBlob = (base64: string, mimeType: string) => {
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
       }
+      return new Blob([bytes], { type: mimeType || "application/octet-stream" });
+    };
+
+    try {
       const res = await documentsApi.download(doc.id);
       const payload = res.data?.data ?? res.data;
+
+      if (payload?.kind === "inline" && payload.content) {
+        triggerBlobDownload(
+          new Blob([payload.content], { type: payload.mimeType || "text/plain" }),
+          payload.name || `${doc.name}.txt`,
+        );
+        return;
+      }
+
+      if (payload?.kind === "base64" && payload.content) {
+        triggerBlobDownload(
+          base64ToBlob(payload.content, payload.mimeType || "application/octet-stream"),
+          payload.name || doc.name,
+        );
+        return;
+      }
+
       if (payload?.url) {
         window.open(payload.url, "_blank", "noopener,noreferrer");
-      } else {
-        toast.error("Download link unavailable");
+        return;
       }
+
+      toast.error("Download link unavailable");
     } catch {
       toast.error("Could not download document");
     }
