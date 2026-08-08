@@ -7,17 +7,20 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Bug,
+  Clock,
   MessageSquare,
   Send,
   Paperclip,
   Upload,
   FileText,
   Trash2,
+  UserRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
@@ -29,16 +32,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { issuesApi } from "@/lib/api";
-import { formatRelativeTime, getInitials } from "@/lib/utils";
+import { issuesApi, projectsApi } from "@/lib/api";
+import { cn, formatDate, formatRelativeTime, getInitials } from "@/lib/utils";
 import { toast } from "sonner";
 
-const BOARD_STATUSES = [
+const FALLBACK_STATUSES = [
   { value: "TODO", label: "Todo" },
   { value: "IN_PROGRESS", label: "In Progress" },
   { value: "TESTING", label: "Testing" },
   { value: "DONE", label: "Done" },
 ] as const;
+
+const creatorStyles: Record<string, string> = {
+  client: "bg-sky-500/15 text-sky-700 border-sky-500/30 dark:text-sky-300",
+  admin: "bg-vedha-teal/15 text-vedha-teal border-vedha-teal/30 dark:text-vedha-cyan",
+  employee: "bg-amber-500/15 text-amber-800 border-amber-500/30 dark:text-amber-200",
+  other: "bg-muted text-muted-foreground border-border",
+};
 
 function personName(p?: { firstName?: string; lastName?: string; name?: string } | string | null) {
   if (!p) return "—";
@@ -47,17 +57,21 @@ function personName(p?: { firstName?: string; lastName?: string; name?: string }
   return `${p.firstName || ""} ${p.lastName || ""}`.trim() || "—";
 }
 
-function statusLabel(value: string, options: readonly { value: string; label: string }[]) {
-  return options.find((o) => o.value === value)?.label || value.replace(/_/g, " ");
+function formatBytes(size?: number) {
+  if (!size || size <= 0) return "";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export default function IssueDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const [comment, setComment] = useState("");
+  const [hours, setHours] = useState("");
+  const [timeNote, setTimeNote] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
-  const statusOptions = BOARD_STATUSES;
 
   const { data, isLoading } = useQuery({
     queryKey: ["issue", id],
@@ -66,6 +80,28 @@ export default function IssueDetailPage() {
   });
 
   const issue = data?.data?.data ?? data?.data ?? null;
+  const projectId = issue?.project?.id as string | undefined;
+
+  const { data: timeData, isLoading: timeLoading } = useQuery({
+    queryKey: ["time-entries", id],
+    queryFn: () => issuesApi.listTimeEntries(id),
+    enabled: Boolean(id),
+  });
+
+  const boardColumns: { id: string; title: string }[] = Array.isArray(issue?.boardColumns)
+    ? issue.boardColumns
+    : FALLBACK_STATUSES.map((s) => ({ id: s.value, title: s.label }));
+
+  const comments = Array.isArray(issue?.comments) ? issue.comments : [];
+  const attachments = Array.isArray(issue?.attachments) ? issue.attachments : [];
+  const timeEntriesFromIssue = Array.isArray(issue?.timeEntries) ? issue.timeEntries : [];
+  const timeEntriesRaw = timeData?.data?.data ?? timeData?.data;
+  const timeEntries = Array.isArray(timeEntriesRaw) ? timeEntriesRaw : timeEntriesFromIssue;
+
+  const currentColumn =
+    String(issue?.boardColumnId || issue?.status || "TODO");
+  const creatorKind = String(issue?.creatorKind || "other").toLowerCase();
+  const creatorLabel = issue?.creatorLabel || creatorKind;
 
   const commentMutation = useMutation({
     mutationFn: (body: string) => issuesApi.addComment(id, body),
@@ -93,6 +129,9 @@ export default function IssueDetailPage() {
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["issue", id] });
+      if (projectId) {
+        queryClient.invalidateQueries({ queryKey: ["project-board", projectId] });
+      }
       if (result.failed && !result.uploaded) {
         toast.error("Upload failed");
       } else if (result.failed) {
@@ -121,14 +160,20 @@ export default function IssueDetailPage() {
   });
 
   const statusMutation = useMutation({
-    mutationFn: (status: string) => issuesApi.transition(id, status),
-    onSuccess: (_res, status) => {
+    mutationFn: async (columnId: string) => {
+      if (projectId) {
+        return projectsApi.updateTaskStatus(projectId, id, columnId);
+      }
+      return issuesApi.transition(id, columnId);
+    },
+    onSuccess: (_res, columnId) => {
       queryClient.invalidateQueries({ queryKey: ["issue", id] });
-      const projectId = issue?.project?.id;
       if (projectId) {
         queryClient.invalidateQueries({ queryKey: ["project-board", projectId] });
       }
-      toast.success(`Status updated to ${statusLabel(status, statusOptions)}`);
+      const title =
+        boardColumns.find((c) => c.id === columnId)?.title || columnId.replace(/_/g, " ");
+      toast.success(`Moved to ${title}`);
     },
     onError: (err: { response?: { data?: { message?: string }; status?: number } }) => {
       toast.error(
@@ -137,6 +182,40 @@ export default function IssueDetailPage() {
           : err?.response?.data?.message || "Failed to update status",
       );
     },
+  });
+
+  const logTime = useMutation({
+    mutationFn: () =>
+      issuesApi.addTimeEntry(id, {
+        hours: Number(hours),
+        description: timeNote.trim() || undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["issue", id] });
+      queryClient.invalidateQueries({ queryKey: ["time-entries", id] });
+      if (projectId) {
+        queryClient.invalidateQueries({ queryKey: ["project-board", projectId] });
+      }
+      setHours("");
+      setTimeNote("");
+      toast.success("Time logged");
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Could not log time");
+    },
+  });
+
+  const deleteTime = useMutation({
+    mutationFn: (entryId: string) => issuesApi.removeTimeEntry(id, entryId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["issue", id] });
+      queryClient.invalidateQueries({ queryKey: ["time-entries", id] });
+      if (projectId) {
+        queryClient.invalidateQueries({ queryKey: ["project-board", projectId] });
+      }
+      toast.success("Time entry removed");
+    },
+    onError: () => toast.error("Could not remove entry"),
   });
 
   if (isLoading) {
@@ -160,44 +239,60 @@ export default function IssueDetailPage() {
     );
   }
 
-  const backHref = issue.project?.id
-    ? `/projects/${issue.project.id}/board`
-    : "/issues";
-
-  const comments = Array.isArray(issue.comments) ? issue.comments : [];
-  const attachments = Array.isArray(issue.attachments) ? issue.attachments : [];
-  const currentStatus = String(issue.status || "TODO");
-
-  const selectOptions =
-    statusOptions.some((o) => o.value === currentStatus)
-      ? statusOptions
-      : [
-          { value: currentStatus, label: statusLabel(currentStatus, BOARD_STATUSES) },
-          ...statusOptions,
-        ];
+  const backHref = projectId ? `/projects/${projectId}/board` : "/issues";
+  const boardColumnSelectValue = boardColumns.some((c) => c.id === currentColumn)
+    ? currentColumn
+    : boardColumns[0]?.id || "TODO";
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" asChild>
+      {/* Jira-style header */}
+      <div className="flex items-start gap-4">
+        <Button variant="ghost" size="icon" asChild className="mt-0.5">
           <Link href={backHref}>
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
-        <div className="flex-1">
-          <div className="flex flex-wrap items-center gap-2 mb-1">
-            <Bug className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">{issue.key || `#${issue.id}`}</span>
-            {issue.priority && <Badge variant="destructive">{issue.priority}</Badge>}
-            <Badge variant="info">{statusLabel(currentStatus, BOARD_STATUSES)}</Badge>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2 mb-1.5">
+            <span className="font-mono text-sm font-semibold text-muted-foreground">
+              {issue.key || `#${issue.id}`}
+            </span>
             {issue.type && <Badge variant="outline">{issue.type}</Badge>}
+            {issue.priority && (
+              <Badge variant="destructive" className="capitalize">
+                {String(issue.priority).toLowerCase()}
+              </Badge>
+            )}
+            <span
+              className={cn(
+                "inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium",
+                creatorStyles[creatorKind] || creatorStyles.other,
+              )}
+            >
+              <UserRound className="mr-1 h-3 w-3" />
+              Created by {creatorLabel}
+            </span>
           </div>
-          <h1 className="font-display text-2xl font-bold">{issue.title}</h1>
+          <h1 className="font-display text-2xl font-bold leading-tight">{issue.title}</h1>
+          {issue.project?.name && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              in{" "}
+              <Link
+                href={`/projects/${projectId}/board`}
+                className="text-primary hover:underline"
+              >
+                {issue.project.name}
+              </Link>
+              {issue.milestone?.name ? ` · ${issue.milestone.name}` : ""}
+            </p>
+          )}
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Main column */}
+        <div className="space-y-6 lg:col-span-2">
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Description</CardTitle>
@@ -211,9 +306,14 @@ export default function IssueDetailPage() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Paperclip className="h-4 w-4" /> Attachments ({attachments.length})
-              </CardTitle>
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Paperclip className="h-4 w-4" /> Documents ({attachments.length})
+                </CardTitle>
+                <CardDescription className="text-xs mt-1">
+                  Attach files related to this task
+                </CardDescription>
+              </div>
               <div>
                 <input
                   ref={fileRef}
@@ -239,7 +339,7 @@ export default function IssueDetailPage() {
             </CardHeader>
             <CardContent className="space-y-2">
               {attachments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No files attached yet.</p>
+                <p className="text-sm text-muted-foreground">No documents yet.</p>
               ) : (
                 attachments.map(
                   (a: {
@@ -270,7 +370,7 @@ export default function IssueDetailPage() {
                           )}
                           <p className="text-[11px] text-muted-foreground">
                             {personName(a.uploadedBy)}
-                            {a.size ? ` · ${(a.size / 1024).toFixed(1)} KB` : ""}
+                            {a.size ? ` · ${formatBytes(a.size)}` : ""}
                           </p>
                         </div>
                       </div>
@@ -292,7 +392,92 @@ export default function IssueDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <MessageSquare className="h-4 w-4" /> Comments ({comments.length})
+                <Clock className="h-4 w-4" /> Time tracking
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Logged {issue.loggedHours ?? 0}h
+                {issue.estimatedHours != null ? ` · Est. ${issue.estimatedHours}h` : ""}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <Input
+                  type="number"
+                  min={0.25}
+                  max={24}
+                  step={0.25}
+                  placeholder="Hours"
+                  value={hours}
+                  onChange={(e) => setHours(e.target.value)}
+                  className="w-28"
+                />
+                <Input
+                  placeholder="Note (optional)"
+                  value={timeNote}
+                  onChange={(e) => setTimeNote(e.target.value)}
+                  className="min-w-[12rem] flex-1"
+                />
+                <Button
+                  size="sm"
+                  disabled={!hours || Number(hours) <= 0 || logTime.isPending}
+                  onClick={() => logTime.mutate()}
+                >
+                  {logTime.isPending ? "Saving…" : "Log time"}
+                </Button>
+              </div>
+
+              {timeLoading ? (
+                <Skeleton className="h-16 w-full" />
+              ) : timeEntries.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No time logged yet.</p>
+              ) : (
+                <ul className="space-y-1.5 max-h-56 overflow-y-auto">
+                  {timeEntries.map(
+                    (e: {
+                      id: string;
+                      hours: number;
+                      description?: string;
+                      date?: string;
+                      user?: { firstName?: string; lastName?: string };
+                    }) => (
+                      <li
+                        key={e.id}
+                        className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm"
+                      >
+                        <div>
+                          <span className="font-medium">{e.hours}h</span>
+                          {e.description ? ` — ${e.description}` : ""}
+                          <p className="text-xs text-muted-foreground">
+                            {[
+                              e.user
+                                ? `${e.user.firstName || ""} ${e.user.lastName || ""}`.trim()
+                                : null,
+                              e.date ? formatDate(e.date) : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        </div>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 shrink-0"
+                          onClick={() => deleteTime.mutate(e.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </li>
+                    ),
+                  )}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <MessageSquare className="h-4 w-4" /> Activity ({comments.length})
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -332,14 +517,12 @@ export default function IssueDetailPage() {
                 <p className="text-sm text-muted-foreground">No comments yet.</p>
               )}
               <Separator />
-              <div className="flex gap-3">
-                <Textarea
-                  placeholder="Add a comment..."
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  rows={3}
-                />
-              </div>
+              <Textarea
+                placeholder="Add a comment..."
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                rows={3}
+              />
               <Button
                 size="sm"
                 disabled={!comment.trim() || commentMutation.isPending}
@@ -351,6 +534,7 @@ export default function IssueDetailPage() {
           </Card>
         </div>
 
+        {/* Jira-style details sidebar */}
         <div className="space-y-4">
           <Card>
             <CardHeader>
@@ -360,19 +544,19 @@ export default function IssueDetailPage() {
               <div className="space-y-2">
                 <span className="text-muted-foreground">Status</span>
                 <Select
-                  value={currentStatus}
+                  value={boardColumnSelectValue}
                   disabled={statusMutation.isPending}
                   onValueChange={(value) => {
-                    if (value !== currentStatus) statusMutation.mutate(value);
+                    if (value !== currentColumn) statusMutation.mutate(value);
                   }}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent>
-                    {selectOptions.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
+                    {boardColumns.map((col) => (
+                      <SelectItem key={col.id} value={col.id}>
+                        {col.title}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -390,11 +574,26 @@ export default function IssueDetailPage() {
                 <span className="text-muted-foreground">Reporter</span>
                 <span className="text-right">{personName(issue.reporter)}</span>
               </div>
+              <div className="flex justify-between gap-2 items-center">
+                <span className="text-muted-foreground">Created by</span>
+                <span
+                  className={cn(
+                    "inline-flex items-center rounded border px-1.5 py-0.5 text-[11px] font-medium",
+                    creatorStyles[creatorKind] || creatorStyles.other,
+                  )}
+                >
+                  {creatorLabel}
+                </span>
+              </div>
               <div className="flex justify-between gap-2">
                 <span className="text-muted-foreground">Project</span>
                 <span className="text-right">
                   {issue.project?.name || issue.project || "—"}
                 </span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground">Milestone</span>
+                <span className="text-right">{issue.milestone?.name || "—"}</span>
               </div>
               {issue.type && (
                 <div className="flex justify-between">
@@ -408,6 +607,13 @@ export default function IssueDetailPage() {
                   <Badge variant="destructive">{issue.priority}</Badge>
                 </div>
               )}
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Time logged</span>
+                <span>
+                  {issue.loggedHours ?? 0}h
+                  {issue.estimatedHours != null ? ` / ${issue.estimatedHours}h` : ""}
+                </span>
+              </div>
               {issue.createdAt && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Created</span>
@@ -416,6 +622,12 @@ export default function IssueDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {projectId && (
+            <Button variant="outline" className="w-full" asChild>
+              <Link href={`/projects/${projectId}/board`}>Back to board</Link>
+            </Button>
+          )}
         </div>
       </div>
     </div>

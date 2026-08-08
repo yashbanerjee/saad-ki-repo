@@ -6,12 +6,10 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  Clock,
   FileText,
   Layers,
   Paperclip,
   Plus,
-  Trash2,
   Upload,
   X,
 } from "lucide-react";
@@ -21,7 +19,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -44,7 +41,6 @@ import {
 } from "@/components/features/KanbanBoard";
 import { issuesApi, projectsApi } from "@/lib/api";
 import { hasRole, useAuthStore } from "@/lib/auth-store";
-import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
@@ -86,7 +82,6 @@ export default function ProjectBoardPage() {
   const user = useAuthStore((s) => s.user);
   const canManageColumns = hasRole(user, ["admin", "manager"]);
   const createFileRef = useRef<HTMLInputElement>(null);
-  const taskFileRef = useRef<HTMLInputElement>(null);
 
   const [milestoneFilter, setMilestoneFilter] = useState<string>("all");
   const [createOpen, setCreateOpen] = useState(false);
@@ -103,10 +98,6 @@ export default function ProjectBoardPage() {
   const [msName, setMsName] = useState("");
   const [msDue, setMsDue] = useState("");
 
-  const [timeTask, setTimeTask] = useState<KanbanTask | null>(null);
-  const [hours, setHours] = useState("");
-  const [timeNote, setTimeNote] = useState("");
-
   const { data, isLoading } = useQuery({
     queryKey: ["project-board", projectId],
     queryFn: () => projectsApi.getBoard(projectId),
@@ -114,33 +105,11 @@ export default function ProjectBoardPage() {
     enabled: Boolean(accessToken && projectId),
   });
 
-  const { data: timeData, isLoading: timeLoading } = useQuery({
-    queryKey: ["time-entries", timeTask?.id],
-    queryFn: () => issuesApi.listTimeEntries(timeTask!.id),
-    enabled: Boolean(timeTask?.id),
-  });
-
-  const { data: issueDetail, isLoading: issueLoading } = useQuery({
-    queryKey: ["issue", timeTask?.id],
-    queryFn: () => issuesApi.get(timeTask!.id),
-    enabled: Boolean(timeTask?.id),
-  });
-
   const boardData = data?.data?.data ?? data?.data;
   const milestones: Milestone[] = useMemo(() => {
     const raw = boardData?.milestones;
     return Array.isArray(raw) ? raw : [];
   }, [boardData]);
-
-  const timeEntries = useMemo(() => {
-    const raw = timeData?.data?.data ?? timeData?.data ?? [];
-    return Array.isArray(raw) ? raw : [];
-  }, [timeData]);
-
-  const taskAttachments = useMemo(() => {
-    const issue = issueDetail?.data?.data ?? issueDetail?.data ?? null;
-    return Array.isArray(issue?.attachments) ? issue.attachments : [];
-  }, [issueDetail]);
 
   const initialColumns: KanbanColumn[] = useMemo(() => {
     let columns: KanbanColumn[] = [];
@@ -258,68 +227,6 @@ export default function ProjectBoardPage() {
       toast.success("Milestone created — add tasks under it");
     },
     onError: () => toast.error("Could not create milestone"),
-  });
-
-  const logTime = useMutation({
-    mutationFn: () =>
-      issuesApi.addTimeEntry(timeTask!.id, {
-        hours: Number(hours),
-        description: timeNote.trim() || undefined,
-      }),
-    onSuccess: () => {
-      invalidate();
-      queryClient.invalidateQueries({ queryKey: ["time-entries", timeTask?.id] });
-      setHours("");
-      setTimeNote("");
-      toast.success("Time logged");
-    },
-    onError: (err: { response?: { data?: { message?: string } } }) => {
-      toast.error(err?.response?.data?.message || "Could not log time");
-    },
-  });
-
-  const deleteTime = useMutation({
-    mutationFn: (entryId: string) =>
-      issuesApi.removeTimeEntry(timeTask!.id, entryId),
-    onSuccess: () => {
-      invalidate();
-      queryClient.invalidateQueries({ queryKey: ["time-entries", timeTask?.id] });
-      toast.success("Time entry removed");
-    },
-    onError: () => toast.error("Could not remove entry"),
-  });
-
-  const uploadOnTask = useMutation({
-    mutationFn: async (files: File[]) => {
-      if (!timeTask?.id) throw new Error("No task");
-      return uploadAllAttachments(timeTask.id, files);
-    },
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ["issue", timeTask?.id] });
-      if (result.failed && !result.uploaded) {
-        toast.error("Upload failed");
-      } else if (result.failed) {
-        toast.warning(`${result.uploaded} uploaded, ${result.failed} failed`);
-      } else {
-        toast.success(
-          result.uploaded === 1
-            ? "Document uploaded"
-            : `${result.uploaded} documents uploaded`,
-        );
-      }
-      if (taskFileRef.current) taskFileRef.current.value = "";
-    },
-    onError: () => toast.error("Could not upload document"),
-  });
-
-  const deleteAttachment = useMutation({
-    mutationFn: (attachmentId: string) =>
-      issuesApi.deleteAttachment(timeTask!.id, attachmentId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["issue", timeTask?.id] });
-      toast.success("Attachment removed");
-    },
-    onError: () => toast.error("Could not delete attachment"),
   });
 
   const handleTaskMove = async (taskId: string, _from: string, toColumn: string) => {
@@ -484,7 +391,7 @@ export default function ProjectBoardPage() {
           initialColumns={initialColumns}
           onTaskMove={handleTaskMove}
           onAddTask={openCreate}
-          onTaskClick={(task) => setTimeTask(task)}
+          taskHref={(task) => `/issues/${task.id}`}
           canCreate
           canManageColumns={canManageColumns}
           onRenameColumn={handleRenameColumn}
@@ -494,9 +401,9 @@ export default function ProjectBoardPage() {
       )}
 
       <p className="text-xs text-muted-foreground">
-        Create a task with optional documents. Click a task to log time or attach more files.
+        Click a task to open the full Jira-style task page (documents, time, comments, creator).
         {canManageColumns
-          ? " Admins can rename columns, add new columns, or delete columns from the board."
+          ? " Admins can rename, add, or delete columns on this board."
           : ""}
       </p>
 
@@ -709,218 +616,6 @@ export default function ProjectBoardPage() {
               {createMilestone.isPending ? "Creating…" : "Create"}
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!timeTask} onOpenChange={(o) => !o && setTimeTask(null)}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Clock className="h-4 w-4" /> {timeTask?.key || "Task"}
-            </DialogTitle>
-          </DialogHeader>
-          {timeTask && (
-            <div className="space-y-4">
-              <div>
-                <p className="font-medium text-sm">{timeTask.title}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {timeTask.milestoneName
-                    ? `Milestone: ${timeTask.milestoneName}`
-                    : "No milestone"}{" "}
-                  · Logged {timeTask.loggedHours ?? 0}h
-                  {timeTask.estimatedHours != null
-                    ? ` / ${timeTask.estimatedHours}h est.`
-                    : ""}
-                </p>
-                <Button variant="link" className="h-auto p-0 text-xs mt-1" asChild>
-                  <Link href={`/issues/${timeTask.id}`}>Open full task page</Link>
-                </Button>
-              </div>
-
-              <Card>
-                <CardHeader className="py-3 px-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <CardTitle className="text-sm flex items-center gap-1.5">
-                        <Paperclip className="h-3.5 w-3.5" /> Documents
-                      </CardTitle>
-                      <CardDescription className="text-xs">
-                        Upload files for this task
-                      </CardDescription>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={uploadOnTask.isPending}
-                      onClick={() => taskFileRef.current?.click()}
-                    >
-                      <Upload className="h-3.5 w-3.5 mr-1" />
-                      {uploadOnTask.isPending ? "Uploading…" : "Upload"}
-                    </Button>
-                    <input
-                      ref={taskFileRef}
-                      type="file"
-                      multiple
-                      className="hidden"
-                      onChange={(e) => {
-                        const files = e.target.files
-                          ? Array.from(e.target.files)
-                          : [];
-                        const valid = files.filter((f) => {
-                          if (f.size > MAX_ATTACHMENT_BYTES) {
-                            toast.error(`${f.name} is over 15 MB`);
-                            return false;
-                          }
-                          return true;
-                        });
-                        if (valid.length) {
-                          uploadOnTask.mutate(valid.slice(0, MAX_ATTACHMENTS));
-                        }
-                      }}
-                    />
-                  </div>
-                </CardHeader>
-                <CardContent className="px-4 pb-4">
-                  {issueLoading ? (
-                    <Skeleton className="h-12 w-full" />
-                  ) : taskAttachments.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No documents yet.</p>
-                  ) : (
-                    <ul className="space-y-1.5 max-h-36 overflow-y-auto">
-                      {taskAttachments.map(
-                        (a: {
-                          id: string;
-                          name: string;
-                          size?: number;
-                          storageUrl?: string | null;
-                        }) => (
-                          <li
-                            key={a.id}
-                            className="flex items-center justify-between gap-2 text-xs rounded border px-2 py-1.5"
-                          >
-                            <span className="min-w-0 truncate flex items-center gap-1.5">
-                              <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
-                              {a.storageUrl ? (
-                                <a
-                                  href={a.storageUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="truncate hover:underline"
-                                >
-                                  {a.name}
-                                </a>
-                              ) : (
-                                <span className="truncate">{a.name}</span>
-                              )}
-                              {a.size != null && (
-                                <span className="text-muted-foreground shrink-0">
-                                  {formatBytes(a.size)}
-                                </span>
-                              )}
-                            </span>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7 shrink-0"
-                              onClick={() => deleteAttachment.mutate(a.id)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </li>
-                        ),
-                      )}
-                    </ul>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="py-3 px-4">
-                  <CardTitle className="text-sm">Log time</CardTitle>
-                  <CardDescription className="text-xs">
-                    Record hours worked on this task
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="px-4 pb-4 space-y-2">
-                  <div className="flex gap-2">
-                    <Input
-                      type="number"
-                      min={0.25}
-                      max={24}
-                      step={0.25}
-                      placeholder="Hours"
-                      value={hours}
-                      onChange={(e) => setHours(e.target.value)}
-                      className="w-28"
-                    />
-                    <Input
-                      placeholder="Note (optional)"
-                      value={timeNote}
-                      onChange={(e) => setTimeNote(e.target.value)}
-                    />
-                  </div>
-                  <Button
-                    size="sm"
-                    disabled={!hours || Number(hours) <= 0 || logTime.isPending}
-                    onClick={() => logTime.mutate()}
-                  >
-                    {logTime.isPending ? "Saving…" : "Add entry"}
-                  </Button>
-                </CardContent>
-              </Card>
-
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2">
-                  Recent time entries
-                </p>
-                {timeLoading ? (
-                  <Skeleton className="h-16 w-full" />
-                ) : timeEntries.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No time logged yet.</p>
-                ) : (
-                  <ul className="space-y-1.5 max-h-40 overflow-y-auto">
-                    {timeEntries.map(
-                      (e: {
-                        id: string;
-                        hours: number;
-                        description?: string;
-                        date?: string;
-                        user?: { firstName?: string; lastName?: string };
-                      }) => (
-                        <li
-                          key={e.id}
-                          className="flex items-center justify-between text-xs rounded border px-2 py-1.5"
-                        >
-                          <div>
-                            <span className="font-medium">{e.hours}h</span>
-                            {e.description ? ` — ${e.description}` : ""}
-                            <p className="text-muted-foreground">
-                              {[
-                                e.user
-                                  ? `${e.user.firstName || ""} ${e.user.lastName || ""}`.trim()
-                                  : null,
-                                e.date ? formatDate(e.date) : null,
-                              ]
-                                .filter(Boolean)
-                                .join(" · ")}
-                            </p>
-                          </div>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-7 w-7"
-                            onClick={() => deleteTime.mutate(e.id)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </li>
-                      ),
-                    )}
-                  </ul>
-                )}
-              </div>
-            </div>
-          )}
         </DialogContent>
       </Dialog>
     </div>

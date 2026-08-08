@@ -106,8 +106,17 @@ export class IssuesService {
         assignee: {
           select: { id: true, firstName: true, lastName: true, email: true, avatar: true },
         },
-        reporter: { select: { id: true, firstName: true, lastName: true, email: true } },
-        project: { select: { id: true, key: true, name: true } },
+        reporter: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            linkedClient: { select: { id: true } },
+            roles: { select: { role: { select: { slug: true } } } },
+          },
+        },
+        project: { select: { id: true, key: true, name: true, settings: true } },
         sprint: true,
         comments: {
           include: {
@@ -137,7 +146,24 @@ export class IssuesService {
       },
     });
     if (!issue) throw new NotFoundException('Issue not found');
-    return issue;
+
+    const boardColumns = parseBoardColumns(issue.project.settings);
+    const boardColumnId = resolveIssueBoardColumnId(issue, boardColumns);
+    const creatorKind =
+      readCreatorKind(issue.metadata) ||
+      (issue.reporter?.linkedClient
+        ? 'client'
+        : creatorKindFromRoleSlugs(
+            issue.reporter?.roles?.map((r) => r.role.slug) || [],
+          ));
+
+    return {
+      ...issue,
+      boardColumnId,
+      boardColumns,
+      creatorKind,
+      creatorLabel: CREATOR_KIND_LABEL[creatorKind],
+    };
   }
 
   async getBoard(projectId: string, companyId: string) {

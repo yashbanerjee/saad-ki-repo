@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
@@ -112,6 +112,7 @@ function SortableTask({
   href?: string;
   onTaskClick?: (task: KanbanTask) => void;
 }) {
+  const router = useRouter();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
     data: { task },
@@ -120,6 +121,14 @@ function SortableTask({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
+  };
+
+  const openTask = () => {
+    if (href) {
+      router.push(href);
+      return;
+    }
+    onTaskClick?.(task);
   };
 
   const meta = (
@@ -142,8 +151,27 @@ function SortableTask({
     </>
   );
 
-  const body = (
-    <>
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      role={href || onTaskClick ? "button" : undefined}
+      tabIndex={href || onTaskClick ? 0 : undefined}
+      onClick={openTask}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openTask();
+        }
+      }}
+      className={cn(
+        "group relative z-10 overflow-hidden rounded-xl border border-border bg-background p-3 shadow-sm",
+        "cursor-grab active:cursor-grabbing transition-all duration-200",
+        "hover:border-vedha-teal/40 hover:shadow-md",
+        isDragging && "opacity-50 ring-2 ring-vedha-teal/25",
+        (onTaskClick || href) && "cursor-pointer",
+      )}
+    >
       <div className={cn("absolute left-0 top-0 h-full w-1 rounded-l-xl", priorityBar[task.priority])} />
       <div className="flex items-start gap-2 pl-2">
         <button
@@ -152,7 +180,10 @@ function SortableTask({
           {...listeners}
           className="mt-0.5 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:text-foreground"
           aria-label="Drag task"
-          onClick={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
         >
           <GripVertical className="h-4 w-4" />
         </button>
@@ -199,29 +230,6 @@ function SortableTask({
           )}
         </div>
       </div>
-    </>
-  );
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        "group relative z-10 overflow-hidden rounded-xl border border-border bg-background p-3 shadow-sm",
-        "cursor-grab active:cursor-grabbing transition-all duration-200",
-        "hover:border-vedha-teal/40 hover:shadow-md",
-        isDragging && "opacity-50 ring-2 ring-vedha-teal/25",
-        onTaskClick && "cursor-pointer",
-      )}
-      onClick={() => onTaskClick?.(task)}
-    >
-      {href ? (
-        <Link href={href} className="block" onClick={(e) => e.stopPropagation()}>
-          {body}
-        </Link>
-      ) : (
-        body
-      )}
     </div>
   );
 }
