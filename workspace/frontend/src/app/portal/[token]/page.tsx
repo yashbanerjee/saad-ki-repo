@@ -510,12 +510,23 @@ export default function PublicPortalPage() {
                 <span className="text-muted-foreground">End: </span>
                 {portal.endDate ? formatDate(portal.endDate) : "Not set"}
               </p>
-              <p className="flex items-center gap-1.5 pt-0.5">
-                <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                <span className="text-muted-foreground">Hours logged: </span>
-                <span className="font-semibold tabular-nums">
-                  {totalLoggedHours}
-                  {totalEstimatedHours > 0 ? ` / ${totalEstimatedHours}h est.` : "h"}
+              <p className="flex items-start gap-1.5 pt-1">
+                <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                <span>
+                  <span className="text-muted-foreground block text-xs">Hours worked</span>
+                  <span className="font-semibold tabular-nums text-base">
+                    {totalLoggedHours === 1
+                      ? "1 Hour"
+                      : `${totalLoggedHours} Hours`}
+                  </span>
+                  {totalEstimatedHours > 0 && (
+                    <span className="block text-xs text-muted-foreground mt-0.5">
+                      Planned:{" "}
+                      {totalEstimatedHours === 1
+                        ? "1 Hour"
+                        : `${totalEstimatedHours} Hours`}
+                    </span>
+                  )}
                 </span>
               </p>
               {portal.daysRemaining != null && (
@@ -677,6 +688,9 @@ export default function PublicPortalPage() {
                 <CardTitle className="text-base flex items-center gap-2">
                   <Layers className="h-4 w-4" /> Milestones
                 </CardTitle>
+                <CardDescription className="text-xs">
+                  Progress and tasks assigned to each milestone
+                </CardDescription>
               </div>
               <Button size="sm" variant="outline" onClick={() => setMilestoneOpen(true)}>
                 <Plus className="h-3.5 w-3.5 mr-1" /> Add
@@ -688,7 +702,7 @@ export default function PublicPortalPage() {
                   No milestones yet. Add one to track phase goals.
                 </p>
               ) : (
-                <ul className="space-y-3">
+                <ul className="space-y-4">
                   {milestones.map(
                     (m: {
                       id: string;
@@ -696,46 +710,131 @@ export default function PublicPortalPage() {
                       status: string;
                       description?: string | null;
                       dueDate?: string | null;
-                    }) => (
-                      <li
-                        key={m.id}
-                        className="flex items-start justify-between gap-3 text-sm border-b border-border/60 pb-3 last:border-0 last:pb-0"
-                      >
-                        <div className="min-w-0">
-                          <p
-                            className={cn(
-                              "font-medium",
-                              m.status === "DONE" &&
-                                "line-through text-muted-foreground",
-                            )}
-                          >
-                            {m.name}
-                          </p>
-                          {m.description && (
-                            <p className="text-xs text-muted-foreground mt-0.5 whitespace-pre-wrap">
-                              {m.description}
-                            </p>
-                          )}
-                          {m.dueDate && (
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              Due {formatDate(m.dueDate)}
-                            </p>
-                          )}
-                        </div>
-                        <Badge
-                          variant={
-                            m.status === "DONE"
-                              ? "success"
-                              : m.status === "IN_PROGRESS"
-                                ? "info"
-                                : "secondary"
-                          }
-                          className="shrink-0"
+                      progressPercent?: number;
+                      taskCount?: number;
+                      doneTaskCount?: number;
+                      loggedHours?: number;
+                      tasks?: Array<{
+                        id: string;
+                        key?: string;
+                        title: string;
+                        status?: string;
+                        done?: boolean;
+                        creatorLabel?: string;
+                        loggedHours?: number;
+                      }>;
+                    }) => {
+                      const pct = Number(m.progressPercent ?? 0);
+                      const taskCount = Number(m.taskCount ?? m.tasks?.length ?? 0);
+                      const doneCount = Number(m.doneTaskCount ?? 0);
+                      const assigned = Array.isArray(m.tasks) ? m.tasks : [];
+                      return (
+                        <li
+                          key={m.id}
+                          className="rounded-xl border border-border/70 p-3 space-y-2.5"
                         >
-                          {MILESTONE_LABEL[m.status] ?? m.status}
-                        </Badge>
-                      </li>
-                    ),
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p
+                                className={cn(
+                                  "font-medium text-sm",
+                                  m.status === "DONE" &&
+                                    "line-through text-muted-foreground",
+                                )}
+                              >
+                                {m.name}
+                              </p>
+                              {m.description && (
+                                <p className="text-xs text-muted-foreground mt-0.5 whitespace-pre-wrap">
+                                  {m.description}
+                                </p>
+                              )}
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {m.dueDate ? `Due ${formatDate(m.dueDate)} · ` : ""}
+                                {doneCount} of {taskCount} task
+                                {taskCount === 1 ? "" : "s"} done
+                                {m.loggedHours != null && m.loggedHours > 0
+                                  ? ` · ${m.loggedHours} Hour${m.loggedHours === 1 ? "" : "s"} worked`
+                                  : ""}
+                              </p>
+                            </div>
+                            <Badge
+                              variant={
+                                m.status === "DONE"
+                                  ? "success"
+                                  : m.status === "IN_PROGRESS"
+                                    ? "info"
+                                    : "secondary"
+                              }
+                              className="shrink-0"
+                            >
+                              {MILESTONE_LABEL[m.status] ?? m.status}
+                            </Badge>
+                          </div>
+
+                          <div>
+                            <div className="flex items-center justify-between text-xs mb-1">
+                              <span className="text-muted-foreground">Progress</span>
+                              <span className="font-semibold tabular-nums text-primary">
+                                {pct}%
+                              </span>
+                            </div>
+                            <div className="h-2 rounded-full bg-muted overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-primary transition-all"
+                                style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          {assigned.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">
+                              No tasks assigned to this milestone yet.
+                            </p>
+                          ) : (
+                            <ul className="space-y-1.5 border-t pt-2">
+                              <li className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                                Tasks on this milestone
+                              </li>
+                              {assigned.map((t) => (
+                                <li
+                                  key={t.id}
+                                  className="flex items-start gap-2 text-xs"
+                                >
+                                  {t.done ? (
+                                    <CheckCircle2 className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+                                  ) : (
+                                    <Circle className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                                  )}
+                                  <div className="min-w-0 flex-1">
+                                    <p
+                                      className={cn(
+                                        "font-medium",
+                                        t.done && "line-through text-muted-foreground",
+                                      )}
+                                    >
+                                      {t.key ? (
+                                        <span className="font-mono text-[10px] text-muted-foreground mr-1">
+                                          {t.key}
+                                        </span>
+                                      ) : null}
+                                      {t.title}
+                                    </p>
+                                    <p className="text-[11px] text-muted-foreground">
+                                      {t.done ? "Done" : t.status?.replace(/_/g, " ") || "Open"}
+                                      {t.creatorLabel ? ` · ${t.creatorLabel}` : ""}
+                                      {t.loggedHours != null && t.loggedHours > 0
+                                        ? ` · ${t.loggedHours} Hour${t.loggedHours === 1 ? "" : "s"}`
+                                        : ""}
+                                    </p>
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </li>
+                      );
+                    },
                   )}
                 </ul>
               )}

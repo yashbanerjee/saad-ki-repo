@@ -562,6 +562,48 @@ export class ProjectsService {
         }),
     }));
 
+    const mapIssueForMilestone = (issue: (typeof project.issues)[number]) => {
+      const kind =
+        readCreatorKind(issue.metadata) ||
+        (issue.reporter?.linkedClient
+          ? 'client'
+          : creatorKindFromRoleSlugs(
+              issue.reporter?.roles?.map((r) => r.role.slug) || [],
+            ));
+      return {
+        id: issue.id,
+        key: issue.key,
+        title: issue.title,
+        status: issue.status,
+        done: isIssueDone(issue),
+        priority: issue.priority,
+        loggedHours: issue.loggedHours ?? 0,
+        estimatedHours: issue.estimatedHours ?? null,
+        creatorKind: kind,
+        creatorLabel: CREATOR_KIND_LABEL[kind],
+      };
+    };
+
+    const milestonesWithProgress = project.milestones.map((m) => {
+      const assigned = project.issues
+        .filter((i) => i.milestone?.id === m.id)
+        .map(mapIssueForMilestone);
+      const total = assigned.length;
+      const done = assigned.filter((t) => t.done).length;
+      const progressPercent =
+        total > 0 ? Math.round((done / total) * 100) : m.status === 'DONE' ? 100 : 0;
+      const loggedHours =
+        Math.round(assigned.reduce((sum, t) => sum + (t.loggedHours || 0), 0) * 10) / 10;
+      return {
+        ...m,
+        progressPercent,
+        taskCount: total,
+        doneTaskCount: done,
+        loggedHours,
+        tasks: assigned,
+      };
+    });
+
     return {
       projectName: project.name,
       projectKey: project.key,
@@ -572,7 +614,7 @@ export class ProjectsService {
       startDate: project.startDate,
       endDate: project.endDate,
       daysRemaining,
-      milestones: project.milestones,
+      milestones: milestonesWithProgress,
       tasks: project.clientTasks,
       issues: project.issues,
       issueCounts,
