@@ -17,7 +17,6 @@ import {
   Activity,
   Download,
   Plus,
-  Copy,
   Link2,
   Upload,
 } from "lucide-react";
@@ -83,12 +82,10 @@ export default function PublicPortalPage() {
   const params = useParams();
   const token = params.token as string;
   const queryClient = useQueryClient();
-  const fileRef = useRef<HTMLInputElement>(null);
   const taskFileRef = useRef<HTMLInputElement>(null);
 
   const [taskOpen, setTaskOpen] = useState(false);
   const [milestoneOpen, setMilestoneOpen] = useState(false);
-  const [linkOpen, setLinkOpen] = useState(false);
   const [taskForm, setTaskForm] = useState({
     title: "",
     description: "",
@@ -102,7 +99,10 @@ export default function PublicPortalPage() {
     description: "",
     dueDate: "",
   });
-  const [linkForm, setLinkForm] = useState({ name: "", url: "" });
+  /** YYYY-MM or "all" */
+  const [monthFilter, setMonthFilter] = useState<string>("all");
+  /** all | client | admin | employee | other */
+  const [creatorFilter, setCreatorFilter] = useState<string>("all");
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["portal", token],
@@ -211,40 +211,6 @@ export default function PublicPortalPage() {
     },
   });
 
-  const addLinkMutation = useMutation({
-    mutationFn: () =>
-      portalApi.addLink(token, {
-        name: linkForm.name.trim(),
-        url: linkForm.url.trim(),
-      }),
-    onSuccess: () => {
-      invalidate();
-      setLinkOpen(false);
-      setLinkForm({ name: "", url: "" });
-      toast.success("Link shared");
-    },
-    onError: (err: { response?: { data?: { message?: string } } }) => {
-      toast.error(err?.response?.data?.message || "Could not share link");
-    },
-  });
-
-  const uploadMutation = useMutation({
-    mutationFn: (file: File) => portalApi.uploadDocument(token, file),
-    onSuccess: () => {
-      invalidate();
-      toast.success("Document uploaded");
-      if (fileRef.current) fileRef.current.value = "";
-    },
-    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
-      const message = err?.response?.data?.message;
-      toast.error(
-        Array.isArray(message)
-          ? message.join(", ")
-          : message || "Upload failed",
-      );
-    },
-  });
-
   const handlePortalDownload = async (doc: {
     id: string;
     name: string;
@@ -258,7 +224,6 @@ export default function PublicPortalPage() {
       return;
     }
     if (doc.storageUrl && !doc.storageUrl.startsWith("/")) {
-      // Public CDN / absolute URL
       window.open(doc.storageUrl, "_blank", "noopener,noreferrer");
       return;
     }
@@ -293,6 +258,70 @@ export default function PublicPortalPage() {
     }
   };
 
+  type PortalTask = {
+    id: string;
+    key?: string;
+    title: string;
+    type?: string;
+    priority?: string;
+    status?: string;
+    dueDate?: string | null;
+    createdAt?: string | null;
+    creatorKind?: string;
+    creatorLabel?: string;
+    reporter?: string;
+  };
+
+  const monthOptions = useMemo(() => {
+    const keys = new Set<string>();
+    const now = new Date();
+    // Last 12 months always available
+    for (let i = 0; i < 12; i += 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      keys.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    }
+    const cols = portal?.columns as Array<{ tasks?: PortalTask[] }> | undefined;
+    if (Array.isArray(cols)) {
+      for (const col of cols) {
+        for (const t of col.tasks ?? []) {
+          if (t.createdAt) {
+            const d = new Date(t.createdAt);
+            if (!Number.isNaN(d.getTime())) {
+              keys.add(
+                `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+              );
+            }
+          }
+        }
+      }
+    }
+    return Array.from(keys).sort((a, b) => b.localeCompare(a));
+  }, [portal]);
+
+  const monthLabel = (key: string) => {
+    const [y, m] = key.split("-").map(Number);
+    if (!y || !m) return key;
+    return new Date(y, m - 1, 1).toLocaleString(undefined, {
+      month: "long",
+      year: "numeric",
+    });
+  };
+
+  const taskMatchesFilters = (t: PortalTask) => {
+    if (monthFilter !== "all") {
+      if (!t.createdAt) return false;
+      const d = new Date(t.createdAt);
+      if (Number.isNaN(d.getTime())) return false;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      if (key !== monthFilter) return false;
+    }
+    if (creatorFilter !== "all") {
+      const kind = (t.creatorKind || "other").toLowerCase();
+      if (kind !== creatorFilter) return false;
+    }
+    return true;
+  };
+
   const boardColumns: KanbanColumn[] = useMemo(() => {
     const empty = defaultColumns.map((c) => ({ ...c, tasks: [] as KanbanTask[] }));
     if (!portal) return empty;
@@ -301,18 +330,7 @@ export default function PublicPortalPage() {
       | Array<{
           id: string;
           title: string;
-          tasks?: Array<{
-            id: string;
-            key?: string;
-            title: string;
-            type?: string;
-            priority?: string;
-            status?: string;
-            dueDate?: string | null;
-            creatorKind?: string;
-            creatorLabel?: string;
-            reporter?: string;
-          }>;
+          tasks?: PortalTask[];
         }>
       | undefined;
 
@@ -320,7 +338,7 @@ export default function PublicPortalPage() {
       return cols.map((col) => ({
         id: col.id,
         title: col.title || col.id,
-        tasks: (col.tasks ?? []).map((t) => ({
+        tasks: (col.tasks ?? []).filter(taskMatchesFilters).map((t) => ({
           id: t.id,
           key: t.key,
           title: t.title,
@@ -336,12 +354,12 @@ export default function PublicPortalPage() {
     }
 
     return empty;
-  }, [portal]);
+  }, [portal, monthFilter, creatorFilter]);
 
-  const shareUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/portal/${token}`
-      : `/portal/${token}`;
+  const filteredTaskCount = useMemo(
+    () => boardColumns.reduce((sum, col) => sum + col.tasks.length, 0),
+    [boardColumns],
+  );
 
   if (isLoading) {
     return (
@@ -423,51 +441,8 @@ export default function PublicPortalPage() {
             <Button variant="outline" onClick={() => setMilestoneOpen(true)}>
               <Layers className="h-4 w-4 mr-1" /> Add milestone
             </Button>
-            <Button variant="outline" onClick={() => setLinkOpen(true)}>
-              <Link2 className="h-4 w-4 mr-1" /> Share link
-            </Button>
-            <Button
-              variant="outline"
-              disabled={uploadMutation.isPending}
-              onClick={() => fileRef.current?.click()}
-            >
-              <Upload className="h-4 w-4 mr-1" />
-              {uploadMutation.isPending ? "Uploading…" : "Upload document"}
-            </Button>
-            <input
-              ref={fileRef}
-              type="file"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) uploadMutation.mutate(file);
-                e.target.value = "";
-              }}
-            />
           </div>
         </div>
-
-        {/* Share this page */}
-        <Card className="border-primary/20 bg-primary/5">
-          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">Share this project link</p>
-              <p className="text-xs font-mono text-muted-foreground break-all mt-0.5">
-                {shareUrl}
-              </p>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                navigator.clipboard.writeText(shareUrl);
-                toast.success("Project link copied");
-              }}
-            >
-              <Copy className="h-3.5 w-3.5 mr-1" /> Copy link
-            </Button>
-          </CardContent>
-        </Card>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Card className="!shadow-sm border-primary/20">
@@ -566,19 +541,52 @@ export default function PublicPortalPage() {
         </div>
 
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
             <div>
               <h2 className="font-display text-lg font-bold flex items-center gap-2">
                 <Kanban className="h-5 w-5 text-primary" />
                 Kanban board
               </h2>
               <p className="text-sm text-muted-foreground">
-                Live work status · create tasks with the button above
+                Filter by month and who created the task · {filteredTaskCount} shown
               </p>
             </div>
-            <Button size="sm" onClick={() => setTaskOpen(true)}>
-              <Plus className="h-3.5 w-3.5 mr-1" /> New task
-            </Button>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Month</Label>
+                <Select value={monthFilter} onValueChange={setMonthFilter}>
+                  <SelectTrigger className="w-[180px] h-9">
+                    <SelectValue placeholder="Month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All months</SelectItem>
+                    {monthOptions.map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {monthLabel(m)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Created by</Label>
+                <Select value={creatorFilter} onValueChange={setCreatorFilter}>
+                  <SelectTrigger className="w-[160px] h-9">
+                    <SelectValue placeholder="Created by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Everyone</SelectItem>
+                    <SelectItem value="client">Client</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="employee">Employee</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button size="sm" onClick={() => setTaskOpen(true)}>
+                <Plus className="h-3.5 w-3.5 mr-1" /> New task
+              </Button>
+            </div>
           </div>
           <KanbanBoard
             initialColumns={boardColumns}
@@ -589,33 +597,20 @@ export default function PublicPortalPage() {
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>
-            <CardHeader className="pb-2 flex flex-row items-start justify-between gap-2">
+            <CardHeader className="pb-2">
               <div>
                 <CardTitle className="text-base flex items-center gap-2">
-                  <FileText className="h-4 w-4" /> Documents & links
+                  <FileText className="h-4 w-4" /> Documents
                 </CardTitle>
                 <CardDescription>
-                  Upload files or share external links
+                  Shared files from the project team (view only)
                 </CardDescription>
-              </div>
-              <div className="flex gap-1 shrink-0">
-                <Button size="sm" variant="outline" onClick={() => setLinkOpen(true)}>
-                  <Link2 className="h-3.5 w-3.5 mr-1" /> Link
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={uploadMutation.isPending}
-                  onClick={() => fileRef.current?.click()}
-                >
-                  <Upload className="h-3.5 w-3.5 mr-1" /> File
-                </Button>
               </div>
             </CardHeader>
             <CardContent>
               {documents.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4 text-center">
-                  No documents yet. Upload a file or share a link.
+                  No documents shared yet.
                 </p>
               ) : (
                 <ul className="space-y-2">
@@ -1033,52 +1028,6 @@ export default function PublicPortalPage() {
               onClick={() => createMilestoneMutation.mutate()}
             >
               {createMilestoneMutation.isPending ? "Adding…" : "Add milestone"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Share external link */}
-      <Dialog open={linkOpen} onOpenChange={setLinkOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Share a link</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="space-y-2">
-              <Label>Name</Label>
-              <Input
-                value={linkForm.name}
-                onChange={(e) =>
-                  setLinkForm((f) => ({ ...f, name: e.target.value }))
-                }
-                placeholder="e.g. Figma designs"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>URL</Label>
-              <Input
-                value={linkForm.url}
-                onChange={(e) =>
-                  setLinkForm((f) => ({ ...f, url: e.target.value }))
-                }
-                placeholder="https://…"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setLinkOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={
-                !linkForm.name.trim() ||
-                !linkForm.url.trim() ||
-                addLinkMutation.isPending
-              }
-              onClick={() => addLinkMutation.mutate()}
-            >
-              {addLinkMutation.isPending ? "Sharing…" : "Share link"}
             </Button>
           </DialogFooter>
         </DialogContent>

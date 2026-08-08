@@ -416,6 +416,7 @@ export class ProjectsService {
             status: true,
             priority: true,
             dueDate: true,
+            createdAt: true,
             metadata: true,
             milestone: { select: { id: true, name: true } },
             reporter: {
@@ -503,6 +504,7 @@ export class ProjectsService {
             status: issue.status,
             priority: issue.priority,
             dueDate: issue.dueDate,
+            createdAt: issue.createdAt,
             milestone: issue.milestone,
             creatorKind: kind,
             creatorLabel: CREATOR_KIND_LABEL[kind],
