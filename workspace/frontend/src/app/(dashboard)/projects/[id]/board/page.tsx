@@ -329,16 +329,28 @@ export default function ProjectBoardPage() {
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
-          <div>
-            <h1 className="font-display text-2xl font-bold">Project board</h1>
-            <p className="text-muted-foreground text-sm">
-              {boardData?.project?.name
-                ? `${boardData.project.name} — tasks, documents, status & time`
-                : "Tasks, documents, status, and time"}
-              {canManageColumns
-                ? " · Use pencil / trash on columns to rename or delete; New column adds another."
-                : ""}
-            </p>
+          <div className="flex items-center gap-3 min-w-0">
+            {boardData?.project?.avatar ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={boardData.project.avatar}
+                alt=""
+                className="h-10 w-10 rounded-lg border object-cover shrink-0"
+              />
+            ) : null}
+            <div className="min-w-0">
+              <h1 className="font-display text-2xl font-bold">
+                {boardData?.project?.name
+                  ? `${boardData.project.name} board`
+                  : "Project board"}
+              </h1>
+              <p className="text-muted-foreground text-sm">
+                Tasks, documents, status, and time
+                {canManageColumns
+                  ? " · Rename, add, or delete columns"
+                  : ""}
+              </p>
+            </div>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">

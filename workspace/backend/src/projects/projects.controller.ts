@@ -8,8 +8,13 @@ import {
   Param,
   Query,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags, ApiProperty } from '@nestjs/swagger';
+import { memoryStorage } from 'multer';
 import { ProjectsService } from './projects.service';
 import { IssuesService } from '../issues/issues.service';
 import {
@@ -26,7 +31,6 @@ import { CurrentUser, AuthenticatedUser, Permissions } from '../common/decorator
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { ParseCuidPipe } from '../common/pipes/parse-cuid.pipe';
 import { IsString, MinLength } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
 
 class UpdateBoardTaskDto {
   @ApiProperty({ description: 'Board column id (enum status or custom column id)' })
@@ -40,6 +44,11 @@ class BoardColumnTitleDto {
   @MinLength(1)
   title: string;
 }
+
+const logoMulterOptions = {
+  storage: memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+};
 
 @ApiTags('projects')
 @ApiBearerAuth()
@@ -164,6 +173,26 @@ export class ProjectsController {
     @Body() dto: UpdateProjectDto,
   ) {
     return this.projectsService.update(id, user.companyId!, dto);
+  }
+
+  @Post(':id/logo')
+  @Permissions('projects:create')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+      required: ['file'],
+    },
+  })
+  @UseInterceptors(FileInterceptor('file', logoMulterOptions))
+  uploadLogo(
+    @Param('id', ParseCuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('Please choose a logo image');
+    return this.projectsService.uploadLogo(id, user.companyId!, file);
   }
 
   @Post(':id/archive')

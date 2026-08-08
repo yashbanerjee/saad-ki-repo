@@ -169,7 +169,7 @@ export class IssuesService {
   async getBoard(projectId: string, companyId: string) {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, companyId },
-      select: { id: true, name: true, key: true, settings: true },
+      select: { id: true, name: true, key: true, settings: true, avatar: true },
     });
     if (!project) throw new NotFoundException('Project not found');
 
@@ -255,7 +255,12 @@ export class IssuesService {
     });
 
     return {
-      project: { id: project.id, name: project.name, key: project.key },
+      project: {
+        id: project.id,
+        name: project.name,
+        key: project.key,
+        avatar: project.avatar,
+      },
       columns,
       boardColumns,
       milestones,

@@ -288,9 +288,49 @@ export class ProjectsService {
         ...(dto.endDate !== undefined
           ? { endDate: dto.endDate ? new Date(dto.endDate) : null }
           : {}),
+        ...(dto.avatar !== undefined ? { avatar: dto.avatar || null } : {}),
       },
       include: {
         client: { select: { id: true, name: true, email: true } },
+      },
+    });
+  }
+
+  async uploadLogo(
+    id: string,
+    companyId: string,
+    file: Express.Multer.File,
+  ) {
+    await this.findOne(id, companyId);
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Please choose a logo image');
+    }
+    const mime = (file.mimetype || '').toLowerCase();
+    if (!mime.startsWith('image/')) {
+      throw new BadRequestException('Logo must be an image (PNG, JPG, WebP, or SVG)');
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      throw new BadRequestException('Logo must be 5 MB or smaller');
+    }
+
+    const key = this.storage.generateKey(
+      `companies/${companyId}/projects/${id}/logo`,
+      file.originalname || 'logo.png',
+    );
+    const { url } = await this.storage.upload(
+      key,
+      file.buffer,
+      file.mimetype || 'image/png',
+    );
+    const avatar = url || key;
+
+    return this.prisma.project.update({
+      where: { id },
+      data: { avatar },
+      select: {
+        id: true,
+        name: true,
+        avatar: true,
       },
     });
   }
@@ -377,6 +417,7 @@ export class ProjectsService {
         status: true,
         startDate: true,
         endDate: true,
+        avatar: true,
         settings: true,
         client: { select: { id: true, name: true, companyName: true } },
         milestones: {
@@ -607,6 +648,7 @@ export class ProjectsService {
     return {
       projectName: project.name,
       projectKey: project.key,
+      projectLogo: project.avatar || null,
       description: project.description,
       status: project.status,
       companyName: project.company.name,

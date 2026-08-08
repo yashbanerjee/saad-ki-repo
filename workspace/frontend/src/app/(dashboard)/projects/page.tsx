@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState, KeyboardEvent } from "react";
+import { useMemo, useState, KeyboardEvent, useRef } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, FolderKanban, MoreHorizontal, Calendar, X, Tag } from "lucide-react";
+import { Plus, FolderKanban, MoreHorizontal, Calendar, X, Tag, ImagePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -63,6 +63,7 @@ interface Project {
   id: string;
   name: string;
   status: string;
+  avatar?: string | null;
   tags?: string[];
   client?: { id: string; name: string } | string | null;
   progressPercent?: number;
@@ -117,6 +118,9 @@ export default function ProjectsPage() {
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [tagFilter, setTagFilter] = useState<string>("all");
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const logoRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -173,16 +177,27 @@ export default function ProjectsPage() {
   };
 
   const createMutation = useMutation({
-    mutationFn: () =>
-      projectsApi.create({
+    mutationFn: async () => {
+      const res = await projectsApi.create({
         name,
         description: description || undefined,
         clientId: clientId !== "none" ? clientId : undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
         tags: tags.length ? tags : undefined,
-      }),
-    onSuccess: (res) => {
+      });
+      const created = res?.data?.data ?? res?.data;
+      const projectId = created?.id as string | undefined;
+      if (projectId && logoFile) {
+        try {
+          await projectsApi.uploadLogo(projectId, logoFile);
+        } catch {
+          toast.warning("Project created, but logo upload failed");
+        }
+      }
+      return created;
+    },
+    onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       queryClient.invalidateQueries({ queryKey: ["project-tags"] });
       toast.success("Project created");
@@ -194,7 +209,9 @@ export default function ProjectsPage() {
       setEndDate("");
       setTags([]);
       setTagInput("");
-      const created = res?.data?.data ?? res?.data;
+      setLogoFile(null);
+      setLogoPreview(null);
+      if (logoRef.current) logoRef.current.value = "";
       if (created?.id) {
         window.location.href = `/projects/${created.id}`;
       }
@@ -237,6 +254,67 @@ export default function ProjectsPage() {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Project logo</Label>
+                <div className="flex items-center gap-3">
+                  <div className="h-16 w-16 rounded-xl border bg-muted/40 flex items-center justify-center overflow-hidden shrink-0">
+                    {logoPreview ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={logoPreview}
+                        alt="Logo preview"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <ImagePlus className="h-6 w-6 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="min-w-0 space-y-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => logoRef.current?.click()}
+                    >
+                      Upload logo
+                    </Button>
+                    <input
+                      ref={logoRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        if (file && file.size > 5 * 1024 * 1024) {
+                          toast.error("Logo must be 5 MB or smaller");
+                          e.target.value = "";
+                          return;
+                        }
+                        setLogoFile(file);
+                        if (logoPreview) URL.revokeObjectURL(logoPreview);
+                        setLogoPreview(file ? URL.createObjectURL(file) : null);
+                      }}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      PNG, JPG, or WebP · max 5 MB (optional)
+                    </p>
+                    {logoFile && (
+                      <button
+                        type="button"
+                        className="text-[11px] text-muted-foreground hover:text-foreground"
+                        onClick={() => {
+                          setLogoFile(null);
+                          if (logoPreview) URL.revokeObjectURL(logoPreview);
+                          setLogoPreview(null);
+                          if (logoRef.current) logoRef.current.value = "";
+                        }}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
               <div className="space-y-2">
                 <Label>Project Name</Label>
                 <Input
@@ -404,8 +482,17 @@ export default function ProjectsPage() {
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className="h-9 w-9 shrink-0 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <FolderKanban className="h-4 w-4 text-primary" />
+                      <div className="h-9 w-9 shrink-0 rounded-lg bg-primary/10 flex items-center justify-center overflow-hidden border border-border/50">
+                        {project.avatar ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={project.avatar}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <FolderKanban className="h-4 w-4 text-primary" />
+                        )}
                       </div>
                       <div className="min-w-0">
                         <CardTitle className="text-base">

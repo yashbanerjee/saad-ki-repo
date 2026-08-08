@@ -113,6 +113,7 @@ export default function ProjectDetailPage() {
   const id = params.id as string;
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
+  const logoRef = useRef<HTMLInputElement>(null);
 
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
@@ -192,6 +193,21 @@ export default function ProjectDetailPage() {
       toast.success("Client share link created");
     },
     onError: () => toast.error("Could not create share link"),
+  });
+
+  const uploadLogo = useMutation({
+    mutationFn: (file: File) => projectsApi.uploadLogo(id, file),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Project logo updated");
+      if (logoRef.current) logoRef.current.value = "";
+    },
+    onError: (err: unknown) => {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Logo upload failed";
+      toast.error(Array.isArray(message) ? message.join(", ") : message);
+    },
   });
 
   const rotatePortal = useMutation({
@@ -311,30 +327,46 @@ export default function ProjectDetailPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-2 mb-1">
-            <h1 className="font-display text-2xl font-bold">{project.name}</h1>
-            {project.status && <Badge variant="success">{project.status}</Badge>}
-            {project.key && (
-              <Badge variant="outline" className="font-mono text-xs">
-                {project.key}
-              </Badge>
+        <div className="flex items-start gap-3 min-w-0">
+          <div className="h-14 w-14 shrink-0 rounded-xl border bg-muted/40 overflow-hidden flex items-center justify-center">
+            {project.avatar ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={project.avatar}
+                alt={`${project.name} logo`}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <span className="text-lg font-bold text-primary">
+                {(project.name || "?").slice(0, 1).toUpperCase()}
+              </span>
             )}
           </div>
-          <p className="text-sm text-muted-foreground">
-            {client?.name
-              ? `Client: ${client.name}`
-              : "No client linked yet — assign one below"}
-          </p>
-          {tags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {tags.map((t) => (
-                <Badge key={t} variant="outline" className="text-[11px] font-normal">
-                  {t}
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <h1 className="font-display text-2xl font-bold">{project.name}</h1>
+              {project.status && <Badge variant="success">{project.status}</Badge>}
+              {project.key && (
+                <Badge variant="outline" className="font-mono text-xs">
+                  {project.key}
                 </Badge>
-              ))}
+              )}
             </div>
-          )}
+            <p className="text-sm text-muted-foreground">
+              {client?.name
+                ? `Client: ${client.name}`
+                : "No client linked yet — assign one below"}
+            </p>
+            {tags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {tags.map((t) => (
+                  <Badge key={t} variant="outline" className="text-[11px] font-normal">
+                    {t}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild>
@@ -529,6 +561,55 @@ export default function ProjectDetailPage() {
             <CardDescription>Name, timeline, status — no billing</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
+            <div className="space-y-2">
+              <Label>Project logo</Label>
+              <div className="flex items-center gap-3">
+                <div className="h-14 w-14 rounded-xl border overflow-hidden bg-muted/40 flex items-center justify-center shrink-0">
+                  {project.avatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={project.avatar}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-sm font-bold text-primary">
+                      {(project.name || "?").slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={uploadLogo.isPending}
+                    onClick={() => logoRef.current?.click()}
+                  >
+                    {uploadLogo.isPending ? "Uploading…" : "Change logo"}
+                  </Button>
+                  <input
+                    ref={logoRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 5 * 1024 * 1024) {
+                        toast.error("Logo must be 5 MB or smaller");
+                        e.target.value = "";
+                        return;
+                      }
+                      uploadLogo.mutate(file);
+                    }}
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Shown before the project name
+                  </p>
+                </div>
+              </div>
+            </div>
             <div className="space-y-2">
               <Label>Name</Label>
               <Input

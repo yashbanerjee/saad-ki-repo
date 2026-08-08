@@ -173,6 +173,11 @@ export const projectsApi = {
   create: (data: Record<string, unknown>) => api.post("/projects", data),
   update: (id: string, data: Record<string, unknown>) =>
     api.patch(`/projects/${id}`, data),
+  uploadLogo: (id: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return api.post(`/projects/${id}/logo`, formData, { timeout: 120000 });
+  },
   delete: (id: string) => api.delete(`/projects/${id}`),
   getBoard: (id: string) => api.get(`/projects/${id}/board`),
   addBoardColumn: (projectId: string, title: string) =>

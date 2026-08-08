@@ -114,6 +114,11 @@ export class UpdateProjectDto {
   @IsOptional()
   @IsDateString()
   endDate?: string | null;
+
+  @ApiPropertyOptional({ description: 'Project logo URL' })
+  @IsOptional()
+  @IsString()
+  avatar?: string | null;
 }
 
 export class AddProjectMemberDto {

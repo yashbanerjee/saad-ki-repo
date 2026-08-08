@@ -413,28 +413,44 @@ export default function PublicPortalPage() {
 
       <div className="mx-auto max-w-7xl px-4 py-6 space-y-6">
         <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-          <div>
-            <div className="flex flex-wrap items-center gap-2 mb-1">
-              {portal.projectKey && (
-                <Badge variant="outline" className="font-mono">
-                  {portal.projectKey}
-                </Badge>
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="h-14 w-14 shrink-0 rounded-xl border bg-muted/40 overflow-hidden flex items-center justify-center">
+              {portal.projectLogo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={portal.projectLogo}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span className="text-lg font-bold text-primary">
+                  {(portal.projectName || "?").slice(0, 1).toUpperCase()}
+                </span>
               )}
-              {portal.status && <Badge variant="success">{portal.status}</Badge>}
             </div>
-            <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">
-              {portal.projectName}
-            </h1>
-            {portal.clientName && (
-              <p className="text-muted-foreground text-sm mt-0.5">
-                For {portal.clientName}
-              </p>
-            )}
-            {portal.description && (
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap max-w-2xl mt-2">
-                {portal.description}
-              </p>
-            )}
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                {portal.projectKey && (
+                  <Badge variant="outline" className="font-mono">
+                    {portal.projectKey}
+                  </Badge>
+                )}
+                {portal.status && <Badge variant="success">{portal.status}</Badge>}
+              </div>
+              <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">
+                {portal.projectName}
+              </h1>
+              {portal.clientName && (
+                <p className="text-muted-foreground text-sm mt-0.5">
+                  For {portal.clientName}
+                </p>
+              )}
+              {portal.description && (
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap max-w-2xl mt-2">
+                  {portal.description}
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -502,15 +518,7 @@ export default function PublicPortalPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-1 text-sm">
-              <p>
-                <span className="text-muted-foreground">Start: </span>
-                {portal.startDate ? formatDate(portal.startDate) : "Not set"}
-              </p>
-              <p>
-                <span className="text-muted-foreground">End: </span>
-                {portal.endDate ? formatDate(portal.endDate) : "Not set"}
-              </p>
-              <p className="flex items-start gap-1.5 pt-1">
+              <p className="flex items-start gap-1.5 pt-0">
                 <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
                 <span>
                   <span className="text-muted-foreground block text-xs">Hours worked</span>
