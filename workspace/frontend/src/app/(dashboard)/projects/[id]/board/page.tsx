@@ -428,6 +428,9 @@ export default function ProjectBoardPage() {
               {boardData?.project?.name
                 ? `${boardData.project.name} — tasks, documents, status & time`
                 : "Tasks, documents, status, and time"}
+              {canManageColumns
+                ? " · Use pencil / trash on columns to rename or delete; New column adds another."
+                : ""}
             </p>
           </div>
         </div>

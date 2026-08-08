@@ -17,6 +17,17 @@ import {
   UpdateClientTaskDto,
 } from './dto/project.dto';
 import { paginate, paginatedResponse } from '../common/dto/pagination.dto';
+import {
+  parseBoardColumns,
+  resolveIssueBoardColumnId,
+  buildIssueUpdateForColumn,
+} from '../issues/board-columns';
+import {
+  CREATOR_KIND_LABEL,
+  creatorKindFromRoleSlugs,
+  readCreatorKind,
+  withCreatorKind,
+} from '../issues/creator-kind';
 
 @Injectable()
 export class ProjectsService {
@@ -366,6 +377,7 @@ export class ProjectsService {
         status: true,
         startDate: true,
         endDate: true,
+        settings: true,
         client: { select: { id: true, name: true, companyName: true } },
         milestones: {
           orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
@@ -404,7 +416,17 @@ export class ProjectsService {
             status: true,
             priority: true,
             dueDate: true,
+            metadata: true,
             milestone: { select: { id: true, name: true } },
+            reporter: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                linkedClient: { select: { id: true } },
+                roles: { select: { role: { select: { slug: true } } } },
+              },
+            },
           },
         },
         documents: {
@@ -457,51 +479,38 @@ export class ProjectsService {
       blocked: project.issues.filter((i) => i.status === 'BLOCKED').length,
     };
 
-    // Same 4-column Kanban as staff board (Todo · In Progress · Testing · Done)
-    const boardColumns = [
-      { id: 'TODO', title: 'Todo' },
-      { id: 'IN_PROGRESS', title: 'In Progress' },
-      { id: 'TESTING', title: 'Testing' },
-      { id: 'DONE', title: 'Done' },
-    ];
-
-    const mapIssueColumn = (status: string) => {
-      if (status === 'DONE' || status === 'CANCELLED') return 'DONE';
-      if (status === 'IN_PROGRESS' || status === 'BLOCKED') return 'IN_PROGRESS';
-      if (
-        [
-          'TESTING',
-          'CODE_REVIEW',
-          'READY_FOR_QA',
-          'QA_FAILED',
-          'READY_FOR_RELEASE',
-        ].includes(status)
-      ) {
-        return 'TESTING';
-      }
-      return 'TODO';
-    };
-
-    const boardByStatus: Record<string, typeof project.issues> = {};
-    for (const col of boardColumns) boardByStatus[col.id] = [];
-    for (const issue of project.issues) {
-      const col = mapIssueColumn(issue.status);
-      boardByStatus[col].push(issue);
-    }
+    // Use same project board columns as the signed-in board (custom columns supported)
+    const boardColumns = parseBoardColumns(project.settings);
 
     const columns = boardColumns.map((col) => ({
       id: col.id,
       title: col.title,
-      tasks: (boardByStatus[col.id] || []).map((issue) => ({
-        id: issue.id,
-        key: issue.key,
-        title: issue.title,
-        type: issue.type,
-        status: issue.status,
-        priority: issue.priority,
-        dueDate: issue.dueDate,
-        milestone: issue.milestone,
-      })),
+      tasks: project.issues
+        .filter((issue) => resolveIssueBoardColumnId(issue, boardColumns) === col.id)
+        .map((issue) => {
+          const kind =
+            readCreatorKind(issue.metadata) ||
+            (issue.reporter?.linkedClient
+              ? 'client'
+              : creatorKindFromRoleSlugs(
+                  issue.reporter?.roles?.map((r) => r.role.slug) || [],
+                ));
+          return {
+            id: issue.id,
+            key: issue.key,
+            title: issue.title,
+            type: issue.type,
+            status: issue.status,
+            priority: issue.priority,
+            dueDate: issue.dueDate,
+            milestone: issue.milestone,
+            creatorKind: kind,
+            creatorLabel: CREATOR_KIND_LABEL[kind],
+            reporter: issue.reporter
+              ? `${issue.reporter.firstName} ${issue.reporter.lastName}`.trim()
+              : undefined,
+          };
+        }),
     }));
 
     return {
@@ -518,7 +527,6 @@ export class ProjectsService {
       tasks: project.clientTasks,
       issues: project.issues,
       issueCounts,
-      boardByStatus,
       columns,
       documents: project.documents.map((d) => ({
         ...d,
@@ -738,17 +746,21 @@ export class ProjectsService {
     const title = body.title?.trim();
     if (!title) throw new BadRequestException('Title is required');
 
-    const allowedStatus = new Set([
-      'TODO',
-      'IN_PROGRESS',
-      'TESTING',
-      'CODE_REVIEW',
-      'READY_FOR_QA',
-      'DONE',
-    ]);
-    const status = allowedStatus.has(body.status || '')
-      ? (body.status as IssueStatus)
-      : IssueStatus.TODO;
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId },
+      select: { key: true, settings: true },
+    });
+    if (!project) throw new NotFoundException('Project not found');
+
+    const boardColumns = parseBoardColumns(project.settings);
+    const requestedColumn = (body.status || IssueStatus.TODO).trim();
+    const column =
+      boardColumns.find((c) => c.id === requestedColumn) ||
+      boardColumns.find((c) => c.id === IssueStatus.TODO) ||
+      boardColumns[0];
+    if (!column) throw new BadRequestException('No board columns configured');
+    const placement = buildIssueUpdateForColumn(column.id, {});
+    const metadata = withCreatorKind(placement.metadata, 'client');
 
     const allowedPriority = new Set(['LOWEST', 'LOW', 'MEDIUM', 'HIGH', 'HIGHEST', 'CRITICAL']);
     const priority = allowedPriority.has((body.priority || '').toUpperCase())
@@ -773,11 +785,7 @@ export class ProjectsService {
       orderBy: { number: 'desc' },
     });
     const number = (lastIssue?.number ?? 0) + 1;
-    const project = await this.prisma.project.findFirst({
-      where: { id: projectId },
-      select: { key: true },
-    });
-    const key = `${project!.key}-${number}`;
+    const key = `${project.key}-${number}`;
 
     const issue = await this.prisma.issue.create({
       data: {
@@ -788,7 +796,8 @@ export class ProjectsService {
         description: body.description?.trim() || undefined,
         type: IssueType.TASK,
         priority: priority as never,
-        status,
+        status: placement.status,
+        metadata: metadata as never,
         reporterId,
         milestoneId: body.milestoneId || undefined,
       },
@@ -802,15 +811,58 @@ export class ProjectsService {
         description: body.description?.trim() || undefined,
         milestoneId: body.milestoneId || undefined,
         status:
-          status === IssueStatus.DONE
+          placement.status === IssueStatus.DONE
             ? 'DONE'
-            : status === IssueStatus.IN_PROGRESS
+            : placement.status === IssueStatus.IN_PROGRESS
               ? 'IN_PROGRESS'
               : 'TODO',
       },
     });
 
-    return issue;
+    return {
+      ...issue,
+      creatorKind: 'client' as const,
+      creatorLabel: CREATOR_KIND_LABEL.client,
+    };
+  }
+
+  async portalAddTaskAttachment(
+    token: string,
+    issueId: string,
+    file: Express.Multer.File,
+  ) {
+    const { projectId, companyId, reporterId } = await this.resolvePortalProject(token);
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Please choose a file to upload');
+    }
+
+    const issue = await this.prisma.issue.findFirst({
+      where: { id: issueId, projectId },
+      select: { id: true },
+    });
+    if (!issue) throw new NotFoundException('Task not found on this project');
+
+    const storageKey = this.storage.generateKey(
+      `companies/${companyId}/issues/${issueId}`,
+      file.originalname || 'upload.bin',
+    );
+    const { url } = await this.storage.upload(
+      storageKey,
+      file.buffer,
+      file.mimetype || 'application/octet-stream',
+    );
+
+    return this.prisma.attachment.create({
+      data: {
+        issueId,
+        uploadedById: reporterId,
+        name: file.originalname || 'upload.bin',
+        mimeType: file.mimetype || 'application/octet-stream',
+        size: file.size,
+        storageKey,
+        storageUrl: url,
+      },
+    });
   }
 
   async portalUploadDocument(token: string, file: Express.Multer.File, name?: string) {

@@ -24,11 +24,34 @@ import {
   parseBoardColumns,
   resolveIssueBoardColumnId,
 } from './board-columns';
+import {
+  CREATOR_KIND_LABEL,
+  creatorKindFromRoleSlugs,
+  readCreatorKind,
+  withCreatorKind,
+} from './creator-kind';
 
 function mapPriority(p: string): 'low' | 'medium' | 'high' {
   if (['LOWEST', 'LOW'].includes(p)) return 'low';
   if (['HIGH', 'HIGHEST', 'CRITICAL'].includes(p)) return 'high';
   return 'medium';
+}
+
+async function resolveReporterCreatorKind(
+  prisma: PrismaService,
+  reporterId: string,
+): Promise<import('./creator-kind').CreatorKind> {
+  const user = await prisma.user.findUnique({
+    where: { id: reporterId },
+    select: {
+      roles: { select: { role: { select: { slug: true } } } },
+      linkedClient: { select: { id: true } },
+    },
+  });
+  if (!user) return 'other';
+  if (user.linkedClient) return 'client';
+  const slugs = user.roles.map((r) => r.role.slug);
+  return creatorKindFromRoleSlugs(slugs);
 }
 
 @Injectable()
@@ -133,6 +156,15 @@ export class IssuesService {
       },
       include: {
         assignee: { select: { id: true, firstName: true, lastName: true, avatar: true } },
+        reporter: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            linkedClient: { select: { id: true } },
+            roles: { select: { role: { select: { slug: true } } } },
+          },
+        },
         labels: { include: { label: { select: { name: true, color: true } } } },
         milestone: { select: { id: true, name: true } },
       },
@@ -141,6 +173,13 @@ export class IssuesService {
 
     const toTask = (i: (typeof issues)[number]) => {
       const boardColumn = resolveIssueBoardColumnId(i, boardColumns);
+      const kind =
+        readCreatorKind(i.metadata) ||
+        (i.reporter?.linkedClient
+          ? 'client'
+          : creatorKindFromRoleSlugs(
+              i.reporter?.roles?.map((r) => r.role.slug) || [],
+            ));
       return {
         id: i.id,
         key: i.key,
@@ -156,6 +195,11 @@ export class IssuesService {
         assignee: i.assignee
           ? `${i.assignee.firstName} ${i.assignee.lastName}`.trim()
           : undefined,
+        reporter: i.reporter
+          ? `${i.reporter.firstName} ${i.reporter.lastName}`.trim()
+          : undefined,
+        creatorKind: kind,
+        creatorLabel: CREATOR_KIND_LABEL[kind],
         labels: i.labels.map((l) => l.label.name),
         dueDate: i.dueDate ? i.dueDate.toISOString().slice(0, 10) : undefined,
       };
@@ -321,6 +365,8 @@ export class IssuesService {
       boardColumns[0];
     if (!column) throw new BadRequestException('No board columns configured');
     const columnPlacement = buildIssueUpdateForColumn(column.id, {});
+    const creatorKind = await resolveReporterCreatorKind(this.prisma, reporterId);
+    const metadata = withCreatorKind(columnPlacement.metadata, creatorKind);
 
     const lastIssue = await this.prisma.issue.findFirst({
       where: { projectId: dto.projectId },
@@ -348,7 +394,7 @@ export class IssuesService {
         estimatedHours: dto.estimatedHours,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
         status: columnPlacement.status,
-        metadata: columnPlacement.metadata,
+        metadata: metadata as never,
       },
       include: {
         assignee: { select: { id: true, firstName: true, lastName: true } },

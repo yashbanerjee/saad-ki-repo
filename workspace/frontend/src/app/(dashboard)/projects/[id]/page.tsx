@@ -339,11 +339,28 @@ export default function ProjectDetailPage() {
         <div className="flex flex-wrap gap-2">
           <Button asChild>
             <Link href={`/projects/${id}/board`}>
-              <Kanban className="h-4 w-4 mr-1" /> Project board
+              <Kanban className="h-4 w-4 mr-1" /> Open & edit board
             </Link>
           </Button>
         </div>
       </div>
+
+      <Card className="border-primary/20 bg-primary/5">
+        <CardContent className="p-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium">Kanban board for admins</p>
+            <p className="text-xs text-muted-foreground">
+              Rename columns, add or delete columns, create tasks with documents, and see
+              who created each task (Client / Admin / Employee) on the project board.
+            </p>
+          </div>
+          <Button size="sm" asChild className="shrink-0">
+            <Link href={`/projects/${id}/board`}>
+              Manage board <ArrowRight className="h-3.5 w-3.5 ml-1" />
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Work at a glance */}
       <div className="grid sm:grid-cols-3 gap-4">

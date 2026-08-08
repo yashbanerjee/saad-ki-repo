@@ -44,6 +44,10 @@ export interface KanbanTask {
   milestoneName?: string;
   estimatedHours?: number | null;
   loggedHours?: number | null;
+  /** Who created the task: client | admin | employee | other */
+  creatorKind?: string;
+  creatorLabel?: string;
+  reporter?: string;
 }
 
 export interface KanbanColumn {
@@ -58,11 +62,33 @@ const priorityColors = {
   high: "destructive" as const,
 };
 
-const priorityBar = {
-  low: "bg-vedha-cyan",
-  medium: "bg-vedha-gold",
-  high: "bg-red-400",
+const creatorBadge: Record<string, string> = {
+  client: "bg-sky-500/15 text-sky-700 border-sky-500/30 dark:text-sky-300",
+  admin: "bg-vedha-teal/15 text-vedha-teal border-vedha-teal/30 dark:text-vedha-cyan",
+  employee: "bg-amber-500/15 text-amber-800 border-amber-500/30 dark:text-amber-200",
+  other: "bg-muted text-muted-foreground border-border",
 };
+
+function CreatorTag({ task }: { task: KanbanTask }) {
+  const label =
+    task.creatorLabel ||
+    (task.creatorKind
+      ? task.creatorKind.charAt(0).toUpperCase() + task.creatorKind.slice(1)
+      : null);
+  if (!label) return null;
+  const kind = (task.creatorKind || "other").toLowerCase();
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium",
+        creatorBadge[kind] || creatorBadge.other,
+      )}
+      title={task.reporter ? `Created by ${task.reporter}` : `Created by ${label}`}
+    >
+      {label}
+    </span>
+  );
+}
 
 export const defaultColumns: KanbanColumn[] = [
   { id: "TODO", title: "Todo", tasks: [] },
@@ -133,6 +159,7 @@ function SortableTask({
           <p className="text-sm font-medium leading-snug text-foreground">{task.title}</p>
           {meta}
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <CreatorTag task={task} />
             <Badge variant={priorityColors[task.priority]} className="text-[10px] capitalize">
               {task.priority}
             </Badge>
@@ -224,6 +251,7 @@ function StaticTask({ task }: { task: KanbanTask }) {
         )}
         <p className="text-sm font-medium leading-snug text-foreground">{task.title}</p>
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <CreatorTag task={task} />
           <Badge
             variant={priorityColors[task.priority]}
             className="text-[10px] capitalize"

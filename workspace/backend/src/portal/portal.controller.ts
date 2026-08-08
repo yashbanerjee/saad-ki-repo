@@ -93,6 +93,26 @@ export class PortalController {
   }
 
   @Public()
+  @Post(':token/tasks/:taskId/attachments')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', uploadMulterOptions))
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+      required: ['file'],
+    },
+  })
+  addTaskAttachment(
+    @Param('token') token: string,
+    @Param('taskId') taskId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('Please choose a file to upload');
+    return this.projectsService.portalAddTaskAttachment(token, taskId, file);
+  }
+
+  @Public()
   @Post(':token/links')
   addLink(@Param('token') token: string, @Body() dto: PortalAddLinkDto) {
     return this.projectsService.portalAddLink(token, dto);

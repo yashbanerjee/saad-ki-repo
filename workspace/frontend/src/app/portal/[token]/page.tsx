@@ -84,6 +84,7 @@ export default function PublicPortalPage() {
   const token = params.token as string;
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
+  const taskFileRef = useRef<HTMLInputElement>(null);
 
   const [taskOpen, setTaskOpen] = useState(false);
   const [milestoneOpen, setMilestoneOpen] = useState(false);
@@ -95,6 +96,7 @@ export default function PublicPortalPage() {
     priority: "MEDIUM",
     milestoneId: "",
   });
+  const [taskFiles, setTaskFiles] = useState<File[]>([]);
   const [milestoneForm, setMilestoneForm] = useState({
     name: "",
     description: "",
@@ -114,16 +116,54 @@ export default function PublicPortalPage() {
     queryClient.invalidateQueries({ queryKey: ["portal", token] });
   };
 
+  const MAX_TASK_FILES = 10;
+  const MAX_FILE_BYTES = 15 * 1024 * 1024;
+
+  const addTaskFiles = (list: FileList | null) => {
+    if (!list?.length) return;
+    const next = [...taskFiles];
+    for (const file of Array.from(list)) {
+      if (file.size > MAX_FILE_BYTES) {
+        toast.error(`${file.name} is over 15 MB`);
+        continue;
+      }
+      if (next.length >= MAX_TASK_FILES) {
+        toast.error(`Maximum ${MAX_TASK_FILES} files per task`);
+        break;
+      }
+      if (next.some((f) => f.name === file.name && f.size === file.size)) continue;
+      next.push(file);
+    }
+    setTaskFiles(next);
+    if (taskFileRef.current) taskFileRef.current.value = "";
+  };
+
   const createTaskMutation = useMutation({
-    mutationFn: () =>
-      portalApi.createTask(token, {
+    mutationFn: async () => {
+      const res = await portalApi.createTask(token, {
         title: taskForm.title.trim(),
         description: taskForm.description.trim() || undefined,
         status: taskForm.status,
         priority: taskForm.priority,
         milestoneId: taskForm.milestoneId || undefined,
-      }),
-    onSuccess: () => {
+      });
+      const created = res?.data?.data ?? res?.data;
+      const taskId = created?.id as string | undefined;
+      let uploaded = 0;
+      let failed = 0;
+      if (taskId && taskFiles.length) {
+        for (const file of taskFiles) {
+          try {
+            await portalApi.uploadTaskAttachment(token, taskId, file);
+            uploaded += 1;
+          } catch {
+            failed += 1;
+          }
+        }
+      }
+      return { created, uploaded, failed };
+    },
+    onSuccess: ({ uploaded, failed }) => {
       invalidate();
       setTaskOpen(false);
       setTaskForm({
@@ -133,7 +173,20 @@ export default function PublicPortalPage() {
         priority: "MEDIUM",
         milestoneId: "",
       });
-      toast.success("Task created");
+      setTaskFiles([]);
+      if (uploaded && !failed) {
+        toast.success(
+          `Task created with ${uploaded} document${uploaded === 1 ? "" : "s"}`,
+        );
+      } else if (uploaded && failed) {
+        toast.warning(
+          `Task created. ${uploaded} file(s) uploaded, ${failed} failed`,
+        );
+      } else if (failed && !uploaded) {
+        toast.warning("Task created, but document upload failed");
+      } else {
+        toast.success("Task created (tagged as Client)");
+      }
     },
     onError: (err: { response?: { data?: { message?: string } } }) => {
       toast.error(err?.response?.data?.message || "Could not create task");
@@ -256,54 +309,29 @@ export default function PublicPortalPage() {
             priority?: string;
             status?: string;
             dueDate?: string | null;
+            creatorKind?: string;
+            creatorLabel?: string;
+            reporter?: string;
           }>;
         }>
       | undefined;
 
     if (Array.isArray(cols) && cols.length > 0) {
-      // Normalize any legacy multi-column portals into the shared 4-column board
-      const byCol: Record<string, KanbanTask[]> = {
-        TODO: [],
-        IN_PROGRESS: [],
-        TESTING: [],
-        DONE: [],
-      };
-      const mapCol = (status: string, fallback: string) => {
-        const s = (status || fallback || "TODO").toUpperCase();
-        if (s === "DONE" || s === "CANCELLED") return "DONE";
-        if (s === "IN_PROGRESS" || s === "BLOCKED") return "IN_PROGRESS";
-        if (
-          [
-            "TESTING",
-            "CODE_REVIEW",
-            "READY_FOR_QA",
-            "QA_FAILED",
-            "READY_FOR_RELEASE",
-          ].includes(s)
-        ) {
-          return "TESTING";
-        }
-        if (["TODO", "IN_PROGRESS", "TESTING", "DONE"].includes(s)) return s;
-        return "TODO";
-      };
-      for (const col of cols) {
-        for (const t of col.tasks ?? []) {
-          const bucket = mapCol(t.status || col.id, col.id);
-          byCol[bucket].push({
-            id: t.id,
-            key: t.key,
-            title: t.title,
-            type: t.type,
-            status: t.status || col.id,
-            priority: mapPriority(t.priority),
-            dueDate: t.dueDate ? formatDate(t.dueDate) : undefined,
-          });
-        }
-      }
-      return defaultColumns.map((c) => ({
-        id: c.id,
-        title: c.title,
-        tasks: byCol[c.id] || [],
+      return cols.map((col) => ({
+        id: col.id,
+        title: col.title || col.id,
+        tasks: (col.tasks ?? []).map((t) => ({
+          id: t.id,
+          key: t.key,
+          title: t.title,
+          type: t.type,
+          status: t.status || col.id,
+          priority: mapPriority(t.priority),
+          dueDate: t.dueDate ? formatDate(t.dueDate) : undefined,
+          creatorKind: t.creatorKind,
+          creatorLabel: t.creatorLabel,
+          reporter: t.reporter,
+        })),
       }));
     }
 
@@ -769,8 +797,14 @@ export default function PublicPortalPage() {
       </div>
 
       {/* Create task */}
-      <Dialog open={taskOpen} onOpenChange={setTaskOpen}>
-        <DialogContent>
+      <Dialog
+        open={taskOpen}
+        onOpenChange={(open) => {
+          setTaskOpen(open);
+          if (!open) setTaskFiles([]);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create task</DialogTitle>
           </DialogHeader>
@@ -809,10 +843,11 @@ export default function PublicPortalPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="TODO">Todo</SelectItem>
-                    <SelectItem value="IN_PROGRESS">In progress</SelectItem>
-                    <SelectItem value="TESTING">Testing</SelectItem>
-                    <SelectItem value="DONE">Done</SelectItem>
+                    {boardColumns.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.title}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -861,16 +896,86 @@ export default function PublicPortalPage() {
                 </Select>
               </div>
             )}
+
+            <div className="space-y-2 rounded-lg border p-3">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="flex items-center gap-1.5">
+                  <Upload className="h-3.5 w-3.5" />
+                  Documents
+                </Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => taskFileRef.current?.click()}
+                >
+                  Add files
+                </Button>
+                <input
+                  ref={taskFileRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => addTaskFiles(e.target.files)}
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Optional. Up to 10 files, 15 MB each. This task will be tagged as{" "}
+                <span className="font-medium text-foreground">Client</span>.
+              </p>
+              {taskFiles.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-1">No files selected</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {taskFiles.map((file, idx) => (
+                    <li
+                      key={`${file.name}-${file.size}-${idx}`}
+                      className="flex items-center justify-between gap-2 text-xs rounded border px-2 py-1.5"
+                    >
+                      <span className="min-w-0 truncate flex items-center gap-1.5">
+                        <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
+                        {file.name}
+                        <span className="text-muted-foreground shrink-0">
+                          {formatBytes(file.size)}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        className="p-1 rounded hover:bg-muted"
+                        onClick={() =>
+                          setTaskFiles((prev) => prev.filter((_, i) => i !== idx))
+                        }
+                        aria-label={`Remove ${file.name}`}
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setTaskOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setTaskOpen(false);
+                setTaskFiles([]);
+              }}
+            >
               Cancel
             </Button>
             <Button
               disabled={!taskForm.title.trim() || createTaskMutation.isPending}
               onClick={() => createTaskMutation.mutate()}
             >
-              {createTaskMutation.isPending ? "Creating…" : "Create task"}
+              {createTaskMutation.isPending
+                ? taskFiles.length
+                  ? "Creating & uploading…"
+                  : "Creating…"
+                : taskFiles.length
+                  ? `Create with ${taskFiles.length} file${taskFiles.length === 1 ? "" : "s"}`
+                  : "Create task"}
             </Button>
           </DialogFooter>
         </DialogContent>

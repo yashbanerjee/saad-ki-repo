@@ -216,6 +216,13 @@ export const portalApi = {
     api.post(`/portal/${token}/milestones`, data),
   createTask: (token: string, data: Record<string, unknown>) =>
     api.post(`/portal/${token}/tasks`, data),
+  uploadTaskAttachment: (token: string, taskId: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return api.post(`/portal/${token}/tasks/${taskId}/attachments`, formData, {
+      timeout: 120000,
+    });
+  },
   addLink: (token: string, data: { name: string; url: string }) =>
     api.post(`/portal/${token}/links`, data),
   uploadDocument: (token: string, file: File, name?: string) => {
