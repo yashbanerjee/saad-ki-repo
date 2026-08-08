@@ -62,6 +62,12 @@ const priorityColors = {
   high: "destructive" as const,
 };
 
+const priorityBar = {
+  low: "bg-vedha-cyan",
+  medium: "bg-vedha-gold",
+  high: "bg-red-400",
+};
+
 const creatorBadge: Record<string, string> = {
   client: "bg-sky-500/15 text-sky-700 border-sky-500/30 dark:text-sky-300",
   admin: "bg-vedha-teal/15 text-vedha-teal border-vedha-teal/30 dark:text-vedha-cyan",
