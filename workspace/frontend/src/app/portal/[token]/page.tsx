@@ -7,6 +7,7 @@ import {
   Calendar,
   CheckCircle2,
   Circle,
+  Clock,
   FileText,
   Loader2,
   ExternalLink,
@@ -384,7 +385,7 @@ export default function PublicPortalPage() {
     );
   }
 
-  const progress = portal.progressPercent ?? 0;
+  const progress = Number(portal.progressPercent ?? 0);
   const milestones = portal.milestones ?? [];
   const tasks = portal.tasks ?? [];
   const documents = portal.documents ?? [];
@@ -393,6 +394,8 @@ export default function PublicPortalPage() {
   const doneIssues = Number(issueCounts.done ?? 0);
   const inProgressIssues = Number(issueCounts.inProgress ?? 0);
   const todoIssues = Number(issueCounts.todo ?? 0);
+  const totalLoggedHours = Number(portal.totalLoggedHours ?? 0);
+  const totalEstimatedHours = Number(portal.totalEstimatedHours ?? 0);
 
   return (
     <div className="min-h-screen bg-background">
@@ -506,6 +509,14 @@ export default function PublicPortalPage() {
               <p>
                 <span className="text-muted-foreground">End: </span>
                 {portal.endDate ? formatDate(portal.endDate) : "Not set"}
+              </p>
+              <p className="flex items-center gap-1.5 pt-0.5">
+                <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="text-muted-foreground">Hours logged: </span>
+                <span className="font-semibold tabular-nums">
+                  {totalLoggedHours}
+                  {totalEstimatedHours > 0 ? ` / ${totalEstimatedHours}h est.` : "h"}
+                </span>
               </p>
               {portal.daysRemaining != null && (
                 <div className="pt-1">

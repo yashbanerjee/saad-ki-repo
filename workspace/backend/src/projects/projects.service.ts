@@ -418,6 +418,8 @@ export class ProjectsService {
             dueDate: true,
             createdAt: true,
             metadata: true,
+            loggedHours: true,
+            estimatedHours: true,
             milestone: { select: { id: true, name: true } },
             reporter: {
               select: {
@@ -450,13 +452,45 @@ export class ProjectsService {
     });
     if (!project) throw new NotFoundException('Portal not found or disabled');
 
-    const progress = this.progressPayload(project.milestones, project.clientTasks);
-    // If no client tasks, fall back to board issue completion
-    let progressPercent = progress.progressPercent;
-    if (!project.clientTasks.length && project.issues.length) {
-      const done = project.issues.filter((i) => i.status === 'DONE').length;
+    // Use same project board columns as the signed-in board (custom columns supported)
+    const boardColumns = parseBoardColumns(project.settings);
+    const doneColumnIds = new Set(
+      boardColumns
+        .filter(
+          (c) =>
+            c.id === IssueStatus.DONE ||
+            c.id === 'DONE' ||
+            /^done$/i.test(c.title.trim()),
+        )
+        .map((c) => c.id),
+    );
+    if (!doneColumnIds.size) doneColumnIds.add(IssueStatus.DONE);
+
+    const isIssueDone = (issue: (typeof project.issues)[number]) => {
+      if (issue.status === IssueStatus.DONE) return true;
+      const col = resolveIssueBoardColumnId(issue, boardColumns);
+      return doneColumnIds.has(col);
+    };
+
+    // Progress from Kanban board tasks (primary). Fallback: client tasks, then milestones.
+    let progressPercent = 0;
+    if (project.issues.length) {
+      const done = project.issues.filter(isIssueDone).length;
       progressPercent = Math.round((done / project.issues.length) * 100);
+    } else if (project.clientTasks.length) {
+      progressPercent = Math.round(this.computeProgress(project.clientTasks));
+    } else if (project.milestones.length) {
+      progressPercent = Math.round(this.computeProgress(project.milestones));
     }
+
+    const progressMeta = this.progressPayload(project.milestones, project.clientTasks);
+
+    const totalLoggedHours = Math.round(
+      project.issues.reduce((sum, i) => sum + (i.loggedHours || 0), 0) * 10,
+    ) / 10;
+    const totalEstimatedHours = Math.round(
+      project.issues.reduce((sum, i) => sum + (i.estimatedHours || 0), 0) * 10,
+    ) / 10;
 
     const now = Date.now();
     const endMs = project.endDate ? new Date(project.endDate).getTime() : null;
@@ -465,23 +499,34 @@ export class ProjectsService {
 
     const issueCounts = {
       total: project.issues.length,
-      done: project.issues.filter((i) => i.status === 'DONE').length,
-      inProgress: project.issues.filter((i) =>
-        ['IN_PROGRESS', 'TESTING', 'CODE_REVIEW', 'READY_FOR_QA', 'READY_FOR_RELEASE'].includes(
-          i.status,
-        ),
-      ).length,
-      todo: project.issues.filter((i) => i.status === 'TODO').length,
-      testing: project.issues.filter((i) =>
-        ['TESTING', 'CODE_REVIEW', 'READY_FOR_QA', 'QA_FAILED', 'READY_FOR_RELEASE'].includes(
-          i.status,
-        ),
-      ).length,
+      done: project.issues.filter(isIssueDone).length,
+      inProgress: project.issues.filter((i) => {
+        if (isIssueDone(i)) return false;
+        const col = resolveIssueBoardColumnId(i, boardColumns);
+        return (
+          col === IssueStatus.IN_PROGRESS ||
+          col === IssueStatus.TESTING ||
+          i.status === IssueStatus.IN_PROGRESS ||
+          [
+            'TESTING',
+            'CODE_REVIEW',
+            'READY_FOR_QA',
+            'READY_FOR_RELEASE',
+            'BLOCKED',
+          ].includes(i.status)
+        );
+      }).length,
+      todo: project.issues.filter((i) => {
+        if (isIssueDone(i)) return false;
+        const col = resolveIssueBoardColumnId(i, boardColumns);
+        return col === IssueStatus.TODO || i.status === IssueStatus.TODO;
+      }).length,
+      testing: project.issues.filter((i) => {
+        const col = resolveIssueBoardColumnId(i, boardColumns);
+        return col === IssueStatus.TESTING || i.status === IssueStatus.TESTING;
+      }).length,
       blocked: project.issues.filter((i) => i.status === 'BLOCKED').length,
     };
-
-    // Use same project board columns as the signed-in board (custom columns supported)
-    const boardColumns = parseBoardColumns(project.settings);
 
     const columns = boardColumns.map((col) => ({
       id: col.id,
@@ -505,6 +550,8 @@ export class ProjectsService {
             priority: issue.priority,
             dueDate: issue.dueDate,
             createdAt: issue.createdAt,
+            loggedHours: issue.loggedHours,
+            estimatedHours: issue.estimatedHours,
             milestone: issue.milestone,
             creatorKind: kind,
             creatorLabel: CREATOR_KIND_LABEL[kind],
@@ -530,12 +577,14 @@ export class ProjectsService {
       issues: project.issues,
       issueCounts,
       columns,
+      totalLoggedHours,
+      totalEstimatedHours,
       documents: project.documents.map((d) => ({
         ...d,
         // When no public CDN URL, client uses portal download endpoint
         downloadable: true,
       })),
-      ...progress,
+      ...progressMeta,
       progressPercent,
     };
   }
