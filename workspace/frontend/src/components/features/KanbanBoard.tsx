@@ -21,10 +21,11 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { motion } from "framer-motion";
-import { GripVertical, Plus, Calendar } from "lucide-react";
+import { Check, GripVertical, Pencil, Plus, Trash2, Calendar, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn, getInitials } from "@/lib/utils";
 
@@ -268,16 +269,143 @@ interface KanbanBoardProps {
   onAddTask?: (columnId: string) => void;
   onTaskClick?: (task: KanbanTask) => void;
   canCreate?: boolean;
+  /** Admins/managers can rename, add, delete columns */
+  canManageColumns?: boolean;
+  onRenameColumn?: (columnId: string, title: string) => void | Promise<void>;
+  onDeleteColumn?: (columnId: string) => void | Promise<void>;
+  onAddColumn?: (title: string) => void | Promise<void>;
   /** Public / client view — no drag, no add task */
   readOnly?: boolean;
   taskHref?: (task: KanbanTask) => string;
 }
 
+function ColumnHeader({
+  column,
+  canManage,
+  onRename,
+  onDelete,
+}: {
+  column: KanbanColumn;
+  canManage?: boolean;
+  onRename?: (title: string) => void | Promise<void>;
+  onDelete?: () => void | Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(column.title);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!editing) setDraft(column.title);
+  }, [column.title, editing]);
+
+  const save = async () => {
+    const next = draft.trim();
+    if (!next || next === column.title) {
+      setEditing(false);
+      setDraft(column.title);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onRename?.(next);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-between gap-2">
+      {editing ? (
+        <div className="flex min-w-0 flex-1 items-center gap-1">
+          <Input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            className="h-8 text-sm"
+            maxLength={60}
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void save();
+              if (e.key === "Escape") {
+                setEditing(false);
+                setDraft(column.title);
+              }
+            }}
+          />
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 shrink-0"
+            disabled={saving}
+            onClick={() => void save()}
+            aria-label="Save column name"
+          >
+            <Check className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 shrink-0"
+            onClick={() => {
+              setEditing(false);
+              setDraft(column.title);
+            }}
+            aria-label="Cancel rename"
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ) : (
+        <div className="flex min-w-0 flex-1 items-center gap-1">
+          <CardTitle className="truncate text-sm font-semibold tracking-wide text-foreground">
+            {column.title || "Column"}
+          </CardTitle>
+          {canManage && (
+            <>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 shrink-0 text-muted-foreground"
+                onClick={() => setEditing(true)}
+                aria-label={`Rename ${column.title}`}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                onClick={() => void onDelete?.()}
+                aria-label={`Delete ${column.title}`}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+      <Badge variant="secondary" className="shrink-0">
+        {column.tasks.length}
+      </Badge>
+    </div>
+  );
+}
+
 function DroppableColumn({
   column,
+  canManageColumns,
+  onRenameColumn,
+  onDeleteColumn,
   children,
 }: {
   column: KanbanColumn;
+  canManageColumns?: boolean;
+  onRenameColumn?: (columnId: string, title: string) => void | Promise<void>;
+  onDeleteColumn?: (columnId: string) => void | Promise<void>;
   children: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
@@ -296,13 +424,13 @@ function DroppableColumn({
           isOver && "border-vedha-teal/40 !bg-muted/70",
         )}
       >
-        <CardHeader className="pb-3 pt-4 px-4">
-          <div className="flex items-center justify-between gap-2">
-            <CardTitle className="text-sm font-semibold tracking-wide text-foreground">
-              {column.title || "Column"}
-            </CardTitle>
-            <Badge variant="secondary">{column.tasks.length}</Badge>
-          </div>
+        <CardHeader className="px-4 pb-3 pt-4">
+          <ColumnHeader
+            column={column}
+            canManage={canManageColumns}
+            onRename={(title) => onRenameColumn?.(column.id, title)}
+            onDelete={() => onDeleteColumn?.(column.id)}
+          />
         </CardHeader>
         <CardContent className="min-h-[220px] space-y-2.5 px-3 pb-3">{children}</CardContent>
       </Card>
@@ -316,11 +444,18 @@ export function KanbanBoard({
   onAddTask,
   onTaskClick,
   canCreate = true,
+  canManageColumns = false,
+  onRenameColumn,
+  onDeleteColumn,
+  onAddColumn,
   readOnly = false,
   taskHref,
 }: KanbanBoardProps) {
   const [columns, setColumns] = useState(initialColumns);
   const [activeTask, setActiveTask] = useState<KanbanTask | null>(null);
+  const [newColumnTitle, setNewColumnTitle] = useState("");
+  const [addingColumn, setAddingColumn] = useState(false);
+  const [savingColumn, setSavingColumn] = useState(false);
 
   useEffect(() => {
     setColumns(initialColumns);
@@ -372,13 +507,26 @@ export function KanbanBoard({
     onTaskMove?.(activeId, sourceColumn.id, destColumn.id);
   };
 
+  const submitNewColumn = async () => {
+    const title = newColumnTitle.trim();
+    if (!title || !onAddColumn) return;
+    setSavingColumn(true);
+    try {
+      await onAddColumn(title);
+      setNewColumnTitle("");
+      setAddingColumn(false);
+    } finally {
+      setSavingColumn(false);
+    }
+  };
+
   if (readOnly) {
     return (
       <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin">
         {columns.map((column) => (
           <div key={column.id} className="w-80 flex-shrink-0">
             <Card className="h-full border-border !bg-muted/50 !shadow-none">
-              <CardHeader className="pb-3 pt-4 px-4">
+              <CardHeader className="px-4 pb-3 pt-4">
                 <div className="flex items-center justify-between gap-2">
                   <CardTitle className="text-sm font-semibold tracking-wide text-foreground">
                     {column.title || "Column"}
@@ -388,7 +536,7 @@ export function KanbanBoard({
               </CardHeader>
               <CardContent className="min-h-[220px] space-y-2.5 px-3 pb-3">
                 {column.tasks.length === 0 ? (
-                  <p className="text-xs text-muted-foreground px-1 py-4 text-center">
+                  <p className="px-1 py-4 text-center text-xs text-muted-foreground">
                     No items
                   </p>
                 ) : (
@@ -413,7 +561,13 @@ export function KanbanBoard({
     >
       <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin">
         {columns.map((column) => (
-          <DroppableColumn key={column.id} column={column}>
+          <DroppableColumn
+            key={column.id}
+            column={column}
+            canManageColumns={canManageColumns}
+            onRenameColumn={onRenameColumn}
+            onDeleteColumn={onDeleteColumn}
+          >
             <SortableContext
               items={column.tasks.map((t) => t.id)}
               strategy={verticalListSortingStrategy}
@@ -439,6 +593,58 @@ export function KanbanBoard({
             )}
           </DroppableColumn>
         ))}
+
+        {canManageColumns && onAddColumn && (
+          <div className="w-72 flex-shrink-0">
+            {addingColumn ? (
+              <Card className="border-border !bg-muted/50 !shadow-none">
+                <CardContent className="space-y-2 p-3">
+                  <Input
+                    placeholder="Column name"
+                    value={newColumnTitle}
+                    onChange={(e) => setNewColumnTitle(e.target.value)}
+                    maxLength={60}
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void submitNewColumn();
+                      if (e.key === "Escape") {
+                        setAddingColumn(false);
+                        setNewColumnTitle("");
+                      }
+                    }}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      disabled={!newColumnTitle.trim() || savingColumn}
+                      onClick={() => void submitNewColumn()}
+                    >
+                      {savingColumn ? "Adding…" : "Add column"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setAddingColumn(false);
+                        setNewColumnTitle("");
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Button
+                variant="outline"
+                className="h-full min-h-[80px] w-full border-dashed"
+                onClick={() => setAddingColumn(true)}
+              >
+                <Plus className="mr-1 h-4 w-4" /> New column
+              </Button>
+            )}
+          </div>
+        )}
       </div>
       <DragOverlay>{activeTask ? <TaskOverlay task={activeTask} /> : null}</DragOverlay>
     </DndContext>

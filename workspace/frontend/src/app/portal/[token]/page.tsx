@@ -241,11 +241,8 @@ export default function PublicPortalPage() {
   };
 
   const boardColumns: KanbanColumn[] = useMemo(() => {
-    if (!portal) {
-      return defaultColumns.filter((c) =>
-        ["TODO", "IN_PROGRESS", "TESTING", "DONE"].includes(c.id),
-      );
-    }
+    const empty = defaultColumns.map((c) => ({ ...c, tasks: [] as KanbanTask[] }));
+    if (!portal) return empty;
 
     const cols = portal.columns as
       | Array<{
@@ -264,22 +261,53 @@ export default function PublicPortalPage() {
       | undefined;
 
     if (Array.isArray(cols) && cols.length > 0) {
-      return cols.map((col) => ({
-        id: col.id,
-        title: col.title,
-        tasks: (col.tasks ?? []).map((t) => ({
-          id: t.id,
-          key: t.key,
-          title: t.title,
-          type: t.type,
-          status: t.status || col.id,
-          priority: mapPriority(t.priority),
-          dueDate: t.dueDate ? formatDate(t.dueDate) : undefined,
-        })),
+      // Normalize any legacy multi-column portals into the shared 4-column board
+      const byCol: Record<string, KanbanTask[]> = {
+        TODO: [],
+        IN_PROGRESS: [],
+        TESTING: [],
+        DONE: [],
+      };
+      const mapCol = (status: string, fallback: string) => {
+        const s = (status || fallback || "TODO").toUpperCase();
+        if (s === "DONE" || s === "CANCELLED") return "DONE";
+        if (s === "IN_PROGRESS" || s === "BLOCKED") return "IN_PROGRESS";
+        if (
+          [
+            "TESTING",
+            "CODE_REVIEW",
+            "READY_FOR_QA",
+            "QA_FAILED",
+            "READY_FOR_RELEASE",
+          ].includes(s)
+        ) {
+          return "TESTING";
+        }
+        if (["TODO", "IN_PROGRESS", "TESTING", "DONE"].includes(s)) return s;
+        return "TODO";
+      };
+      for (const col of cols) {
+        for (const t of col.tasks ?? []) {
+          const bucket = mapCol(t.status || col.id, col.id);
+          byCol[bucket].push({
+            id: t.id,
+            key: t.key,
+            title: t.title,
+            type: t.type,
+            status: t.status || col.id,
+            priority: mapPriority(t.priority),
+            dueDate: t.dueDate ? formatDate(t.dueDate) : undefined,
+          });
+        }
+      }
+      return defaultColumns.map((c) => ({
+        id: c.id,
+        title: c.title,
+        tasks: byCol[c.id] || [],
       }));
     }
 
-    return defaultColumns;
+    return empty;
   }, [portal]);
 
   const shareUrl =

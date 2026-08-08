@@ -25,13 +25,20 @@ import {
 import { CurrentUser, AuthenticatedUser, Permissions } from '../common/decorators';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { ParseCuidPipe } from '../common/pipes/parse-cuid.pipe';
-import { IsString } from 'class-validator';
+import { IsString, MinLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 class UpdateBoardTaskDto {
-  @ApiProperty()
+  @ApiProperty({ description: 'Board column id (enum status or custom column id)' })
   @IsString()
   status: string;
+}
+
+class BoardColumnTitleDto {
+  @ApiProperty()
+  @IsString()
+  @MinLength(1)
+  title: string;
 }
 
 @ApiTags('projects')
@@ -80,8 +87,50 @@ export class ProjectsController {
   @Get(':id/board')
   @Permissions('projects:read')
   getBoard(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
-    const isClient = user.roles?.includes('client') ?? false;
-    return this.issuesService.getBoard(id, user.companyId!, isClient);
+    // Same Kanban for admin, employees, and clients
+    return this.issuesService.getBoard(id, user.companyId!);
+  }
+
+  @Post(':id/board/columns')
+  @Permissions('projects:manage')
+  addBoardColumn(
+    @Param('id', ParseCuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: BoardColumnTitleDto,
+  ) {
+    return this.issuesService.addBoardColumn(id, user.companyId!, dto.title);
+  }
+
+  @Patch(':id/board/columns/:columnId')
+  @Permissions('projects:manage')
+  renameBoardColumn(
+    @Param('id', ParseCuidPipe) id: string,
+    @Param('columnId') columnId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: BoardColumnTitleDto,
+  ) {
+    return this.issuesService.renameBoardColumn(
+      id,
+      user.companyId!,
+      columnId,
+      dto.title,
+    );
+  }
+
+  @Delete(':id/board/columns/:columnId')
+  @Permissions('projects:manage')
+  deleteBoardColumn(
+    @Param('id', ParseCuidPipe) id: string,
+    @Param('columnId') columnId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('moveToColumnId') moveToColumnId?: string,
+  ) {
+    return this.issuesService.deleteBoardColumn(
+      id,
+      user.companyId!,
+      columnId,
+      moveToColumnId,
+    );
   }
 
   @Patch(':id/tasks/:taskId')

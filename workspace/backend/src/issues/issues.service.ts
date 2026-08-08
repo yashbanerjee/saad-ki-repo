@@ -15,40 +15,15 @@ import {
 } from './dto/issue.dto';
 import { paginate, paginatedResponse } from '../common/dto/pagination.dto';
 import { ActivityService } from '../activity/activity.service';
-
-const ADMIN_BOARD_STATUSES: { status: IssueStatus; title: string }[] = [
-  { status: IssueStatus.TODO, title: 'Todo' },
-  { status: IssueStatus.IN_PROGRESS, title: 'In Progress' },
-  { status: IssueStatus.TESTING, title: 'Testing' },
-  { status: IssueStatus.DONE, title: 'Done' },
-];
-
-const CLIENT_BOARD_STATUSES: { status: IssueStatus; title: string }[] = [
-  { status: IssueStatus.TODO, title: 'Todo' },
-  { status: IssueStatus.IN_PROGRESS, title: 'In Progress' },
-  { status: IssueStatus.TESTING, title: 'Testing' },
-  { status: IssueStatus.DONE, title: 'Done' },
-];
-
-/** Map many workflow statuses into the simplified 4-column board */
-function mapToBoardColumn(status: IssueStatus, _isClient: boolean): IssueStatus {
-  if (status === IssueStatus.DONE || status === IssueStatus.CANCELLED) {
-    return IssueStatus.DONE;
-  }
-  if (status === IssueStatus.IN_PROGRESS || status === IssueStatus.BLOCKED) {
-    return IssueStatus.IN_PROGRESS;
-  }
-  if (
-    status === IssueStatus.TESTING ||
-    status === IssueStatus.CODE_REVIEW ||
-    status === IssueStatus.READY_FOR_QA ||
-    status === IssueStatus.QA_FAILED ||
-    status === IssueStatus.READY_FOR_RELEASE
-  ) {
-    return IssueStatus.TESTING;
-  }
-  return IssueStatus.TODO;
-}
+import {
+  BoardColumnDef,
+  DEFAULT_BOARD_COLUMNS,
+  buildIssueUpdateForColumn,
+  mergeSettingsWithColumns,
+  newColumnId,
+  parseBoardColumns,
+  resolveIssueBoardColumnId,
+} from './board-columns';
 
 function mapPriority(p: string): 'low' | 'medium' | 'high' {
   if (['LOWEST', 'LOW'].includes(p)) return 'low';
@@ -142,12 +117,14 @@ export class IssuesService {
     return issue;
   }
 
-  async getBoard(projectId: string, companyId: string, isClient = false) {
+  async getBoard(projectId: string, companyId: string) {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, companyId },
-      select: { id: true, name: true, key: true },
+      select: { id: true, name: true, key: true, settings: true },
     });
     if (!project) throw new NotFoundException('Project not found');
+
+    const boardColumns = parseBoardColumns(project.settings);
 
     const issues = await this.prisma.issue.findMany({
       where: {
@@ -162,33 +139,36 @@ export class IssuesService {
       orderBy: [{ order: 'asc' }, { updatedAt: 'desc' }],
     });
 
-    const defs = isClient ? CLIENT_BOARD_STATUSES : ADMIN_BOARD_STATUSES;
-
-    const toTask = (i: (typeof issues)[number]) => ({
-      id: i.id,
-      key: i.key,
-      title: i.title,
-      priority: mapPriority(i.priority),
-      status: i.status,
-      boardColumn: mapToBoardColumn(i.status, isClient),
-      type: i.type,
-      milestoneId: i.milestoneId,
-      milestoneName: i.milestone?.name,
-      estimatedHours: i.estimatedHours,
-      loggedHours: i.loggedHours,
-      assignee: i.assignee
-        ? `${i.assignee.firstName} ${i.assignee.lastName}`.trim()
-        : undefined,
-      labels: i.labels.map((l) => l.label.name),
-      dueDate: i.dueDate ? i.dueDate.toISOString().slice(0, 10) : undefined,
-    });
+    const toTask = (i: (typeof issues)[number]) => {
+      const boardColumn = resolveIssueBoardColumnId(i, boardColumns);
+      return {
+        id: i.id,
+        key: i.key,
+        title: i.title,
+        priority: mapPriority(i.priority),
+        status: i.status,
+        boardColumn,
+        type: i.type,
+        milestoneId: i.milestoneId,
+        milestoneName: i.milestone?.name,
+        estimatedHours: i.estimatedHours,
+        loggedHours: i.loggedHours,
+        assignee: i.assignee
+          ? `${i.assignee.firstName} ${i.assignee.lastName}`.trim()
+          : undefined,
+        labels: i.labels.map((l) => l.label.name),
+        dueDate: i.dueDate ? i.dueDate.toISOString().slice(0, 10) : undefined,
+      };
+    };
 
     const mapped = issues.map(toTask);
 
-    const columns = defs.map((col) => ({
-      id: col.status,
+    const columns = boardColumns.map((col) => ({
+      id: col.id,
       title: col.title,
-      tasks: mapped.filter((i) => i.boardColumn === col.status),
+      order: col.order,
+      tasks: mapped.filter((i) => i.boardColumn === col.id),
+      canDelete: boardColumns.length > 1,
     }));
 
     const milestones = await this.prisma.milestone.findMany({
@@ -204,7 +184,120 @@ export class IssuesService {
       },
     });
 
-    return { project, columns, milestones, issues: mapped };
+    return {
+      project: { id: project.id, name: project.name, key: project.key },
+      columns,
+      boardColumns,
+      milestones,
+      issues: mapped,
+      canManageColumns: true, // controller/UI gates by role permission
+    };
+  }
+
+  private async loadProjectColumns(projectId: string, companyId: string) {
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId, companyId },
+      select: { id: true, settings: true },
+    });
+    if (!project) throw new NotFoundException('Project not found');
+    return {
+      project,
+      columns: parseBoardColumns(project.settings),
+    };
+  }
+
+  async addBoardColumn(projectId: string, companyId: string, title: string) {
+    const name = title?.trim();
+    if (!name) throw new BadRequestException('Column name is required');
+    if (name.length > 60) throw new BadRequestException('Column name is too long');
+
+    const { project, columns } = await this.loadProjectColumns(projectId, companyId);
+    if (columns.length >= 20) {
+      throw new BadRequestException('Maximum 20 columns per board');
+    }
+
+    const col: BoardColumnDef = {
+      id: newColumnId(),
+      title: name,
+      order: columns.length,
+    };
+    const next = [...columns, col];
+    await this.prisma.project.update({
+      where: { id: project.id },
+      data: { settings: mergeSettingsWithColumns(project.settings, next) },
+    });
+    return col;
+  }
+
+  async renameBoardColumn(
+    projectId: string,
+    companyId: string,
+    columnId: string,
+    title: string,
+  ) {
+    const name = title?.trim();
+    if (!name) throw new BadRequestException('Column name is required');
+    if (name.length > 60) throw new BadRequestException('Column name is too long');
+
+    const { project, columns } = await this.loadProjectColumns(projectId, companyId);
+    const idx = columns.findIndex((c) => c.id === columnId);
+    if (idx < 0) throw new NotFoundException('Column not found');
+
+    columns[idx] = { ...columns[idx], title: name };
+    await this.prisma.project.update({
+      where: { id: project.id },
+      data: { settings: mergeSettingsWithColumns(project.settings, columns) },
+    });
+    return columns[idx];
+  }
+
+  async deleteBoardColumn(
+    projectId: string,
+    companyId: string,
+    columnId: string,
+    moveToColumnId?: string,
+  ) {
+    const { project, columns } = await this.loadProjectColumns(projectId, companyId);
+    if (columns.length <= 1) {
+      throw new BadRequestException('Cannot delete the last column');
+    }
+    const target = columns.find((c) => c.id === columnId);
+    if (!target) throw new NotFoundException('Column not found');
+
+    const remaining = columns.filter((c) => c.id !== columnId);
+    const destId =
+      (moveToColumnId && remaining.some((c) => c.id === moveToColumnId)
+        ? moveToColumnId
+        : remaining[0]?.id) || DEFAULT_BOARD_COLUMNS[0].id;
+
+    // Reassign issues currently on this column
+    const issues = await this.prisma.issue.findMany({
+      where: { projectId, status: { not: IssueStatus.CANCELLED } },
+      select: { id: true, status: true, metadata: true },
+    });
+
+    for (const issue of issues) {
+      const col = resolveIssueBoardColumnId(issue, columns);
+      if (col !== columnId) continue;
+      const update = buildIssueUpdateForColumn(destId, issue.metadata);
+      await this.prisma.issue.update({
+        where: { id: issue.id },
+        data: {
+          status: update.status,
+          metadata: update.metadata,
+          resolvedAt: update.status === IssueStatus.DONE ? new Date() : null,
+          closedAt: update.status === IssueStatus.DONE ? new Date() : null,
+        },
+      });
+    }
+
+    const next = remaining.map((c, i) => ({ ...c, order: i }));
+    await this.prisma.project.update({
+      where: { id: project.id },
+      data: { settings: mergeSettingsWithColumns(project.settings, next) },
+    });
+
+    return { message: 'Column deleted', movedTo: destId, columns: next };
   }
 
   async create(companyId: string, reporterId: string, dto: CreateIssueDto) {
@@ -219,6 +312,15 @@ export class IssuesService {
       });
       if (!ms) throw new BadRequestException('Milestone not found on this project');
     }
+
+    const boardColumns = parseBoardColumns(project.settings);
+    const requestedColumn = (dto.status || IssueStatus.TODO).trim();
+    const column =
+      boardColumns.find((c) => c.id === requestedColumn) ||
+      boardColumns.find((c) => c.id === IssueStatus.TODO) ||
+      boardColumns[0];
+    if (!column) throw new BadRequestException('No board columns configured');
+    const columnPlacement = buildIssueUpdateForColumn(column.id, {});
 
     const lastIssue = await this.prisma.issue.findFirst({
       where: { projectId: dto.projectId },
@@ -245,7 +347,8 @@ export class IssuesService {
         storyPoints: dto.storyPoints,
         estimatedHours: dto.estimatedHours,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
-        status: dto.status ?? IssueStatus.TODO,
+        status: columnPlacement.status,
+        metadata: columnPlacement.metadata,
       },
       include: {
         assignee: { select: { id: true, firstName: true, lastName: true } },
@@ -316,6 +419,7 @@ export class IssuesService {
 
   async transition(id: string, companyId: string, userId: string, dto: TransitionIssueDto) {
     const existing = await this.findOne(id, companyId);
+    // status field is enum — for board custom columns use updateBoardTaskStatus
     const issue = await this.prisma.issue.update({
       where: { id },
       data: {
@@ -344,19 +448,42 @@ export class IssuesService {
     taskId: string,
     companyId: string,
     userId: string,
-    status: string,
+    columnId: string,
   ) {
     const issue = await this.prisma.issue.findFirst({
       where: { id: taskId, projectId, project: { companyId } },
     });
     if (!issue) throw new NotFoundException('Task not found');
 
-    const normalized = status.toUpperCase().replace(/-/g, '_') as IssueStatus;
-    if (!Object.values(IssueStatus).includes(normalized)) {
-      throw new BadRequestException(`Invalid status: ${status}`);
+    const { columns } = await this.loadProjectColumns(projectId, companyId);
+    const col = columns.find((c) => c.id === columnId);
+    if (!col) {
+      throw new BadRequestException(`Unknown board column: ${columnId}`);
     }
 
-    return this.transition(taskId, companyId, userId, { status: normalized });
+    const update = buildIssueUpdateForColumn(columnId, issue.metadata);
+    const updated = await this.prisma.issue.update({
+      where: { id: taskId },
+      data: {
+        status: update.status,
+        metadata: update.metadata,
+        resolvedAt: update.status === IssueStatus.DONE ? new Date() : null,
+        closedAt: update.status === IssueStatus.DONE ? new Date() : null,
+      },
+    });
+
+    await this.activity.log({
+      companyId,
+      userId,
+      projectId,
+      entityType: 'Issue',
+      entityId: taskId,
+      action: 'status_changed',
+      message: `${issue.key} moved to column "${col.title}"`,
+      metadata: { from: issue.status, to: columnId, columnTitle: col.title },
+    });
+
+    return updated;
   }
 
   async remove(id: string, companyId: string) {

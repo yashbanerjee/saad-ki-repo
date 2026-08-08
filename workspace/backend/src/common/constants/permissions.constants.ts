@@ -77,7 +77,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'sprints:read', 'search:read', 'documents:read',
   ],
   qa: [
-    'projects:read', 'issues:read', 'issues:manage', 'sprints:read',
+    'projects:read', 'issues:create', 'issues:read', 'issues:manage', 'sprints:read',
     'search:read', 'documents:read',
   ],
   client: [

@@ -65,10 +65,12 @@ export class CreateIssueDto {
   @IsDateString()
   dueDate?: string;
 
-  @ApiPropertyOptional({ enum: IssueStatus })
+  @ApiPropertyOptional({
+    description: 'Issue status enum or board column id',
+  })
   @IsOptional()
-  @IsEnum(IssueStatus)
-  status?: IssueStatus;
+  @IsString()
+  status?: string;
 
   @ApiPropertyOptional({ description: 'Milestone this task belongs to' })
   @IsOptional()

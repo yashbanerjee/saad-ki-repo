@@ -30,28 +30,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { issuesApi } from "@/lib/api";
-import { isClientUser, useAuthStore } from "@/lib/auth-store";
 import { formatRelativeTime, getInitials } from "@/lib/utils";
 import { toast } from "sonner";
 
-const CLIENT_STATUSES = [
+const BOARD_STATUSES = [
   { value: "TODO", label: "Todo" },
   { value: "IN_PROGRESS", label: "In Progress" },
   { value: "TESTING", label: "Testing" },
   { value: "DONE", label: "Done" },
-] as const;
-
-const STAFF_STATUSES = [
-  { value: "TODO", label: "Todo" },
-  { value: "IN_PROGRESS", label: "In Progress" },
-  { value: "TESTING", label: "Testing" },
-  { value: "CODE_REVIEW", label: "Code Review" },
-  { value: "READY_FOR_QA", label: "Ready for QA" },
-  { value: "QA_FAILED", label: "QA Failed" },
-  { value: "READY_FOR_RELEASE", label: "Ready for Release" },
-  { value: "DONE", label: "Done" },
-  { value: "BLOCKED", label: "Blocked" },
-  { value: "CANCELLED", label: "Cancelled" },
 ] as const;
 
 function personName(p?: { firstName?: string; lastName?: string; name?: string } | string | null) {
@@ -71,9 +57,7 @@ export default function IssueDetailPage() {
   const [comment, setComment] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
-  const user = useAuthStore((s) => s.user);
-  const isClient = isClientUser(user);
-  const statusOptions = isClient ? CLIENT_STATUSES : STAFF_STATUSES;
+  const statusOptions = BOARD_STATUSES;
 
   const { data, isLoading } = useQuery({
     queryKey: ["issue", id],
@@ -94,10 +78,33 @@ export default function IssueDetailPage() {
   });
 
   const uploadMutation = useMutation({
-    mutationFn: (file: File) => issuesApi.uploadAttachment(id, file),
-    onSuccess: () => {
+    mutationFn: async (files: File[]) => {
+      let uploaded = 0;
+      let failed = 0;
+      for (const file of files) {
+        try {
+          await issuesApi.uploadAttachment(id, file);
+          uploaded += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      return { uploaded, failed };
+    },
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["issue", id] });
-      toast.success("File uploaded");
+      if (result.failed && !result.uploaded) {
+        toast.error("Upload failed");
+      } else if (result.failed) {
+        toast.warning(`${result.uploaded} uploaded, ${result.failed} failed`);
+      } else {
+        toast.success(
+          result.uploaded === 1
+            ? "File uploaded"
+            : `${result.uploaded} files uploaded`,
+        );
+      }
+      if (fileRef.current) fileRef.current.value = "";
     },
     onError: (err: { response?: { data?: { message?: string } } }) => {
       toast.error(err?.response?.data?.message || "Upload failed");
@@ -165,7 +172,7 @@ export default function IssueDetailPage() {
     statusOptions.some((o) => o.value === currentStatus)
       ? statusOptions
       : [
-          { value: currentStatus, label: statusLabel(currentStatus, STAFF_STATUSES) },
+          { value: currentStatus, label: statusLabel(currentStatus, BOARD_STATUSES) },
           ...statusOptions,
         ];
 
@@ -182,7 +189,7 @@ export default function IssueDetailPage() {
             <Bug className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm text-muted-foreground">{issue.key || `#${issue.id}`}</span>
             {issue.priority && <Badge variant="destructive">{issue.priority}</Badge>}
-            <Badge variant="info">{statusLabel(currentStatus, STAFF_STATUSES)}</Badge>
+            <Badge variant="info">{statusLabel(currentStatus, BOARD_STATUSES)}</Badge>
             {issue.type && <Badge variant="outline">{issue.type}</Badge>}
           </div>
           <h1 className="font-display text-2xl font-bold">{issue.title}</h1>
@@ -211,10 +218,11 @@ export default function IssueDetailPage() {
                 <input
                   ref={fileRef}
                   type="file"
+                  multiple
                   className="hidden"
                   onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) uploadMutation.mutate(file);
+                    const files = e.target.files ? Array.from(e.target.files) : [];
+                    if (files.length) uploadMutation.mutate(files);
                     e.target.value = "";
                   }}
                 />

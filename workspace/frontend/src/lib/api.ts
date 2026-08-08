@@ -175,10 +175,22 @@ export const projectsApi = {
     api.patch(`/projects/${id}`, data),
   delete: (id: string) => api.delete(`/projects/${id}`),
   getBoard: (id: string) => api.get(`/projects/${id}/board`),
+  addBoardColumn: (projectId: string, title: string) =>
+    api.post(`/projects/${projectId}/board/columns`, { title }),
+  renameBoardColumn: (projectId: string, columnId: string, title: string) =>
+    api.patch(`/projects/${projectId}/board/columns/${encodeURIComponent(columnId)}`, {
+      title,
+    }),
+  deleteBoardColumn: (
+    projectId: string,
+    columnId: string,
+    moveToColumnId?: string,
+  ) =>
+    api.delete(`/projects/${projectId}/board/columns/${encodeURIComponent(columnId)}`, {
+      params: moveToColumnId ? { moveToColumnId } : undefined,
+    }),
   updateTaskStatus: (projectId: string, taskId: string, status: string) =>
-    api
-      .patch(`/projects/${projectId}/tasks/${taskId}`, { status })
-      .catch(() => api.post(`/issues/${taskId}/transition`, { status })),
+    api.patch(`/projects/${projectId}/tasks/${taskId}`, { status }),
   enablePortal: (id: string) => api.post(`/projects/${id}/portal/enable`),
   rotatePortal: (id: string) => api.post(`/projects/${id}/portal/rotate`),
   disablePortal: (id: string) => api.post(`/projects/${id}/portal/disable`),

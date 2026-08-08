@@ -1,10 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Clock, Layers, Plus, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Clock,
+  FileText,
+  Layers,
+  Paperclip,
+  Plus,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -33,9 +43,12 @@ import {
   type KanbanTask,
 } from "@/components/features/KanbanBoard";
 import { issuesApi, projectsApi } from "@/lib/api";
-import { isClientUser, useAuthStore } from "@/lib/auth-store";
+import { hasRole, useAuthStore } from "@/lib/auth-store";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
+
+const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+const MAX_ATTACHMENTS = 10;
 
 type Milestone = {
   id: string;
@@ -45,13 +58,35 @@ type Milestone = {
   _count?: { issues?: number };
 };
 
+function formatBytes(size: number) {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function uploadAllAttachments(issueId: string, files: File[]) {
+  let uploaded = 0;
+  let failed = 0;
+  for (const file of files) {
+    try {
+      await issuesApi.uploadAttachment(issueId, file);
+      uploaded += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { uploaded, failed };
+}
+
 export default function ProjectBoardPage() {
   const params = useParams();
   const projectId = params.id as string;
   const queryClient = useQueryClient();
-  const user = useAuthStore((s) => s.user);
   const accessToken = useAuthStore((s) => s.accessToken);
-  const isClient = isClientUser(user);
+  const user = useAuthStore((s) => s.user);
+  const canManageColumns = hasRole(user, ["admin", "manager"]);
+  const createFileRef = useRef<HTMLInputElement>(null);
+  const taskFileRef = useRef<HTMLInputElement>(null);
 
   const [milestoneFilter, setMilestoneFilter] = useState<string>("all");
   const [createOpen, setCreateOpen] = useState(false);
@@ -62,6 +97,7 @@ export default function ProjectBoardPage() {
   const [type, setType] = useState("TASK");
   const [milestoneId, setMilestoneId] = useState<string>("none");
   const [estimatedHours, setEstimatedHours] = useState("");
+  const [createFiles, setCreateFiles] = useState<File[]>([]);
 
   const [msOpen, setMsOpen] = useState(false);
   const [msName, setMsName] = useState("");
@@ -84,6 +120,12 @@ export default function ProjectBoardPage() {
     enabled: Boolean(timeTask?.id),
   });
 
+  const { data: issueDetail, isLoading: issueLoading } = useQuery({
+    queryKey: ["issue", timeTask?.id],
+    queryFn: () => issuesApi.get(timeTask!.id),
+    enabled: Boolean(timeTask?.id),
+  });
+
   const boardData = data?.data?.data ?? data?.data;
   const milestones: Milestone[] = useMemo(() => {
     const raw = boardData?.milestones;
@@ -94,6 +136,11 @@ export default function ProjectBoardPage() {
     const raw = timeData?.data?.data ?? timeData?.data ?? [];
     return Array.isArray(raw) ? raw : [];
   }, [timeData]);
+
+  const taskAttachments = useMemo(() => {
+    const issue = issueDetail?.data?.data ?? issueDetail?.data ?? null;
+    return Array.isArray(issue?.attachments) ? issue.attachments : [];
+  }, [issueDetail]);
 
   const initialColumns: KanbanColumn[] = useMemo(() => {
     let columns: KanbanColumn[] = [];
@@ -125,9 +172,29 @@ export default function ProjectBoardPage() {
     queryClient.invalidateQueries({ queryKey: ["project", projectId] });
   };
 
+  const addCreateFiles = (list: FileList | null) => {
+    if (!list?.length) return;
+    const incoming = Array.from(list);
+    const next: File[] = [...createFiles];
+    for (const file of incoming) {
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        toast.error(`${file.name} is over 15 MB`);
+        continue;
+      }
+      if (next.length >= MAX_ATTACHMENTS) {
+        toast.error(`Maximum ${MAX_ATTACHMENTS} files per task`);
+        break;
+      }
+      if (next.some((f) => f.name === file.name && f.size === file.size)) continue;
+      next.push(file);
+    }
+    setCreateFiles(next);
+    if (createFileRef.current) createFileRef.current.value = "";
+  };
+
   const createMutation = useMutation({
-    mutationFn: () =>
-      issuesApi.create({
+    mutationFn: async () => {
+      const res = await issuesApi.create({
         projectId,
         title: title.trim(),
         description: description.trim() || undefined,
@@ -136,14 +203,35 @@ export default function ProjectBoardPage() {
         status: createStatus,
         milestoneId: milestoneId !== "none" ? milestoneId : undefined,
         estimatedHours: estimatedHours ? Number(estimatedHours) : undefined,
-      }),
-    onSuccess: () => {
+      });
+      const created = res?.data?.data ?? res?.data;
+      const issueId = created?.id as string | undefined;
+      let filesResult = { uploaded: 0, failed: 0 };
+      if (issueId && createFiles.length) {
+        filesResult = await uploadAllAttachments(issueId, createFiles);
+      }
+      return { created, filesResult };
+    },
+    onSuccess: ({ filesResult }) => {
       invalidate();
       setCreateOpen(false);
       setTitle("");
       setDescription("");
       setEstimatedHours("");
-      toast.success("Task created");
+      setCreateFiles([]);
+      if (filesResult.uploaded && !filesResult.failed) {
+        toast.success(
+          `Task created with ${filesResult.uploaded} document${filesResult.uploaded === 1 ? "" : "s"}`,
+        );
+      } else if (filesResult.uploaded && filesResult.failed) {
+        toast.warning(
+          `Task created. ${filesResult.uploaded} file(s) uploaded, ${filesResult.failed} failed`,
+        );
+      } else if (filesResult.failed && !filesResult.uploaded) {
+        toast.warning("Task created, but document upload failed");
+      } else {
+        toast.success("Task created");
+      }
     },
     onError: (err: { response?: { data?: { message?: string } } }) => {
       toast.error(err?.response?.data?.message || "Failed to create task");
@@ -201,13 +289,42 @@ export default function ProjectBoardPage() {
     onError: () => toast.error("Could not remove entry"),
   });
 
+  const uploadOnTask = useMutation({
+    mutationFn: async (files: File[]) => {
+      if (!timeTask?.id) throw new Error("No task");
+      return uploadAllAttachments(timeTask.id, files);
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["issue", timeTask?.id] });
+      if (result.failed && !result.uploaded) {
+        toast.error("Upload failed");
+      } else if (result.failed) {
+        toast.warning(`${result.uploaded} uploaded, ${result.failed} failed`);
+      } else {
+        toast.success(
+          result.uploaded === 1
+            ? "Document uploaded"
+            : `${result.uploaded} documents uploaded`,
+        );
+      }
+      if (taskFileRef.current) taskFileRef.current.value = "";
+    },
+    onError: () => toast.error("Could not upload document"),
+  });
+
+  const deleteAttachment = useMutation({
+    mutationFn: (attachmentId: string) =>
+      issuesApi.deleteAttachment(timeTask!.id, attachmentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["issue", timeTask?.id] });
+      toast.success("Attachment removed");
+    },
+    onError: () => toast.error("Could not delete attachment"),
+  });
+
   const handleTaskMove = async (taskId: string, _from: string, toColumn: string) => {
     try {
-      try {
-        await issuesApi.transition(taskId, toColumn);
-      } catch {
-        await projectsApi.updateTaskStatus(projectId, taskId, toColumn);
-      }
+      await projectsApi.updateTaskStatus(projectId, taskId, toColumn);
       toast.success("Status updated");
       invalidate();
     } catch (err: unknown) {
@@ -221,12 +338,79 @@ export default function ProjectBoardPage() {
     }
   };
 
+  const handleRenameColumn = async (columnId: string, title: string) => {
+    try {
+      await projectsApi.renameBoardColumn(projectId, columnId, title);
+      toast.success("Column renamed");
+      invalidate();
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Could not rename column";
+      toast.error(msg);
+      throw err;
+    }
+  };
+
+  const handleAddColumn = async (title: string) => {
+    try {
+      await projectsApi.addBoardColumn(projectId, title);
+      toast.success("Column added");
+      invalidate();
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Could not add column";
+      toast.error(msg);
+      throw err;
+    }
+  };
+
+  const handleDeleteColumn = async (columnId: string) => {
+    const col = initialColumns.find((c) => c.id === columnId);
+    if (!col) return;
+    if (initialColumns.length <= 1) {
+      toast.error("Cannot delete the last column");
+      return;
+    }
+    const taskCount = col.tasks.length;
+    const ok = window.confirm(
+      taskCount > 0
+        ? `Delete "${col.title}"? ${taskCount} task(s) will move to another column.`
+        : `Delete column "${col.title}"?`,
+    );
+    if (!ok) return;
+
+    const moveTo =
+      initialColumns.find((c) => c.id !== columnId)?.id || undefined;
+    try {
+      await projectsApi.deleteBoardColumn(projectId, columnId, moveTo);
+      toast.success("Column deleted");
+      invalidate();
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Could not delete column";
+      toast.error(msg);
+    }
+  };
+
   const openCreate = (columnId: string) => {
     setCreateStatus(columnId);
     if (milestoneFilter !== "all" && milestoneFilter !== "none") {
       setMilestoneId(milestoneFilter);
     }
     setCreateOpen(true);
+  };
+
+  const resetCreateForm = () => {
+    setTitle("");
+    setDescription("");
+    setEstimatedHours("");
+    setCreateFiles([]);
+    setPriority("MEDIUM");
+    setType("TASK");
+    if (createFileRef.current) createFileRef.current.value = "";
   };
 
   return (
@@ -242,24 +426,21 @@ export default function ProjectBoardPage() {
             <h1 className="font-display text-2xl font-bold">Project board</h1>
             <p className="text-muted-foreground text-sm">
               {boardData?.project?.name
-                ? `${boardData.project.name} — milestones · tasks · status · time`
-                : "Milestones, tasks, status, and time"}
+                ? `${boardData.project.name} — tasks, documents, status & time`
+                : "Tasks, documents, status, and time"}
             </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {!isClient && (
-            <Button variant="outline" onClick={() => setMsOpen(true)}>
-              <Layers className="mr-1 h-4 w-4" /> Milestone
-            </Button>
-          )}
-          <Button onClick={() => openCreate("TODO")}>
+          <Button variant="outline" onClick={() => setMsOpen(true)}>
+            <Layers className="mr-1 h-4 w-4" /> Milestone
+          </Button>
+          <Button onClick={() => openCreate(initialColumns[0]?.id || "TODO")}>
             <Plus className="mr-1 h-4 w-4" /> New task
           </Button>
         </div>
       </div>
 
-      {/* Milestone filter */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-muted-foreground mr-1">Milestone:</span>
         <Button
@@ -300,22 +481,30 @@ export default function ProjectBoardPage() {
           initialColumns={initialColumns}
           onTaskMove={handleTaskMove}
           onAddTask={openCreate}
-          onTaskClick={(task) => {
-            if (!isClient) setTimeTask(task);
-          }}
-          canCreate={!isClient}
+          onTaskClick={(task) => setTimeTask(task)}
+          canCreate
+          canManageColumns={canManageColumns}
+          onRenameColumn={handleRenameColumn}
+          onAddColumn={handleAddColumn}
+          onDeleteColumn={handleDeleteColumn}
         />
       )}
 
-      {!isClient && (
-        <p className="text-xs text-muted-foreground">
-          Tip: click a task to log time. Filter by milestone to focus one delivery slice.
-        </p>
-      )}
+      <p className="text-xs text-muted-foreground">
+        Create a task with optional documents. Click a task to log time or attach more files.
+        {canManageColumns
+          ? " Admins can rename columns, add new columns, or delete columns from the board."
+          : ""}
+      </p>
 
-      {/* Create task */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
+      <Dialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open) resetCreateForm();
+        }}
+      >
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>New task</DialogTitle>
           </DialogHeader>
@@ -340,9 +529,9 @@ export default function ProjectBoardPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {["TODO", "IN_PROGRESS", "TESTING", "DONE"].map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {s.replace(/_/g, " ")}
+                    {initialColumns.map((col) => (
+                      <SelectItem key={col.id} value={col.id}>
+                        {col.title}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -408,6 +597,64 @@ export default function ProjectBoardPage() {
                 />
               </div>
             </div>
+
+            <div className="space-y-2 rounded-lg border p-3">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="flex items-center gap-1.5">
+                  <Paperclip className="h-3.5 w-3.5" />
+                  Documents
+                </Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => createFileRef.current?.click()}
+                >
+                  <Upload className="h-3.5 w-3.5 mr-1" /> Add files
+                </Button>
+                <input
+                  ref={createFileRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => addCreateFiles(e.target.files)}
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Optional. Up to {MAX_ATTACHMENTS} files, 15 MB each. Same for admin,
+                employees, and clients.
+              </p>
+              {createFiles.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-1">No files selected</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {createFiles.map((file, idx) => (
+                    <li
+                      key={`${file.name}-${file.size}-${idx}`}
+                      className="flex items-center justify-between gap-2 text-xs rounded border px-2 py-1.5"
+                    >
+                      <span className="min-w-0 truncate flex items-center gap-1.5">
+                        <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
+                        {file.name}
+                        <span className="text-muted-foreground shrink-0">
+                          {formatBytes(file.size)}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        className="p-1 rounded hover:bg-muted"
+                        onClick={() =>
+                          setCreateFiles((prev) => prev.filter((_, i) => i !== idx))
+                        }
+                        aria-label={`Remove ${file.name}`}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
@@ -417,13 +664,18 @@ export default function ProjectBoardPage() {
               disabled={!title.trim() || createMutation.isPending}
               onClick={() => createMutation.mutate()}
             >
-              {createMutation.isPending ? "Creating…" : "Create"}
+              {createMutation.isPending
+                ? createFiles.length
+                  ? "Creating & uploading…"
+                  : "Creating…"
+                : createFiles.length
+                  ? `Create with ${createFiles.length} file${createFiles.length === 1 ? "" : "s"}`
+                  : "Create"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Create milestone */}
       <Dialog open={msOpen} onOpenChange={setMsOpen}>
         <DialogContent>
           <DialogHeader>
@@ -457,9 +709,8 @@ export default function ProjectBoardPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Time log on task */}
       <Dialog open={!!timeTask} onOpenChange={(o) => !o && setTimeTask(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Clock className="h-4 w-4" /> {timeTask?.key || "Task"}
@@ -478,7 +729,108 @@ export default function ProjectBoardPage() {
                     ? ` / ${timeTask.estimatedHours}h est.`
                     : ""}
                 </p>
+                <Button variant="link" className="h-auto p-0 text-xs mt-1" asChild>
+                  <Link href={`/issues/${timeTask.id}`}>Open full task page</Link>
+                </Button>
               </div>
+
+              <Card>
+                <CardHeader className="py-3 px-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <CardTitle className="text-sm flex items-center gap-1.5">
+                        <Paperclip className="h-3.5 w-3.5" /> Documents
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Upload files for this task
+                      </CardDescription>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={uploadOnTask.isPending}
+                      onClick={() => taskFileRef.current?.click()}
+                    >
+                      <Upload className="h-3.5 w-3.5 mr-1" />
+                      {uploadOnTask.isPending ? "Uploading…" : "Upload"}
+                    </Button>
+                    <input
+                      ref={taskFileRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        const files = e.target.files
+                          ? Array.from(e.target.files)
+                          : [];
+                        const valid = files.filter((f) => {
+                          if (f.size > MAX_ATTACHMENT_BYTES) {
+                            toast.error(`${f.name} is over 15 MB`);
+                            return false;
+                          }
+                          return true;
+                        });
+                        if (valid.length) {
+                          uploadOnTask.mutate(valid.slice(0, MAX_ATTACHMENTS));
+                        }
+                      }}
+                    />
+                  </div>
+                </CardHeader>
+                <CardContent className="px-4 pb-4">
+                  {issueLoading ? (
+                    <Skeleton className="h-12 w-full" />
+                  ) : taskAttachments.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No documents yet.</p>
+                  ) : (
+                    <ul className="space-y-1.5 max-h-36 overflow-y-auto">
+                      {taskAttachments.map(
+                        (a: {
+                          id: string;
+                          name: string;
+                          size?: number;
+                          storageUrl?: string | null;
+                        }) => (
+                          <li
+                            key={a.id}
+                            className="flex items-center justify-between gap-2 text-xs rounded border px-2 py-1.5"
+                          >
+                            <span className="min-w-0 truncate flex items-center gap-1.5">
+                              <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
+                              {a.storageUrl ? (
+                                <a
+                                  href={a.storageUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="truncate hover:underline"
+                                >
+                                  {a.name}
+                                </a>
+                              ) : (
+                                <span className="truncate">{a.name}</span>
+                              )}
+                              {a.size != null && (
+                                <span className="text-muted-foreground shrink-0">
+                                  {formatBytes(a.size)}
+                                </span>
+                              )}
+                            </span>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 shrink-0"
+                              onClick={() => deleteAttachment.mutate(a.id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </li>
+                        ),
+                      )}
+                    </ul>
+                  )}
+                </CardContent>
+              </Card>
+
               <Card>
                 <CardHeader className="py-3 px-4">
                   <CardTitle className="text-sm">Log time</CardTitle>
@@ -513,8 +865,11 @@ export default function ProjectBoardPage() {
                   </Button>
                 </CardContent>
               </Card>
+
               <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2">Recent entries</p>
+                <p className="text-xs font-medium text-muted-foreground mb-2">
+                  Recent time entries
+                </p>
                 {timeLoading ? (
                   <Skeleton className="h-16 w-full" />
                 ) : timeEntries.length === 0 ? (

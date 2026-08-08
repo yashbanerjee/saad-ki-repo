@@ -457,23 +457,28 @@ export class ProjectsService {
       blocked: project.issues.filter((i) => i.status === 'BLOCKED').length,
     };
 
-    // Client-facing board columns (same as staff board layout)
+    // Same 4-column Kanban as staff board (Todo · In Progress · Testing · Done)
     const boardColumns = [
       { id: 'TODO', title: 'Todo' },
       { id: 'IN_PROGRESS', title: 'In Progress' },
       { id: 'TESTING', title: 'Testing' },
-      { id: 'CODE_REVIEW', title: 'Code Review' },
-      { id: 'READY_FOR_QA', title: 'Ready for QA' },
       { id: 'DONE', title: 'Done' },
     ];
 
     const mapIssueColumn = (status: string) => {
-      if (status === 'TODO') return 'TODO';
+      if (status === 'DONE' || status === 'CANCELLED') return 'DONE';
       if (status === 'IN_PROGRESS' || status === 'BLOCKED') return 'IN_PROGRESS';
-      if (['TESTING', 'QA_FAILED'].includes(status)) return 'TESTING';
-      if (status === 'CODE_REVIEW') return 'CODE_REVIEW';
-      if (['READY_FOR_QA', 'READY_FOR_RELEASE'].includes(status)) return 'READY_FOR_QA';
-      if (status === 'DONE') return 'DONE';
+      if (
+        [
+          'TESTING',
+          'CODE_REVIEW',
+          'READY_FOR_QA',
+          'QA_FAILED',
+          'READY_FOR_RELEASE',
+        ].includes(status)
+      ) {
+        return 'TESTING';
+      }
       return 'TODO';
     };
 

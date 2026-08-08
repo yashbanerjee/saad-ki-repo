@@ -100,7 +100,9 @@ export default function ClientPortalPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Your projects</CardTitle>
-          <CardDescription>Open a project to see timeline, milestones, and tasks</CardDescription>
+          <CardDescription>
+            Open the same Kanban board as your project team — create tasks, move status, attach files
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -165,13 +167,20 @@ export default function ClientPortalPage() {
                           />
                         </div>
                       </div>
-                      {publicHref && (
-                        <Button size="sm" variant="outline" asChild>
-                          <Link href={publicHref}>
-                            View dashboard <ExternalLink className="h-3.5 w-3.5 ml-1" />
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" asChild>
+                          <Link href={`/projects/${project.id}/board`}>
+                            Open board <ArrowRight className="h-3.5 w-3.5 ml-1" />
                           </Link>
                         </Button>
-                      )}
+                        {publicHref && (
+                          <Button size="sm" variant="outline" asChild>
+                            <Link href={publicHref}>
+                              Share view <ExternalLink className="h-3.5 w-3.5 ml-1" />
+                            </Link>
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   );
                 },
