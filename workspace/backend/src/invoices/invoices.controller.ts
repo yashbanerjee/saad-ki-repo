@@ -22,11 +22,10 @@ import { InvoicesService } from './invoices.service';
 import {
   CreateInvoiceDto,
   UpdateInvoiceDto,
-  InvoiceFilterDto,
+  ListInvoicesQueryDto,
 } from './dto/invoice.dto';
 import { CurrentUser, AuthenticatedUser, Permissions } from '../common/decorators';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
-import { PaginationDto } from '../common/dto/pagination.dto';
 import { ParseCuidPipe } from '../common/pipes/parse-cuid.pipe';
 
 const uploadMulterOptions = {
@@ -45,14 +44,13 @@ export class InvoicesController {
   @Permissions('invoices:read')
   findAll(
     @CurrentUser() user: AuthenticatedUser,
-    @Query() filters: InvoiceFilterDto,
-    @Query() pagination: PaginationDto,
+    @Query() query: ListInvoicesQueryDto,
   ) {
     return this.invoicesService.findAll(
       user,
-      filters,
-      pagination.page,
-      pagination.limit,
+      query,
+      query.page,
+      query.limit,
     );
   }
 

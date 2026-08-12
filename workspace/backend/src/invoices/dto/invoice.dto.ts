@@ -5,7 +5,9 @@ import {
   IsNumber,
   IsDateString,
   IsArray,
+  IsInt,
   Min,
+  Max,
   ValidateNested,
   MinLength,
 } from 'class-validator';
@@ -161,4 +163,22 @@ export class InvoiceFilterDto {
   @IsOptional()
   @IsEnum(InvoiceBillingType)
   billingType?: InvoiceBillingType;
+}
+
+/** Single query DTO — Nest validates the full query against one class when forbidNonWhitelisted is on. */
+export class ListInvoicesQueryDto extends InvoiceFilterDto {
+  @ApiPropertyOptional({ default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number = 1;
+
+  @ApiPropertyOptional({ default: 20 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number = 20;
 }
