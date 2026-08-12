@@ -1,9 +1,9 @@
-import { Controller, Get, Patch, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators';
-import { PaginationDto } from '../common/dto/pagination.dto';
 import { ParseCuidPipe } from '../common/pipes/parse-cuid.pipe';
+import { NotificationsQueryDto } from './dto/notifications-query.dto';
 
 @ApiTags('notifications')
 @ApiBearerAuth()
@@ -14,22 +14,19 @@ export class NotificationsController {
   @Get()
   findAll(
     @CurrentUser() user: AuthenticatedUser,
-    @Query() query: PaginationDto,
-    @Query('unreadOnly') unreadOnly?: string,
-    @Query('recent') recent?: string,
-    @Query('recentDays') recentDays?: string,
+    @Query() query: NotificationsQueryDto,
   ) {
-    const days =
-      recent === 'true'
-        ? 2
-        : recentDays
-          ? Math.min(Math.max(Number(recentDays) || 0, 0), 30)
-          : undefined;
+    const days = query.recent
+      ? 2
+      : query.recentDays
+        ? Math.min(Math.max(Number(query.recentDays) || 0, 0), 30)
+        : undefined;
+
     return this.notificationsService.findAll(
       user.id,
-      unreadOnly === 'true',
-      query.page,
-      query.limit,
+      Boolean(query.unreadOnly),
+      query.page ?? 1,
+      query.limit ?? 20,
       days ? { recentDays: days } : undefined,
     );
   }

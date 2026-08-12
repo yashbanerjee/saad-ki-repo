@@ -761,16 +761,15 @@ export const notificationsApi = {
     unreadOnly?: boolean;
     recent?: boolean;
     recentDays?: number;
-  }) =>
-    api.get("/notifications", {
-      params: {
-        page: params?.page,
-        limit: params?.limit,
-        unreadOnly: params?.unreadOnly ? "true" : undefined,
-        recent: params?.recent ? "true" : undefined,
-        recentDays: params?.recentDays,
-      },
-    }),
+  }) => {
+    const query: Record<string, string | number> = {};
+    if (params?.page != null) query.page = params.page;
+    if (params?.limit != null) query.limit = params.limit;
+    if (params?.unreadOnly) query.unreadOnly = "true";
+    if (params?.recent) query.recent = "true";
+    if (params?.recentDays != null) query.recentDays = params.recentDays;
+    return api.get("/notifications", { params: query });
+  },
   markRead: (id: string) => api.patch(`/notifications/${id}/read`),
   markAllRead: () => api.patch("/notifications/read-all"),
 };

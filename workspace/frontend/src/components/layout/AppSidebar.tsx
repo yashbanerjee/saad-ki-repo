@@ -56,7 +56,8 @@ interface NavItem {
 const mainNav: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { title: "Projects", href: "/projects", icon: FolderKanban },
-  { title: "Issues", href: "/issues", icon: Bug },
+  // Issues list is client-facing; staff use project boards instead
+  { title: "Issues", href: "/issues", icon: Bug, roles: ["client"] },
   { title: "Onboarding", href: "/onboarding", icon: ClipboardList, roles: ["admin", "manager"] },
   { title: "NDA", href: "/nda", icon: FileSignature, roles: ["admin", "manager"] },
   { title: "Documents", href: "/documents", icon: FileText },

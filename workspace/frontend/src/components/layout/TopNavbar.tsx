@@ -46,10 +46,16 @@ export function TopNavbar({ onOpenCommand }: TopNavbarProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  const { data, isLoading, isError, isFetching } = useQuery({
+  const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: ["notifications", "recent-popup"],
-    queryFn: () =>
-      notificationsApi.list({ recent: true, limit: 10, page: 1 }),
+    queryFn: async () => {
+      try {
+        return await notificationsApi.list({ recent: true, limit: 10, page: 1 });
+      } catch {
+        // Fallback if recent filter is unavailable on older API deploys
+        return notificationsApi.list({ limit: 10, page: 1 });
+      }
+    },
     retry: false,
     refetchInterval: 60_000,
   });
@@ -163,13 +169,25 @@ export function TopNavbar({ onOpenCommand }: TopNavbarProps) {
                   </p>
                 </div>
               ) : isError ? (
-                <p className="px-3 py-8 text-center text-sm text-muted-foreground">
-                  Failed to load notifications
-                </p>
+                <div className="px-3 py-8 text-center space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    Couldn&apos;t load notifications right now.
+                  </p>
+                  <Button variant="ghost" size="sm" onClick={() => refetch()}>
+                    Try again
+                  </Button>
+                </div>
               ) : notifications.length === 0 ? (
-                <p className="px-3 py-8 text-center text-sm text-muted-foreground">
-                  No recent notifications
-                </p>
+                <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                    <Bell className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm font-medium">You&apos;re all caught up</p>
+                  <p className="text-xs text-muted-foreground max-w-[16rem]">
+                    No new notifications in the last 2 days. We&apos;ll let you know
+                    when something needs your attention.
+                  </p>
+                </div>
               ) : (
                 notifications.map(
                   (n: {

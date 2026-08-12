@@ -71,6 +71,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'users:read', 'projects:read', 'issues:create', 'issues:manage', 'issues:read',
     'sprints:read', 'teams:read', 'dashboard:read', 'search:read', 'documents:read',
     'leads:read', 'clients:read', 'deals:read', 'contacts:read', 'organizations:read', 'crm_tasks:read',
+    'invoices:read', 'invoices:manage',
   ],
   developer: [
     'projects:read', 'issues:create', 'issues:read',

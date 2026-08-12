@@ -39,7 +39,12 @@ export default function NotificationsPage() {
     },
   });
 
-  const notifications: Notification[] = data?.data?.data ?? data?.data ?? [];
+  const raw = data?.data?.data ?? data?.data;
+  const notifications: Notification[] = Array.isArray(raw?.data)
+    ? raw.data
+    : Array.isArray(raw)
+      ? raw
+      : [];
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   return (
@@ -59,8 +64,8 @@ export default function NotificationsPage() {
       ) : notifications.length === 0 ? (
         <EmptyState
           icon={Bell}
-          title="No notifications"
-          description="You're all caught up. New activity will appear here."
+          title="You're all caught up"
+          description="No notifications right now. Mentions, assignments, and important updates will show up here."
         />
       ) : (
         <Card>

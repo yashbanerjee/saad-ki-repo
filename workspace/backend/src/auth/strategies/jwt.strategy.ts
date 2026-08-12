@@ -4,6 +4,7 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtPayload, AuthenticatedUser } from '../../common/decorators';
+import { ROLE_PERMISSIONS } from '../../common/constants/permissions.constants';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
@@ -47,17 +48,12 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       ),
     ];
 
-    // Ensure portal clients always have board/task capabilities even if DB role lagged
-    if (roles.includes('client')) {
-      for (const slug of [
-        'projects:read',
-        'issues:read',
-        'issues:create',
-        'documents:read',
-        'documents:manage',
-        'invoices:read',
-        'nda:read',
-      ]) {
+    // Merge canonical ROLE_PERMISSIONS so older DB role seeds stay in sync
+    // (e.g. invoices:manage on company_admin / project_manager).
+    for (const role of roles) {
+      const expected = ROLE_PERMISSIONS[role];
+      if (!expected) continue;
+      for (const slug of expected) {
         if (!permissions.includes(slug)) permissions.push(slug);
       }
     }
