@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -18,8 +18,8 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 import {
-  AreaChart,
-  Area,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -28,13 +28,14 @@ import {
   PieChart,
   Pie,
   Cell,
+  Legend,
 } from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { dashboardApi, projectsApi } from "@/lib/api";
+import { dashboardApi } from "@/lib/api";
 import { formatRelativeTime, formatDate } from "@/lib/utils";
 import { useAuthStore, isClientUser } from "@/lib/auth-store";
 
@@ -69,12 +70,30 @@ interface ActivityItem {
   time: string;
 }
 
-interface DashboardProject {
+interface ProjectProgressRow {
   id: string;
   name: string;
-  progress?: number;
+  key?: string;
   status?: string;
-  dueDate?: string;
+  dueDate?: string | null;
+  progress: number;
+  totalTasks?: number;
+  doneTasks?: number;
+  inProgressTasks?: number;
+  todoTasks?: number;
+}
+
+function unwrapStatsPayload(raw: unknown) {
+  if (!raw || typeof raw !== "object") return null;
+  const root = raw as Record<string, unknown>;
+  const nested = root.data;
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    const n = nested as Record<string, unknown>;
+    if (Array.isArray(n.data) || n.projectReport || n.projectProgress) {
+      return n;
+    }
+  }
+  return root;
 }
 
 export default function DashboardPage() {
@@ -102,12 +121,54 @@ export default function DashboardPage() {
     enabled: !isClient,
   });
 
-  const { data: projectsData, isLoading: projectsLoading } = useQuery({
-    queryKey: ["projects"],
-    queryFn: () => projectsApi.list(),
-    retry: false,
-    enabled: !isClient,
-  });
+  const payload = useMemo(
+    () => unwrapStatsPayload(statsData?.data) ?? {},
+    [statsData],
+  );
+
+  const stats: DashboardStat[] = useMemo(() => {
+    const list = Array.isArray(payload.data) ? payload.data : [];
+    if (list.length > 0) return list as DashboardStat[];
+    return STAT_LABELS.map((s) => ({ label: s.label, value: "0" }));
+  }, [payload]);
+
+  const projectProgress: ProjectProgressRow[] = useMemo(() => {
+    const rows = Array.isArray(payload.projectProgress)
+      ? payload.projectProgress
+      : [];
+    return rows as ProjectProgressRow[];
+  }, [payload]);
+
+  const projectReport = useMemo(() => {
+    const raw =
+      payload.projectReport && typeof payload.projectReport === "object"
+        ? (payload.projectReport as Record<string, unknown>)
+        : {};
+    return {
+      overallProgress: Number(raw.overallProgress ?? 0),
+      totalProjects: Number(raw.totalProjects ?? 0),
+      totalTasks: Number(raw.totalTasks ?? 0),
+      doneTasks: Number(raw.doneTasks ?? 0),
+      inProgressTasks: Number(raw.inProgressTasks ?? 0),
+      todoTasks: Number(raw.todoTasks ?? 0),
+      byProject: Array.isArray(raw.byProject)
+        ? (raw.byProject as {
+            name: string;
+            fullName?: string;
+            id: string;
+            progress: number;
+            done: number;
+            total: number;
+          }[])
+        : [],
+    };
+  }, [payload]);
+
+  const statusData: { name: string; value: number; color: string }[] = useMemo(() => {
+    return Array.isArray(payload.distribution)
+      ? (payload.distribution as { name: string; value: number; color: string }[])
+      : [];
+  }, [payload]);
 
   if (isClient) {
     return (
@@ -117,36 +178,11 @@ export default function DashboardPage() {
     );
   }
 
-  const apiStats = statsData?.data?.data ?? statsData?.data;
-  const stats: DashboardStat[] =
-    Array.isArray(apiStats) && apiStats.length > 0
-      ? apiStats
-      : Array.isArray(apiStats?.data) && apiStats.data.length > 0
-        ? apiStats.data
-        : STAT_LABELS.map((s) => ({ label: s.label, value: "0" }));
-
   const rawActivity = activityData?.data?.data ?? activityData?.data ?? [];
   const activity: ActivityItem[] = Array.isArray(rawActivity) ? rawActivity : [];
-  const projects: DashboardProject[] = (() => {
-    const raw = projectsData?.data?.data ?? projectsData?.data ?? [];
-    if (Array.isArray(raw)) return raw;
-    if (Array.isArray((raw as { data?: DashboardProject[] })?.data)) {
-      return (raw as { data: DashboardProject[] }).data;
-    }
-    return [];
-  })();
-
-  const velocityData: { week: string; tasks: number; bugs: number }[] =
-    (Array.isArray(statsData?.data?.velocity) && statsData.data.velocity) ||
-    (Array.isArray(statsData?.data?.data?.velocity) && statsData.data.data.velocity) ||
-    [];
-
-  const statusData: { name: string; value: number; color: string }[] =
-    (Array.isArray(statsData?.data?.distribution) && statsData.data.distribution) ||
-    (Array.isArray(statsData?.data?.data?.distribution) && statsData.data.data.distribution) ||
-    [];
-
+  const reportBars = projectReport.byProject;
   const firstName = user?.name?.split(" ")[0] ?? "there";
+  const overallPct = projectReport.overallProgress;
 
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="space-y-8">
@@ -164,7 +200,7 @@ export default function DashboardPage() {
               Good evening, {firstName}.
             </h1>
             <p className="text-muted-foreground">
-              Your workspace overview. Track projects, issues, and team activity.
+              Track project progress and overall delivery across your workspace.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -220,48 +256,165 @@ export default function DashboardPage() {
             })}
       </motion.div>
 
+      {/* Overall project report graph */}
+      <motion.div variants={item}>
+        <Card>
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle>Overall project report</CardTitle>
+              <CardDescription>
+                Completion % by project · {projectReport.doneTasks ?? 0} of{" "}
+                {projectReport.totalTasks ?? 0} tasks done across{" "}
+                {projectReport.totalProjects ?? 0} projects
+              </CardDescription>
+            </div>
+            <div className="rounded-xl border border-border bg-muted/40 px-4 py-2 text-center dark:border-white/8">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Workspace progress
+              </p>
+              <p className="text-2xl font-bold text-vedha-teal dark:text-vedha-cyan">
+                {overallPct}%
+              </p>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {statsLoading ? (
+              <Skeleton className="h-[320px] w-full" />
+            ) : reportBars.length === 0 ? (
+              <div className="flex h-[280px] items-center justify-center text-sm text-muted-foreground">
+                No project data yet — create a project and add tasks to see the report.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={Math.max(280, reportBars.length * 36)}>
+                <BarChart
+                  data={reportBars}
+                  layout="vertical"
+                  margin={{ top: 8, right: 24, left: 8, bottom: 8 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(100,116,139,0.2)" horizontal={false} />
+                  <XAxis
+                    type="number"
+                    domain={[0, 100]}
+                    tickFormatter={(v) => `${v}%`}
+                    stroke="#64748b"
+                    fontSize={12}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={120}
+                    stroke="#64748b"
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <Tooltip
+                    formatter={(value: number, _name, props) => {
+                      const row = props?.payload as {
+                        done?: number;
+                        total?: number;
+                        fullName?: string;
+                      };
+                      return [
+                        `${value}% (${row?.done ?? 0}/${row?.total ?? 0} tasks)`,
+                        row?.fullName || "Progress",
+                      ];
+                    }}
+                    contentStyle={{
+                      background: "rgba(17,24,39,0.92)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      borderRadius: 12,
+                    }}
+                  />
+                  <Bar
+                    dataKey="progress"
+                    name="Progress"
+                    fill="#0f6661"
+                    radius={[0, 6, 6, 0]}
+                    maxBarSize={22}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
+
       <div className="grid gap-6 xl:grid-cols-3">
         <motion.div variants={item} className="xl:col-span-2">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
-                <CardTitle>Sprint progress</CardTitle>
-                <CardDescription>Tasks completed vs bugs · last 6 weeks</CardDescription>
+                <CardTitle className="flex items-center gap-2">
+                  <FolderKanban className="h-4 w-4 text-vedha-cyan" />
+                  Project progress
+                </CardTitle>
+                <CardDescription>Progress based on completed board tasks</CardDescription>
               </div>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/projects">View all</Link>
+              </Button>
             </CardHeader>
             <CardContent>
-              {velocityData.length === 0 ? (
-                <div className="flex h-[280px] items-center justify-center text-sm text-muted-foreground">
-                  No sprint data available
+              {statsLoading ? (
+                <div className="space-y-4">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <Skeleton key={i} className="h-20 w-full" />
+                  ))}
                 </div>
+              ) : projectProgress.length === 0 ? (
+                <EmptyState
+                  icon={FolderKanban}
+                  title="No projects"
+                  description="Create a project to see progress here."
+                  actionLabel="New project"
+                  actionHref="/projects"
+                  className="py-10"
+                />
               ) : (
-                <ResponsiveContainer width="100%" height={280}>
-                  <AreaChart data={velocityData}>
-                    <defs>
-                      <linearGradient id="vedhaTasks" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#0f6661" stopOpacity={0.45} />
-                        <stop offset="100%" stopColor="#0f6661" stopOpacity={0} />
-                      </linearGradient>
-                      <linearGradient id="vedhaBugs" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#d4a574" stopOpacity={0.35} />
-                        <stop offset="100%" stopColor="#d4a574" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                    <XAxis dataKey="week" stroke="#64748b" fontSize={12} tickLine={false} />
-                    <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-                    <Tooltip
-                      contentStyle={{
-                        background: "rgba(17,24,39,0.92)",
-                        border: "1px solid rgba(255,255,255,0.08)",
-                        borderRadius: 12,
-                        backdropFilter: "blur(20px)",
-                      }}
-                    />
-                    <Area type="monotone" dataKey="tasks" stroke="#a1c8cf" fill="url(#vedhaTasks)" strokeWidth={2} />
-                    <Area type="monotone" dataKey="bugs" stroke="#d4a574" fill="url(#vedhaBugs)" strokeWidth={2} />
-                  </AreaChart>
-                </ResponsiveContainer>
+                <div className="space-y-4">
+                  {projectProgress.map((p) => (
+                    <Link
+                      key={p.id}
+                      href={`/projects/${p.id}`}
+                      className="block rounded-xl border border-border bg-muted/40 p-4 transition-colors hover:border-vedha-teal/30 dark:border-white/8 dark:bg-white/[0.03] dark:hover:border-vedha-cyan/20"
+                    >
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{p.name}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {p.doneTasks ?? 0}/{p.totalTasks ?? 0} tasks done
+                            {typeof p.inProgressTasks === "number"
+                              ? ` · ${p.inProgressTasks} in progress`
+                              : ""}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span className="text-sm font-semibold tabular-nums">
+                            {p.progress ?? 0}%
+                          </span>
+                          {p.status && (
+                            <Badge variant={p.status === "ACTIVE" ? "success" : "secondary"}>
+                              {String(p.status).replace(/_/g, " ")}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mb-2 h-2 overflow-hidden rounded-full bg-muted dark:bg-white/5">
+                        <div
+                          className="h-full rounded-full gradient-vedha transition-all"
+                          style={{ width: `${Math.min(100, Math.max(0, p.progress ?? 0))}%` }}
+                        />
+                      </div>
+                      {p.dueDate && (
+                        <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Calendar className="h-3 w-3" /> Due {formatDate(p.dueDate)}
+                        </p>
+                      )}
+                    </Link>
+                  ))}
+                </div>
               )}
             </CardContent>
           </Card>
@@ -270,13 +423,15 @@ export default function DashboardPage() {
         <motion.div variants={item}>
           <Card className="h-full">
             <CardHeader>
-              <CardTitle>Distribution</CardTitle>
-              <CardDescription>Current sprint</CardDescription>
+              <CardTitle>Task distribution</CardTitle>
+              <CardDescription>All projects · by status</CardDescription>
             </CardHeader>
             <CardContent>
-              {statusData.length === 0 ? (
+              {statsLoading ? (
+                <Skeleton className="h-[220px] w-full" />
+              ) : statusData.length === 0 ? (
                 <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
-                  No distribution data
+                  No task data yet
                 </div>
               ) : (
                 <>
@@ -302,13 +457,14 @@ export default function DashboardPage() {
                           borderRadius: 12,
                         }}
                       />
+                      <Legend />
                     </PieChart>
                   </ResponsiveContainer>
-                  <div className="mt-2 flex justify-center gap-4">
+                  <div className="mt-2 flex flex-wrap justify-center gap-3">
                     {statusData.map((s) => (
                       <div key={s.name} className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <span className="h-2 w-2 rounded-full" style={{ background: s.color }} />
-                        {s.name}
+                        {s.name} ({s.value})
                       </div>
                     ))}
                   </div>
@@ -319,113 +475,51 @@ export default function DashboardPage() {
         </motion.div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <motion.div variants={item}>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <FolderKanban className="h-4 w-4 text-vedha-cyan" /> Projects
-              </CardTitle>
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/projects">View all</Link>
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {projectsLoading ? (
-                <div className="space-y-4">
-                  {Array.from({ length: 3 }).map((_, i) => (
-                    <Skeleton key={i} className="h-20 w-full" />
-                  ))}
-                </div>
-              ) : projects.length === 0 ? (
-                <EmptyState
-                  icon={FolderKanban}
-                  title="No projects"
-                  description="Create a project to see progress here."
-                  actionLabel="New project"
-                  actionHref="/projects"
-                  className="py-10"
-                />
-              ) : (
-                <div className="space-y-4">
-                  {projects.slice(0, 3).map((p) => (
-                    <Link key={p.id} href={`/projects/${p.id}`} className="block rounded-xl border border-border bg-muted/40 p-4 transition-colors hover:border-vedha-teal/30 dark:border-white/8 dark:bg-white/[0.03] dark:hover:border-vedha-cyan/20">
-                      <div className="mb-3 flex items-center justify-between gap-2">
-                        <p className="text-sm font-medium">{p.name}</p>
-                        {p.status && (
-                          <Badge variant={p.status === "active" ? "success" : "secondary"}>
-                            {p.status}
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-white/5">
-                        <div
-                          className="h-full rounded-full gradient-vedha"
-                          style={{ width: `${p.progress ?? 0}%` }}
-                        />
-                      </div>
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>{p.progress ?? 0}%</span>
-                        {p.dueDate && (
-                          <span className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" /> {formatDate(p.dueDate)}
-                          </span>
-                        )}
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        <motion.div variants={item}>
-          <Card className="h-full">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Activity className="h-4 w-4 text-vedha-gold" /> Recent activity
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {activityLoading ? (
-                <div className="space-y-4">
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <Skeleton key={i} className="h-12 w-full" />
-                  ))}
-                </div>
-              ) : activity.length === 0 ? (
-                <EmptyState
-                  icon={Activity}
-                  title="No recent activity"
-                  description="Activity from your team will show up here."
-                  className="py-10"
-                />
-              ) : (
-                <div className="space-y-4">
-                  {activity.map((row) => (
-                    <div key={row.id} className="flex gap-3 text-sm">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-muted/50 dark:border-white/8 dark:bg-white/[0.04]">
-                        <Clock className="h-3.5 w-3.5 text-vedha-cyan" />
-                      </div>
-                      <div className="min-w-0">
-                        <p>
-                          <span className="font-medium">{row.user}</span>{" "}
-                          <span className="text-muted-foreground">{row.action}</span>
-                        </p>
-                        <p className="truncate text-muted-foreground">{row.target}</p>
-                        <p className="mt-0.5 text-xs text-muted-foreground/70">
-                          {formatRelativeTime(row.time)}
-                        </p>
-                      </div>
+      <motion.div variants={item}>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Activity className="h-4 w-4 text-vedha-gold" /> Recent activity
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {activityLoading ? (
+              <div className="space-y-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} className="h-12 w-full" />
+                ))}
+              </div>
+            ) : activity.length === 0 ? (
+              <EmptyState
+                icon={Activity}
+                title="No recent activity"
+                description="Activity from your team will show up here."
+                className="py-10"
+              />
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {activity.map((row) => (
+                  <div key={row.id} className="flex gap-3 text-sm">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-muted/50 dark:border-white/8 dark:bg-white/[0.04]">
+                      <Clock className="h-3.5 w-3.5 text-vedha-cyan" />
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </motion.div>
-      </div>
+                    <div className="min-w-0">
+                      <p>
+                        <span className="font-medium">{row.user}</span>{" "}
+                        <span className="text-muted-foreground">{row.action}</span>
+                      </p>
+                      <p className="truncate text-muted-foreground">{row.target}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground/70">
+                        {formatRelativeTime(row.time)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
 
       <motion.div variants={item} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[

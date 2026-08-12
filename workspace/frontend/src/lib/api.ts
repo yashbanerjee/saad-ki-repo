@@ -702,6 +702,13 @@ function mapOverviewToStatsPayload(overview: Record<string, unknown>) {
     data,
     velocity: Array.isArray(overview.velocity) ? overview.velocity : [],
     distribution: Array.isArray(overview.distribution) ? overview.distribution : distribution,
+    projectProgress: Array.isArray(overview.projectProgress)
+      ? overview.projectProgress
+      : [],
+    projectReport:
+      overview.projectReport && typeof overview.projectReport === "object"
+        ? overview.projectReport
+        : undefined,
     activity: recent.map((row, i) => {
       if (row.action && row.user && row.time) return row;
       const user = row.user as { firstName?: string; lastName?: string } | string | undefined;

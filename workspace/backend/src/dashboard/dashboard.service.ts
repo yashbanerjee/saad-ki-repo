@@ -62,6 +62,8 @@ export class DashboardService {
       doneLastTwoWeeks,
       issuesByStatus,
       completedRecently,
+      projects,
+      projectsByStatus,
     ] = await Promise.all([
       this.prisma.project.count({ where: { companyId, status: 'ACTIVE' } }),
       this.prisma.issue.count({
@@ -98,6 +100,31 @@ export class DashboardService {
         },
         select: { type: true, updatedAt: true },
       }),
+      this.prisma.project.findMany({
+        where: {
+          companyId,
+          status: { notIn: ['ARCHIVED', 'CANCELLED'] },
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: 20,
+        select: {
+          id: true,
+          name: true,
+          key: true,
+          status: true,
+          endDate: true,
+          avatar: true,
+          issues: {
+            where: { status: { not: 'CANCELLED' } },
+            select: { status: true },
+          },
+        },
+      }),
+      this.prisma.project.groupBy({
+        by: ['status'],
+        where: { companyId },
+        _count: true,
+      }),
     ]);
 
     const avgVelocity = Math.round(doneLastTwoWeeks / 2);
@@ -132,7 +159,68 @@ export class DashboardService {
         color: STATUS_COLORS[g.status] ?? '#64748b',
       }));
 
-    return { data, velocity, distribution };
+    const projectProgress = projects.map((p) => {
+      const total = p.issues.length;
+      const done = p.issues.filter((i) => i.status === 'DONE').length;
+      const inProgress = p.issues.filter((i) =>
+        ['IN_PROGRESS', 'TESTING', 'CODE_REVIEW', 'READY_FOR_QA'].includes(i.status),
+      ).length;
+      const todo = Math.max(0, total - done - inProgress);
+      const progress = total > 0 ? Math.round((done / total) * 100) : 0;
+      return {
+        id: p.id,
+        name: p.name,
+        key: p.key,
+        status: p.status,
+        dueDate: p.endDate ? p.endDate.toISOString() : null,
+        avatar: p.avatar,
+        totalTasks: total,
+        doneTasks: done,
+        inProgressTasks: inProgress,
+        todoTasks: todo,
+        progress,
+      };
+    });
+
+    const overallDone = projectProgress.reduce((s, p) => s + p.doneTasks, 0);
+    const overallTotal = projectProgress.reduce((s, p) => s + p.totalTasks, 0);
+    const overallInProgress = projectProgress.reduce((s, p) => s + p.inProgressTasks, 0);
+    const overallTodo = projectProgress.reduce((s, p) => s + p.todoTasks, 0);
+
+    const PROJECT_STATUS_COLORS: Record<string, string> = {
+      PLANNING: '#64748b',
+      ACTIVE: '#0f6661',
+      ON_HOLD: '#d4a574',
+      COMPLETED: '#10b981',
+      ARCHIVED: '#52525b',
+      CANCELLED: '#ef4444',
+    };
+
+    const projectReport = {
+      overallProgress: overallTotal > 0 ? Math.round((overallDone / overallTotal) * 100) : 0,
+      totalProjects: projectProgress.length,
+      totalTasks: overallTotal,
+      doneTasks: overallDone,
+      inProgressTasks: overallInProgress,
+      todoTasks: overallTodo,
+      byProject: projectProgress.map((p) => ({
+        name: p.name.length > 18 ? `${p.name.slice(0, 16)}…` : p.name,
+        fullName: p.name,
+        id: p.id,
+        progress: p.progress,
+        done: p.doneTasks,
+        total: p.totalTasks,
+      })),
+      byStatus: projectsByStatus
+        .filter((g) => g._count > 0)
+        .map((g) => ({
+          name: String(g.status).replace(/_/g, ' '),
+          value: g._count,
+          color: PROJECT_STATUS_COLORS[g.status] ?? '#64748b',
+        })),
+    };
+
+    return { data, velocity, distribution, projectProgress, projectReport };
   }
 
   async getActivity(companyId: string) {
