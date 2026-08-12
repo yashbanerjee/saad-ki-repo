@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { IssueStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -25,13 +26,15 @@ const STATUS_LABELS: Record<string, string> = {
   CANCELLED: 'Cancelled',
 };
 
+const DONE_STATUS: IssueStatus = IssueStatus.DONE;
+
 @Injectable()
 export class DashboardService {
   constructor(private prisma: PrismaService) {}
 
   async getOverview(companyId: string) {
     const statsPayload = await this.getStats(companyId);
-    const activity = await this.getActivity(companyId);
+    const activity = await this.getActivity(companyId, 5);
     return {
       stats: Object.fromEntries(
         (statsPayload.data as { label: string; value: string }[]).map((s) => [
@@ -49,53 +52,48 @@ export class DashboardService {
   }
 
   async getStats(companyId: string) {
-    const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
     const sixWeeksAgo = new Date(Date.now() - 42 * 24 * 60 * 60 * 1000);
     const openStatuses = {
-      notIn: ['DONE', 'CANCELLED'] as ('DONE' | 'CANCELLED')[],
+      notIn: [IssueStatus.DONE, IssueStatus.CANCELLED] as IssueStatus[],
     };
+
+    const projectScope: Prisma.ProjectWhereInput = { companyId };
 
     const [
       activeProjects,
       openTasks,
       openBugs,
-      doneLastTwoWeeks,
       issuesByStatus,
       completedRecently,
       projects,
       projectsByStatus,
+      activeSprint,
+      completedSprints,
     ] = await Promise.all([
       this.prisma.project.count({ where: { companyId, status: 'ACTIVE' } }),
       this.prisma.issue.count({
         where: {
-          project: { companyId },
+          project: projectScope,
           type: { not: 'BUG' },
           status: openStatuses,
         },
       }),
       this.prisma.issue.count({
         where: {
-          project: { companyId },
+          project: projectScope,
           type: 'BUG',
           status: openStatuses,
         },
       }),
-      this.prisma.issue.count({
-        where: {
-          project: { companyId },
-          status: 'DONE',
-          updatedAt: { gte: twoWeeksAgo },
-        },
-      }),
       this.prisma.issue.groupBy({
         by: ['status'],
-        where: { project: { companyId } },
+        where: { project: projectScope },
         _count: true,
       }),
       this.prisma.issue.findMany({
         where: {
-          project: { companyId },
-          status: 'DONE',
+          project: projectScope,
+          status: DONE_STATUS,
           updatedAt: { gte: sixWeeksAgo },
         },
         select: { type: true, updatedAt: true },
@@ -115,7 +113,7 @@ export class DashboardService {
           endDate: true,
           avatar: true,
           issues: {
-            where: { status: { not: 'CANCELLED' } },
+            where: { status: { not: IssueStatus.CANCELLED } },
             select: { status: true },
           },
         },
@@ -125,17 +123,116 @@ export class DashboardService {
         where: { companyId },
         _count: true,
       }),
+      this.prisma.sprint.findFirst({
+        where: {
+          status: 'ACTIVE',
+          project: { companyId },
+        },
+        orderBy: [{ startDate: 'desc' }, { updatedAt: 'desc' }],
+        select: {
+          id: true,
+          name: true,
+          startDate: true,
+          endDate: true,
+          project: { select: { id: true, name: true, key: true } },
+          issues: {
+            where: { status: { not: IssueStatus.CANCELLED } },
+            select: { id: true, status: true, type: true, storyPoints: true },
+          },
+        },
+      }),
+      this.prisma.sprint.findMany({
+        where: {
+          status: 'COMPLETED',
+          project: { companyId },
+        },
+        select: {
+          id: true,
+          name: true,
+          issues: {
+            where: { status: DONE_STATUS },
+            select: { storyPoints: true, type: true },
+          },
+        },
+      }),
     ]);
 
-    const avgVelocity = Math.round(doneLastTwoWeeks / 2);
+    // ── Sprint Progress (active sprint only) ──────────────
+    let sprintProgress: {
+      hasActiveSprint: boolean;
+      sprintId: string | null;
+      sprintName: string | null;
+      projectName: string | null;
+      totalTasks: number;
+      completedTasks: number;
+      progressPercent: number;
+      message?: string;
+    };
+
+    if (!activeSprint) {
+      sprintProgress = {
+        hasActiveSprint: false,
+        sprintId: null,
+        sprintName: null,
+        projectName: null,
+        totalTasks: 0,
+        completedTasks: 0,
+        progressPercent: 0,
+        message: 'No active sprint',
+      };
+    } else {
+      const totalTasks = activeSprint.issues.length;
+      const completedTasks = activeSprint.issues.filter(
+        (i) => i.status === DONE_STATUS,
+      ).length;
+      sprintProgress = {
+        hasActiveSprint: true,
+        sprintId: activeSprint.id,
+        sprintName: activeSprint.name,
+        projectName: activeSprint.project?.name ?? null,
+        totalTasks,
+        completedTasks,
+        progressPercent:
+          totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
+        message: totalTasks === 0 ? 'No sprint tasks' : undefined,
+      };
+    }
+
+    // ── Avg Velocity (completed sprints) ──────────────────
+    // Prefer story points when any completed sprint has them; else completed task counts.
+    const completedSprintCount = completedSprints.length;
+    let usesStoryPoints = false;
+    let avgVelocityValue = 0;
+
+    if (completedSprintCount > 0) {
+      const totalStoryPoints = completedSprints.reduce((sum, s) => {
+        return (
+          sum +
+          s.issues.reduce((sp, i) => sp + (typeof i.storyPoints === 'number' ? i.storyPoints : 0), 0)
+        );
+      }, 0);
+      usesStoryPoints = totalStoryPoints > 0;
+
+      if (usesStoryPoints) {
+        avgVelocityValue = Math.round((totalStoryPoints / completedSprintCount) * 10) / 10;
+      } else {
+        const totalDoneTasks = completedSprints.reduce(
+          (sum, s) => sum + s.issues.length,
+          0,
+        );
+        avgVelocityValue =
+          Math.round((totalDoneTasks / completedSprintCount) * 10) / 10;
+      }
+    }
 
     const data = [
       { label: 'Active Projects', value: String(activeProjects) },
       { label: 'Open Tasks', value: String(openTasks) },
       { label: 'Open Bugs', value: String(openBugs) },
-      { label: 'Avg. Velocity', value: String(avgVelocity) },
+      { label: 'Avg. Velocity', value: String(avgVelocityValue) },
     ];
 
+    // ── Tasks completed vs Bugs (last 6 weeks, DONE only) ─
     const weekBuckets = this.buildWeekBuckets(6);
     for (const issue of completedRecently) {
       const key = this.weekKey(issue.updatedAt);
@@ -161,7 +258,7 @@ export class DashboardService {
 
     const projectProgress = projects.map((p) => {
       const total = p.issues.length;
-      const done = p.issues.filter((i) => i.status === 'DONE').length;
+      const done = p.issues.filter((i) => i.status === DONE_STATUS).length;
       const inProgress = p.issues.filter((i) =>
         ['IN_PROGRESS', 'TESTING', 'CODE_REVIEW', 'READY_FOR_QA'].includes(i.status),
       ).length;
@@ -184,7 +281,10 @@ export class DashboardService {
 
     const overallDone = projectProgress.reduce((s, p) => s + p.doneTasks, 0);
     const overallTotal = projectProgress.reduce((s, p) => s + p.totalTasks, 0);
-    const overallInProgress = projectProgress.reduce((s, p) => s + p.inProgressTasks, 0);
+    const overallInProgress = projectProgress.reduce(
+      (s, p) => s + p.inProgressTasks,
+      0,
+    );
     const overallTodo = projectProgress.reduce((s, p) => s + p.todoTasks, 0);
 
     const PROJECT_STATUS_COLORS: Record<string, string> = {
@@ -197,7 +297,8 @@ export class DashboardService {
     };
 
     const projectReport = {
-      overallProgress: overallTotal > 0 ? Math.round((overallDone / overallTotal) * 100) : 0,
+      overallProgress:
+        overallTotal > 0 ? Math.round((overallDone / overallTotal) * 100) : 0,
       totalProjects: projectProgress.length,
       totalTasks: overallTotal,
       doneTasks: overallDone,
@@ -220,13 +321,28 @@ export class DashboardService {
         })),
     };
 
-    return { data, velocity, distribution, projectProgress, projectReport };
+    return {
+      data,
+      velocity,
+      distribution,
+      projectProgress,
+      projectReport,
+      sprintProgress,
+      avgVelocity: {
+        value: avgVelocityValue,
+        unit: usesStoryPoints ? 'story_points' : 'tasks',
+        completedSprints: completedSprintCount,
+        message:
+          completedSprintCount === 0 ? 'No completed sprints' : undefined,
+      },
+    };
   }
 
-  async getActivity(companyId: string) {
+  async getActivity(companyId: string, limit = 20) {
+    const take = Math.min(Math.max(limit, 1), 50);
     const logs = await this.prisma.activityLog.findMany({
       where: { companyId },
-      take: 20,
+      take,
       orderBy: { createdAt: 'desc' },
       include: {
         user: { select: { id: true, firstName: true, lastName: true, email: true } },
@@ -245,10 +361,9 @@ export class DashboardService {
       }));
     }
 
-    // Fallback to audit trail when no activity_logs rows exist yet
     const audits = await this.prisma.auditLog.findMany({
       where: { companyId },
-      take: 20,
+      take,
       orderBy: { createdAt: 'desc' },
       include: {
         user: { select: { id: true, firstName: true, lastName: true, email: true } },
@@ -269,7 +384,8 @@ export class DashboardService {
   }
 
   private buildWeekBuckets(weeks: number) {
-    const buckets: { key: string; label: string; tasks: number; bugs: number }[] = [];
+    const buckets: { key: string; label: string; tasks: number; bugs: number }[] =
+      [];
     const now = new Date();
     for (let i = weeks - 1; i >= 0; i--) {
       const d = new Date(now);
@@ -290,7 +406,9 @@ export class DashboardService {
     const dayNum = d.getUTCDay() || 7;
     d.setUTCDate(d.getUTCDate() + 4 - dayNum);
     const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+    const weekNo = Math.ceil(
+      ((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
+    );
     return `${d.getUTCFullYear()}-W${weekNo}`;
   }
 }

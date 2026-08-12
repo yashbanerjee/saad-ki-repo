@@ -110,9 +110,8 @@ export default function InvoiceDetailPage() {
             </div>
             <h1 className="font-display text-2xl font-bold">{invoice.title}</h1>
             <p className="text-sm text-muted-foreground">
-              {[invoice.client?.name, invoice.project?.name]
-                .filter(Boolean)
-                .join(" · ")}
+              Client: {invoice.client?.name || "—"}
+              {invoice.project?.name ? ` · ${invoice.project.name}` : ""}
             </p>
           </div>
         </div>

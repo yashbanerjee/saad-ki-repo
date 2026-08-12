@@ -306,18 +306,28 @@ export default function IssueDetailPage() {
             </span>
           </div>
           <h1 className="font-display text-2xl font-bold leading-tight">{issue.title}</h1>
-          {issue.project?.name && (
-            <p className="mt-1 text-sm text-muted-foreground">
-              in{" "}
-              <Link
-                href={`/projects/${projectId}/board`}
-                className="text-primary hover:underline"
-              >
-                {issue.project.name}
-              </Link>
-              {issue.milestone?.name ? ` · ${issue.milestone.name}` : ""}
-            </p>
-          )}
+          <p className="mt-1 text-sm text-muted-foreground">
+            {issue.project?.client?.name && (
+              <>
+                Client:{" "}
+                <span className="font-medium text-foreground">
+                  {issue.project.client.name}
+                </span>
+                {issue.project?.name ? " · " : ""}
+              </>
+            )}
+            {issue.project?.name && (
+              <>
+                <Link
+                  href={`/projects/${projectId}/board`}
+                  className="text-primary hover:underline"
+                >
+                  {issue.project.name}
+                </Link>
+                {issue.milestone?.name ? ` · ${issue.milestone.name}` : ""}
+              </>
+            )}
+          </p>
         </div>
       </div>
 
@@ -661,6 +671,12 @@ export default function IssueDetailPage() {
                   )}
                 >
                   {creatorLabel}
+                </span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground">Client</span>
+                <span className="text-right font-medium">
+                  {issue.project?.client?.name || "—"}
                 </span>
               </div>
               <div className="flex justify-between gap-2">

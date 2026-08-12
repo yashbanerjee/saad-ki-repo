@@ -218,4 +218,10 @@ export class IssueFilterDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  /** Filter issues by the project's linked Client */
+  @ApiPropertyOptional({ description: 'Client id (via project.clientId)' })
+  @IsOptional()
+  @IsString()
+  clientId?: string;
 }

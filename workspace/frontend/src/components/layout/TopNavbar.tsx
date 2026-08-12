@@ -3,6 +3,7 @@
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
   Search,
@@ -26,10 +27,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthStore } from "@/lib/auth-store";
 import { useSidebarStore } from "@/lib/sidebar-store";
-import { getInitials } from "@/lib/utils";
-import { authApi } from "@/lib/api";
+import { cn, formatRelativeTime, getInitials } from "@/lib/utils";
+import { authApi, notificationsApi } from "@/lib/api";
 import { toast } from "sonner";
 
 interface TopNavbarProps {
@@ -42,6 +44,33 @@ export function TopNavbar({ onOpenCommand }: TopNavbarProps) {
   const logout = useAuthStore((s) => s.logout);
   const setMobileOpen = useSidebarStore((s) => s.setMobileOpen);
   const router = useRouter();
+  const queryClient = useQueryClient();
+
+  const { data, isLoading, isError, isFetching } = useQuery({
+    queryKey: ["notifications", "recent-popup"],
+    queryFn: () =>
+      notificationsApi.list({ recent: true, limit: 10, page: 1 }),
+    retry: false,
+    refetchInterval: 60_000,
+  });
+
+  const payload = data?.data?.data ?? data?.data;
+  const notifications = Array.isArray(payload?.data)
+    ? payload.data
+    : Array.isArray(payload)
+      ? payload
+      : [];
+  const unreadCount =
+    typeof payload?.unreadCount === "number"
+      ? payload.unreadCount
+      : notifications.filter((n: { read?: boolean }) => !n.read).length;
+
+  const markRead = useMutation({
+    mutationFn: (id: string) => notificationsApi.markRead(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
 
   const handleLogout = async () => {
     try {
@@ -89,22 +118,108 @@ export function TopNavbar({ onOpenCommand }: TopNavbarProps) {
           variant="ghost"
           size="icon"
           onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-          aria-label={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          aria-label={
+            resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"
+          }
           className="relative"
         >
-          {/* Sun visible in light (click → dark); Moon visible in dark (click → light) */}
           <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
           <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
         </Button>
 
-        <Button variant="ghost" size="icon" asChild className="relative">
-          <Link href="/notifications" aria-label="Notifications">
-            <Bell className="h-4 w-4" />
-            <Badge className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full p-0 text-[9px]">
-              3
-            </Badge>
-          </Link>
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative"
+              aria-label="Notifications"
+            >
+              <Bell className="h-4 w-4" />
+              {unreadCount > 0 && (
+                <Badge className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full p-0 text-[9px]">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </Badge>
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            className="w-[min(100vw-2rem,22rem)] glass border-border p-0"
+            forceMount
+          >
+            <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
+              <p className="text-sm font-semibold">Notifications</p>
+              <span className="text-[11px] text-muted-foreground">Last 2 days</span>
+            </div>
+            <div className="max-h-80 overflow-y-auto">
+              {isLoading || isFetching ? (
+                <div className="space-y-2 p-3">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-12 w-full" />
+                  ))}
+                  <p className="text-center text-xs text-muted-foreground">
+                    Loading notifications...
+                  </p>
+                </div>
+              ) : isError ? (
+                <p className="px-3 py-8 text-center text-sm text-muted-foreground">
+                  Failed to load notifications
+                </p>
+              ) : notifications.length === 0 ? (
+                <p className="px-3 py-8 text-center text-sm text-muted-foreground">
+                  No recent notifications
+                </p>
+              ) : (
+                notifications.map(
+                  (n: {
+                    id: string;
+                    title?: string;
+                    body?: string;
+                    read?: boolean;
+                    createdAt?: string;
+                  }) => (
+                    <button
+                      key={n.id}
+                      type="button"
+                      className={cn(
+                        "flex w-full flex-col gap-0.5 border-b border-border/60 px-3 py-2.5 text-left transition hover:bg-muted/50",
+                        !n.read && "bg-vedha-teal/5",
+                      )}
+                      onClick={() => {
+                        if (!n.read) markRead.mutate(n.id);
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium leading-snug">
+                          {n.title || "Notification"}
+                        </p>
+                        {!n.read && (
+                          <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-vedha-teal" />
+                        )}
+                      </div>
+                      {n.body && (
+                        <p className="line-clamp-2 text-xs text-muted-foreground">
+                          {n.body}
+                        </p>
+                      )}
+                      {n.createdAt && (
+                        <p className="text-[11px] text-muted-foreground/80">
+                          {formatRelativeTime(n.createdAt)}
+                        </p>
+                      )}
+                    </button>
+                  ),
+                )
+              )}
+            </div>
+            <div className="border-t border-border p-2">
+              <Button variant="ghost" size="sm" className="w-full" asChild>
+                <Link href="/notifications">See All</Link>
+              </Button>
+            </div>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

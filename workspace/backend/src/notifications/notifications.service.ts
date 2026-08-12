@@ -10,10 +10,24 @@ export class NotificationsService {
     private gateway: NotificationsGateway,
   ) {}
 
-  async findAll(userId: string, unreadOnly = false, page = 1, limit = 20) {
+  async findAll(
+    userId: string,
+    unreadOnly = false,
+    page = 1,
+    limit = 20,
+    options?: { recentDays?: number },
+  ) {
     const skip = (page - 1) * limit;
-    const where = { userId, ...(unreadOnly ? { read: false } : {}) };
-    const [data, total] = await Promise.all([
+    const since =
+      options?.recentDays && options.recentDays > 0
+        ? new Date(Date.now() - options.recentDays * 24 * 60 * 60 * 1000)
+        : undefined;
+    const where = {
+      userId,
+      ...(unreadOnly ? { read: false } : {}),
+      ...(since ? { createdAt: { gte: since } } : {}),
+    };
+    const [data, total, unreadCount] = await Promise.all([
       this.prisma.notification.findMany({
         where,
         skip,
@@ -21,8 +35,9 @@ export class NotificationsService {
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.notification.count({ where }),
+      this.prisma.notification.count({ where: { userId, read: false } }),
     ]);
-    return { data, total, page, limit };
+    return { data, total, page, limit, unreadCount };
   }
 
   async markRead(id: string, userId: string) {

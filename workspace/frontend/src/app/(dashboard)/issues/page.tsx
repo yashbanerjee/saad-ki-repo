@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Bug, Plus, Filter, Search } from "lucide-react";
+import { Bug, Plus, Filter, Search, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,42 +17,71 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { issuesApi } from "@/lib/api";
+import { clientsApi, issuesApi } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/utils";
 
-const typeIcons = { bug: Bug, feature: Plus, task: Filter };
-const priorityVariant = { high: "destructive" as const, medium: "warning" as const, low: "secondary" as const };
-const statusVariant = { open: "info" as const, in_progress: "warning" as const, review: "secondary" as const, closed: "success" as const };
+const typeIcons = { BUG: Bug, TASK: Filter, STORY: Plus, FEATURE_REQUEST: Plus };
+const priorityVariant: Record<string, "destructive" | "warning" | "secondary"> = {
+  HIGHEST: "destructive",
+  HIGH: "destructive",
+  CRITICAL: "destructive",
+  MEDIUM: "warning",
+  LOW: "secondary",
+  LOWEST: "secondary",
+};
 
-interface Issue {
-  id: string;
-  title: string;
-  type: string;
-  priority: string;
-  status: string;
-  assignee?: string;
-  project?: string;
-  updatedAt: string;
+function personName(p?: { firstName?: string; lastName?: string } | string | null) {
+  if (!p) return "";
+  if (typeof p === "string") return p;
+  return `${p.firstName || ""} ${p.lastName || ""}`.trim();
 }
 
 export default function IssuesPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [clientFilter, setClientFilter] = useState("all");
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["issues", statusFilter, typeFilter],
-    queryFn: () => issuesApi.list({ status: statusFilter !== "all" ? statusFilter : undefined, type: typeFilter !== "all" ? typeFilter : undefined }),
+  const { data: clientsData, isLoading: clientsLoading } = useQuery({
+    queryKey: ["clients", "issues-filter"],
+    queryFn: () => clientsApi.list({ limit: 100 }),
     retry: false,
   });
 
-  const issues: Issue[] = data?.data?.data ?? data?.data ?? [];
-  const filtered = issues.filter(
-    (issue) =>
-      issue.title.toLowerCase().includes(search.toLowerCase()) &&
-      (statusFilter === "all" || issue.status === statusFilter) &&
-      (typeFilter === "all" || issue.type === typeFilter)
-  );
+  const { data, isLoading } = useQuery({
+    queryKey: ["issues", statusFilter, typeFilter, clientFilter],
+    queryFn: () =>
+      issuesApi.list({
+        limit: 100,
+        status: statusFilter !== "all" ? statusFilter : undefined,
+        type: typeFilter !== "all" ? typeFilter : undefined,
+        clientId: clientFilter !== "all" ? clientFilter : undefined,
+      }),
+    retry: false,
+  });
+
+  const clients = useMemo(() => {
+    const raw = clientsData?.data?.data ?? clientsData?.data ?? [];
+    return Array.isArray(raw) ? raw : [];
+  }, [clientsData]);
+
+  const issues = useMemo(() => {
+    const raw = data?.data?.data ?? data?.data ?? [];
+    return Array.isArray(raw) ? raw : [];
+  }, [data]);
+
+  const filtered = issues.filter((issue: { title?: string; key?: string }) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      String(issue.title || "")
+        .toLowerCase()
+        .includes(q) ||
+      String(issue.key || "")
+        .toLowerCase()
+        .includes(q)
+    );
+  });
 
   return (
     <div className="space-y-6">
@@ -61,64 +90,172 @@ export default function IssuesPage() {
           <h1 className="font-display text-2xl font-bold">Issues</h1>
           <p className="text-muted-foreground">Track bugs, features, and tasks</p>
         </div>
-        <Button><Plus className="h-4 w-4 mr-1" /> New Issue</Button>
+        <Button asChild>
+          <Link href="/projects">
+            <Plus className="h-4 w-4 mr-1" /> New Issue
+          </Link>
+        </Button>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className="flex flex-col gap-3 lg:flex-row">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search issues..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input
+            placeholder="Search issues..."
+            className="pl-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
+        <Select value={clientFilter} onValueChange={setClientFilter}>
+          <SelectTrigger className="w-full lg:w-48">
+            <SelectValue placeholder="Client" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Clients</SelectItem>
+            {clientsLoading ? (
+              <SelectItem value="__loading" disabled>
+                Loading Clients...
+              </SelectItem>
+            ) : clients.length === 0 ? (
+              <SelectItem value="__empty" disabled>
+                No Clients Found
+              </SelectItem>
+            ) : (
+              clients.map((c: { id: string; name: string }) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))
+            )}
+          </SelectContent>
+        </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-full sm:w-36"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectTrigger className="w-full lg:w-40">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="open">Open</SelectItem>
-            <SelectItem value="in_progress">In Progress</SelectItem>
-            <SelectItem value="review">Review</SelectItem>
-            <SelectItem value="closed">Closed</SelectItem>
+            <SelectItem value="TODO">To Do</SelectItem>
+            <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+            <SelectItem value="TESTING">Testing</SelectItem>
+            <SelectItem value="DONE">Done</SelectItem>
+            <SelectItem value="CANCELLED">Cancelled</SelectItem>
           </SelectContent>
         </Select>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-full sm:w-36"><SelectValue placeholder="Type" /></SelectTrigger>
+          <SelectTrigger className="w-full lg:w-36">
+            <SelectValue placeholder="Type" />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="bug">Bug</SelectItem>
-            <SelectItem value="feature">Feature</SelectItem>
-            <SelectItem value="task">Task</SelectItem>
+            <SelectItem value="TASK">Task</SelectItem>
+            <SelectItem value="BUG">Bug</SelectItem>
+            <SelectItem value="STORY">Story</SelectItem>
+            <SelectItem value="EPIC">Epic</SelectItem>
           </SelectContent>
         </Select>
+        {clientFilter !== "all" && (
+          <Button
+            variant="ghost"
+            className="shrink-0"
+            onClick={() => setClientFilter("all")}
+          >
+            Clear client
+          </Button>
+        )}
       </div>
 
       {isLoading ? (
-        <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))}
+        </div>
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={Bug}
           title="No issues found"
-          description={issues.length === 0 ? "Create an issue to start tracking bugs, features, and tasks." : "No issues match your current filters."}
+          description={
+            issues.length === 0
+              ? "Create an issue to start tracking bugs, features, and tasks."
+              : "No issues match your current filters."
+          }
         />
       ) : (
         <Card>
           <CardContent className="p-0">
             <div className="divide-y divide-border">
-              {filtered.map((issue) => {
-                const Icon = typeIcons[issue.type as keyof typeof typeIcons] || Bug;
-                return (
-                  <Link key={issue.id} href={`/issues/${issue.id}`} className="flex items-center gap-4 px-6 py-4 hover:bg-muted/50 transition-colors">
-                    <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{issue.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {[issue.project, issue.assignee].filter(Boolean).join(" · ") || "Unassigned"}
-                      </p>
-                    </div>
-                    <Badge variant={priorityVariant[issue.priority as keyof typeof priorityVariant]}>{issue.priority}</Badge>
-                    <Badge variant={statusVariant[issue.status as keyof typeof statusVariant]}>{issue.status.replace("_", " ")}</Badge>
-                    <span className="text-xs text-muted-foreground hidden sm:block">{formatRelativeTime(issue.updatedAt)}</span>
-                  </Link>
-                );
-              })}
+              {filtered.map(
+                (issue: {
+                  id: string;
+                  key?: string;
+                  title: string;
+                  type?: string;
+                  priority?: string;
+                  status?: string;
+                  assignee?: { firstName?: string; lastName?: string } | string;
+                  project?: {
+                    name?: string;
+                    client?: { name?: string } | null;
+                  };
+                  updatedAt: string;
+                }) => {
+                  const Icon =
+                    typeIcons[issue.type as keyof typeof typeIcons] || Bug;
+                  const clientName = issue.project?.client?.name;
+                  return (
+                    <Link
+                      key={issue.id}
+                      href={`/issues/${issue.id}`}
+                      className="flex items-center gap-4 px-4 py-4 sm:px-6 hover:bg-muted/50 transition-colors"
+                    >
+                      <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {issue.key ? `${issue.key} · ` : ""}
+                          {issue.title}
+                        </p>
+                        <p className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5">
+                          {clientName && (
+                            <span className="inline-flex items-center gap-1">
+                              <Building2 className="h-3 w-3" />
+                              Client: {clientName}
+                            </span>
+                          )}
+                          {issue.project?.name && <span>{issue.project.name}</span>}
+                          {personName(issue.assignee) && (
+                            <span>{personName(issue.assignee)}</span>
+                          )}
+                        </p>
+                      </div>
+                      {clientName && (
+                        <Badge variant="outline" className="hidden md:inline-flex shrink-0">
+                          {clientName}
+                        </Badge>
+                      )}
+                      {issue.priority && (
+                        <Badge
+                          variant={
+                            priorityVariant[issue.priority] || "secondary"
+                          }
+                          className="hidden sm:inline-flex"
+                        >
+                          {issue.priority}
+                        </Badge>
+                      )}
+                      {issue.status && (
+                        <Badge variant="secondary" className="shrink-0">
+                          {String(issue.status).replace(/_/g, " ")}
+                        </Badge>
+                      )}
+                      <span className="text-xs text-muted-foreground hidden lg:block shrink-0">
+                        {formatRelativeTime(issue.updatedAt)}
+                      </span>
+                    </Link>
+                  );
+                },
+              )}
             </div>
           </CardContent>
         </Card>

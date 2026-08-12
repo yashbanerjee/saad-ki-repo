@@ -81,6 +81,7 @@ export class IssuesService {
     const where: Prisma.IssueWhereInput = {
       project: {
         companyId,
+        ...(filters.clientId ? { clientId: filters.clientId } : {}),
         ...(!privileged && user
           ? {
               OR: [
@@ -95,6 +96,7 @@ export class IssuesService {
       ...(filters.type ? { type: filters.type } : {}),
       ...(filters.assigneeId ? { assigneeId: filters.assigneeId } : {}),
       ...(filters.sprintId ? { sprintId: filters.sprintId } : {}),
+      ...(filters.milestoneId ? { milestoneId: filters.milestoneId } : {}),
       ...(filters.priority ? { priority: filters.priority } : {}),
       ...(filters.search
         ? {
@@ -114,7 +116,15 @@ export class IssuesService {
         include: {
           assignee: { select: { id: true, firstName: true, lastName: true, avatar: true } },
           reporter: { select: { id: true, firstName: true, lastName: true } },
-          project: { select: { id: true, key: true, name: true } },
+          project: {
+            select: {
+              id: true,
+              key: true,
+              name: true,
+              clientId: true,
+              client: { select: { id: true, name: true } },
+            },
+          },
         },
         orderBy: { updatedAt: 'desc' },
       }),
@@ -199,7 +209,16 @@ export class IssuesService {
             roles: { select: { role: { select: { slug: true } } } },
           },
         },
-        project: { select: { id: true, key: true, name: true, settings: true } },
+        project: {
+          select: {
+            id: true,
+            key: true,
+            name: true,
+            settings: true,
+            clientId: true,
+            client: { select: { id: true, name: true, email: true } },
+          },
+        },
         sprint: true,
         comments: {
           include: {

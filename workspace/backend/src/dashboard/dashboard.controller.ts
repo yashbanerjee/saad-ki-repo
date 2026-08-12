@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { DashboardService } from './dashboard.service';
 import { CurrentUser, AuthenticatedUser, Permissions } from '../common/decorators';
@@ -28,7 +28,14 @@ export class DashboardController {
   @Get('activity')
   @Permissions('dashboard:read')
   @ApiOperation({ summary: 'Recent workspace activity feed' })
-  getActivity(@CurrentUser() user: AuthenticatedUser) {
-    return this.dashboardService.getActivity(user.companyId!);
+  getActivity(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('limit') limit?: string,
+  ) {
+    const take = limit ? Number(limit) : 5;
+    return this.dashboardService.getActivity(
+      user.companyId!,
+      Number.isFinite(take) ? take : 5,
+    );
   }
 }

@@ -67,11 +67,18 @@ export default function InvoicesPage() {
   const [dueDate, setDueDate] = useState("");
   const [notes, setNotes] = useState("");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [listClientFilter, setListClientFilter] = useState("all");
+  const [listStatusFilter, setListStatusFilter] = useState("all");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["invoices"],
-    queryFn: () => invoicesApi.list({ limit: 100 }),
+    queryKey: ["invoices", listClientFilter, listStatusFilter],
+    queryFn: () =>
+      invoicesApi.list({
+        limit: 100,
+        clientId: listClientFilter !== "all" ? listClientFilter : undefined,
+        status: listStatusFilter !== "all" ? listStatusFilter : undefined,
+      }),
     retry: false,
   });
 
@@ -82,10 +89,10 @@ export default function InvoicesPage() {
     retry: false,
   });
 
-  const { data: clientsData } = useQuery({
-    queryKey: ["clients", "invoice-form"],
+  const { data: clientsData, isLoading: clientsLoading } = useQuery({
+    queryKey: ["clients", "invoice-filter"],
     queryFn: () => clientsApi.list({ limit: 100 }),
-    enabled: canManage && open,
+    enabled: !isClient,
     retry: false,
   });
 
@@ -218,6 +225,58 @@ export default function InvoicesPage() {
         )}
       </div>
 
+      {!isClient && (
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Select value={listClientFilter} onValueChange={setListClientFilter}>
+            <SelectTrigger className="w-full sm:w-52">
+              <SelectValue placeholder="Client" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Clients</SelectItem>
+              {clientsLoading ? (
+                <SelectItem value="__loading" disabled>
+                  Loading Clients...
+                </SelectItem>
+              ) : clients.length === 0 ? (
+                <SelectItem value="__empty" disabled>
+                  No Clients Found
+                </SelectItem>
+              ) : (
+                clients.map((c: { id: string; name: string }) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+          <Select value={listStatusFilter} onValueChange={setListStatusFilter}>
+            <SelectTrigger className="w-full sm:w-40">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="DRAFT">Draft</SelectItem>
+              <SelectItem value="SENT">Sent</SelectItem>
+              <SelectItem value="PAID">Paid</SelectItem>
+              <SelectItem value="OVERDUE">Overdue</SelectItem>
+              <SelectItem value="CANCELLED">Cancelled</SelectItem>
+            </SelectContent>
+          </Select>
+          {(listClientFilter !== "all" || listStatusFilter !== "all") && (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setListClientFilter("all");
+                setListStatusFilter("all");
+              }}
+            >
+              Clear filters
+            </Button>
+          )}
+        </div>
+      )}
+
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -267,9 +326,8 @@ export default function InvoicesPage() {
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      {[inv.client?.name, inv.project?.name]
-                        .filter(Boolean)
-                        .join(" · ")}
+                      Client: {inv.client?.name || "—"}
+                      {inv.project?.name ? ` · ${inv.project.name}` : ""}
                       {inv.dueDate
                         ? ` · Payment due ${formatDate(inv.dueDate)}`
                         : ""}

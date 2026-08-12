@@ -16,12 +16,21 @@ export class NotificationsController {
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: PaginationDto,
     @Query('unreadOnly') unreadOnly?: string,
+    @Query('recent') recent?: string,
+    @Query('recentDays') recentDays?: string,
   ) {
+    const days =
+      recent === 'true'
+        ? 2
+        : recentDays
+          ? Math.min(Math.max(Number(recentDays) || 0, 0), 30)
+          : undefined;
     return this.notificationsService.findAll(
       user.id,
       unreadOnly === 'true',
       query.page,
       query.limit,
+      days ? { recentDays: days } : undefined,
     );
   }
 

@@ -740,23 +740,44 @@ export const dashboardApi = {
       return { ...res, data: mapOverviewToStatsPayload(body ?? {}) };
     }
   },
-  activity: async () => {
+  activity: async (limit = 5) => {
     try {
-      return await api.get("/dashboard/activity");
+      return await api.get("/dashboard/activity", { params: { limit } });
     } catch {
       const res = await api.get("/dashboard/overview");
       const body = res.data?.data ?? res.data;
       const mapped = mapOverviewToStatsPayload(body ?? {});
-      return { ...res, data: mapped.activity };
+      const list = Array.isArray(mapped.activity) ? mapped.activity.slice(0, limit) : [];
+      return { ...res, data: list };
     }
   },
 };
 
 // Notifications API
 export const notificationsApi = {
-  list: () => api.get("/notifications"),
+  list: (params?: {
+    page?: number;
+    limit?: number;
+    unreadOnly?: boolean;
+    recent?: boolean;
+    recentDays?: number;
+  }) =>
+    api.get("/notifications", {
+      params: {
+        page: params?.page,
+        limit: params?.limit,
+        unreadOnly: params?.unreadOnly ? "true" : undefined,
+        recent: params?.recent ? "true" : undefined,
+        recentDays: params?.recentDays,
+      },
+    }),
   markRead: (id: string) => api.patch(`/notifications/${id}/read`),
   markAllRead: () => api.patch("/notifications/read-all"),
+};
+
+export const activityApi = {
+  list: (params?: { page?: number; limit?: number; projectId?: string }) =>
+    api.get("/activity", { params }),
 };
 
 export default api;
