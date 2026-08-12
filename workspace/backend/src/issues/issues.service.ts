@@ -2,8 +2,9 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
-import { IssueStatus } from '@prisma/client';
+import { IssueStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import {
@@ -30,6 +31,12 @@ import {
   readCreatorKind,
   withCreatorKind,
 } from './creator-kind';
+import {
+  assertCanChangeTaskStatus,
+  assertCanFullyEditIssue,
+  isPrivilegedProjectUser,
+} from '../common/project-access';
+import { AuthenticatedUser } from '../common/decorators';
 
 function mapPriority(p: string): 'low' | 'medium' | 'high' {
   if (['LOWEST', 'LOW'].includes(p)) return 'low';
@@ -62,10 +69,27 @@ export class IssuesService {
     private storage: StorageService,
   ) {}
 
-  async findAll(companyId: string, filters: IssueFilterDto, page = 1, limit = 20) {
+  async findAll(
+    companyId: string,
+    filters: IssueFilterDto,
+    page = 1,
+    limit = 20,
+    user?: AuthenticatedUser,
+  ) {
     const { skip, take } = paginate(page, limit);
-    const where = {
-      project: { companyId },
+    const privileged = user ? isPrivilegedProjectUser(user) : true;
+    const where: Prisma.IssueWhereInput = {
+      project: {
+        companyId,
+        ...(!privileged && user
+          ? {
+              OR: [
+                { members: { some: { userId: user.id } } },
+                { client: { userId: user.id } },
+              ],
+            }
+          : {}),
+      },
       ...(filters.projectId ? { projectId: filters.projectId } : {}),
       ...(filters.status ? { status: filters.status } : {}),
       ...(filters.type ? { type: filters.type } : {}),
@@ -99,7 +123,66 @@ export class IssuesService {
     return paginatedResponse(data, total, page, limit);
   }
 
-  async findOne(id: string, companyId: string) {
+  private async resolveDefaultAssigneeId(projectId: string): Promise<string | null> {
+    const owner = await this.prisma.projectMember.findFirst({
+      where: { projectId, role: 'owner' },
+      select: { userId: true },
+      orderBy: { joinedAt: 'asc' },
+    });
+    if (owner) return owner.userId;
+
+    const adminMember = await this.prisma.projectMember.findFirst({
+      where: {
+        projectId,
+        user: {
+          roles: {
+            some: {
+              role: {
+                slug: { in: ['company_admin', 'super_admin', 'project_manager'] },
+              },
+            },
+          },
+        },
+      },
+      select: { userId: true },
+      orderBy: { joinedAt: 'asc' },
+    });
+    return adminMember?.userId ?? null;
+  }
+
+  private async assertProjectAccess(
+    projectId: string,
+    companyId: string,
+    user: AuthenticatedUser,
+  ) {
+    if (isPrivilegedProjectUser(user)) {
+      const exists = await this.prisma.project.findFirst({
+        where: { id: projectId, companyId },
+        select: { id: true },
+      });
+      if (!exists) throw new NotFoundException('Project not found');
+      return;
+    }
+    const member = await this.prisma.projectMember.findFirst({
+      where: { projectId, userId: user.id, project: { companyId } },
+      select: { id: true },
+    });
+    if (member) return;
+
+    const asClient = await this.prisma.project.findFirst({
+      where: {
+        id: projectId,
+        companyId,
+        client: { userId: user.id },
+      },
+      select: { id: true },
+    });
+    if (asClient) return;
+
+    throw new ForbiddenException('You do not have access to this project');
+  }
+
+  async findOne(id: string, companyId: string, user?: AuthenticatedUser) {
     const issue = await this.prisma.issue.findFirst({
       where: { id, project: { companyId } },
       include: {
@@ -147,6 +230,10 @@ export class IssuesService {
     });
     if (!issue) throw new NotFoundException('Issue not found');
 
+    if (user) {
+      await this.assertProjectAccess(issue.projectId, companyId, user);
+    }
+
     const boardColumns = parseBoardColumns(issue.project.settings);
     const boardColumnId = resolveIssueBoardColumnId(issue, boardColumns);
     const creatorKind =
@@ -157,16 +244,28 @@ export class IssuesService {
             issue.reporter?.roles?.map((r) => r.role.slug) || [],
           ));
 
+    const canEditStatus =
+      !user ||
+      isPrivilegedProjectUser(user) ||
+      issue.assigneeId === user.id;
+    const canFullyEdit = !user || isPrivilegedProjectUser(user);
+
     return {
       ...issue,
       boardColumnId,
       boardColumns,
       creatorKind,
       creatorLabel: CREATOR_KIND_LABEL[creatorKind],
+      canEditStatus,
+      canFullyEdit,
     };
   }
 
-  async getBoard(projectId: string, companyId: string) {
+  async getBoard(projectId: string, companyId: string, user?: AuthenticatedUser) {
+    if (user) {
+      await this.assertProjectAccess(projectId, companyId, user);
+    }
+
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, companyId },
       select: { id: true, name: true, key: true, settings: true, avatar: true },
@@ -174,6 +273,7 @@ export class IssuesService {
     if (!project) throw new NotFoundException('Project not found');
 
     const boardColumns = parseBoardColumns(project.settings);
+    const privileged = user ? isPrivilegedProjectUser(user) : true;
 
     const issues = await this.prisma.issue.findMany({
       where: {
@@ -206,6 +306,8 @@ export class IssuesService {
           : creatorKindFromRoleSlugs(
               i.reporter?.roles?.map((r) => r.role.slug) || [],
             ));
+      const canEditStatus =
+        privileged || (Boolean(user) && i.assigneeId === user!.id);
       return {
         id: i.id,
         key: i.key,
@@ -218,6 +320,7 @@ export class IssuesService {
         milestoneName: i.milestone?.name,
         estimatedHours: i.estimatedHours,
         loggedHours: i.loggedHours,
+        assigneeId: i.assigneeId,
         assignee: i.assignee
           ? `${i.assignee.firstName} ${i.assignee.lastName}`.trim()
           : undefined,
@@ -228,6 +331,7 @@ export class IssuesService {
         creatorLabel: CREATOR_KIND_LABEL[kind],
         labels: i.labels.map((l) => l.label.name),
         dueDate: i.dueDate ? i.dueDate.toISOString().slice(0, 10) : undefined,
+        canEditStatus,
       };
     };
 
@@ -265,7 +369,7 @@ export class IssuesService {
       boardColumns,
       milestones,
       issues: mapped,
-      canManageColumns: true, // controller/UI gates by role permission
+      canManageColumns: privileged,
     };
   }
 
@@ -375,11 +479,20 @@ export class IssuesService {
     return { message: 'Column deleted', movedTo: destId, columns: next };
   }
 
-  async create(companyId: string, reporterId: string, dto: CreateIssueDto) {
+  async create(
+    companyId: string,
+    reporterId: string,
+    dto: CreateIssueDto,
+    user?: AuthenticatedUser,
+  ) {
     const project = await this.prisma.project.findFirst({
       where: { id: dto.projectId, companyId },
     });
     if (!project) throw new NotFoundException('Project not found');
+
+    if (user) {
+      await this.assertProjectAccess(dto.projectId, companyId, user);
+    }
 
     if (dto.milestoneId) {
       const ms = await this.prisma.milestone.findFirst({
@@ -406,6 +519,14 @@ export class IssuesService {
     const number = (lastIssue?.number ?? 0) + 1;
     const key = `${project.key}-${number}`;
 
+    // Default: assign to project owner (admin / Vedha). Non-admins cannot pick assignees.
+    let assigneeId: string | null | undefined = dto.assigneeId;
+    if (user && !isPrivilegedProjectUser(user)) {
+      assigneeId = await this.resolveDefaultAssigneeId(dto.projectId);
+    } else if (!assigneeId) {
+      assigneeId = await this.resolveDefaultAssigneeId(dto.projectId);
+    }
+
     const issue = await this.prisma.issue.create({
       data: {
         projectId: dto.projectId,
@@ -416,7 +537,7 @@ export class IssuesService {
         type: dto.type ?? 'TASK',
         priority: dto.priority ?? 'MEDIUM',
         severity: dto.severity,
-        assigneeId: dto.assigneeId,
+        assigneeId: assigneeId || undefined,
         reporterId,
         sprintId: dto.sprintId,
         milestoneId: dto.milestoneId || undefined,
@@ -447,8 +568,17 @@ export class IssuesService {
     return issue;
   }
 
-  async update(id: string, companyId: string, userId: string, dto: UpdateIssueDto) {
-    const existing = await this.findOne(id, companyId);
+  async update(
+    id: string,
+    companyId: string,
+    userId: string,
+    dto: UpdateIssueDto,
+    user?: AuthenticatedUser,
+  ) {
+    const existing = await this.findOne(id, companyId, user);
+    if (user) {
+      assertCanFullyEditIssue(user, existing.assigneeId);
+    }
 
     if (dto.milestoneId) {
       const ms = await this.prisma.milestone.findFirst({
@@ -494,8 +624,17 @@ export class IssuesService {
     return issue;
   }
 
-  async transition(id: string, companyId: string, userId: string, dto: TransitionIssueDto) {
-    const existing = await this.findOne(id, companyId);
+  async transition(
+    id: string,
+    companyId: string,
+    userId: string,
+    dto: TransitionIssueDto,
+    user?: AuthenticatedUser,
+  ) {
+    const existing = await this.findOne(id, companyId, user);
+    if (user) {
+      assertCanChangeTaskStatus(user, existing.assigneeId);
+    }
     // status field is enum — for board custom columns use updateBoardTaskStatus
     const issue = await this.prisma.issue.update({
       where: { id },
@@ -524,13 +663,17 @@ export class IssuesService {
     projectId: string,
     taskId: string,
     companyId: string,
-    userId: string,
+    user: AuthenticatedUser,
     columnId: string,
   ) {
+    await this.assertProjectAccess(projectId, companyId, user);
+
     const issue = await this.prisma.issue.findFirst({
       where: { id: taskId, projectId, project: { companyId } },
     });
     if (!issue) throw new NotFoundException('Task not found');
+
+    assertCanChangeTaskStatus(user, issue.assigneeId);
 
     const { columns } = await this.loadProjectColumns(projectId, companyId);
     const col = columns.find((c) => c.id === columnId);
@@ -551,7 +694,7 @@ export class IssuesService {
 
     await this.activity.log({
       companyId,
-      userId,
+      userId: user.id,
       projectId,
       entityType: 'Issue',
       entityId: taskId,

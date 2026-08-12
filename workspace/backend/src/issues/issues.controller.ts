@@ -48,19 +48,25 @@ export class IssuesController {
     @Query() filters: IssueFilterDto,
     @Query() pagination: PaginationDto,
   ) {
-    return this.issuesService.findAll(user.companyId!, filters, pagination.page, pagination.limit);
+    return this.issuesService.findAll(
+      user.companyId!,
+      filters,
+      pagination.page,
+      pagination.limit,
+      user,
+    );
   }
 
   @Get(':id')
   @Permissions('issues:read')
   findOne(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.issuesService.findOne(id, user.companyId!);
+    return this.issuesService.findOne(id, user.companyId!, user);
   }
 
   @Post()
   @Permissions('issues:create')
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateIssueDto) {
-    return this.issuesService.create(user.companyId!, user.id, dto);
+    return this.issuesService.create(user.companyId!, user.id, dto, user);
   }
 
   @Patch(':id')
@@ -70,7 +76,7 @@ export class IssuesController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: UpdateIssueDto,
   ) {
-    return this.issuesService.update(id, user.companyId!, user.id, dto);
+    return this.issuesService.update(id, user.companyId!, user.id, dto, user);
   }
 
   @Post(':id/transition')
@@ -80,7 +86,7 @@ export class IssuesController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: TransitionIssueDto,
   ) {
-    return this.issuesService.transition(id, user.companyId!, user.id, dto);
+    return this.issuesService.transition(id, user.companyId!, user.id, dto, user);
   }
 
   @Delete(':id')

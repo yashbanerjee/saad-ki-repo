@@ -196,6 +196,10 @@ export const projectsApi = {
     }),
   updateTaskStatus: (projectId: string, taskId: string, status: string) =>
     api.patch(`/projects/${projectId}/tasks/${taskId}`, { status }),
+  addMember: (id: string, data: { userId: string; role?: string }) =>
+    api.post(`/projects/${id}/members`, data),
+  removeMember: (id: string, userId: string) =>
+    api.delete(`/projects/${id}/members/${userId}`),
   enablePortal: (id: string) => api.post(`/projects/${id}/portal/enable`),
   rotatePortal: (id: string) => api.post(`/projects/${id}/portal/rotate`),
   disablePortal: (id: string) => api.post(`/projects/${id}/portal/disable`),
@@ -645,6 +649,13 @@ export const invoicesApi = {
     });
   },
   remove: (id: string) => api.delete(`/invoices/${id}`),
+};
+
+// Users API
+export const usersApi = {
+  list: (params?: { page?: number; limit?: number }) =>
+    api.get("/users", { params }),
+  get: (id: string) => api.get(`/users/${id}`),
 };
 
 // Team API

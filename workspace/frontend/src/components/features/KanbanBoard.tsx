@@ -35,6 +35,9 @@ export interface KanbanTask {
   title: string;
   priority: "low" | "medium" | "high";
   assignee?: string;
+  assigneeId?: string | null;
+  /** Current user may drag / change status for this task */
+  canEditStatus?: boolean;
   labels?: string[];
   dueDate?: string;
   progress?: number;
@@ -113,9 +116,11 @@ function SortableTask({
   onTaskClick?: (task: KanbanTask) => void;
 }) {
   const router = useRouter();
+  const canDrag = task.canEditStatus !== false;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
     data: { task },
+    disabled: !canDrag,
   });
 
   const style = {
@@ -166,27 +171,31 @@ function SortableTask({
       }}
       className={cn(
         "group relative z-10 overflow-hidden rounded-xl border border-border bg-background p-3 shadow-sm",
-        "cursor-grab active:cursor-grabbing transition-all duration-200",
-        "hover:border-vedha-teal/40 hover:shadow-md",
+        "transition-all duration-200 hover:border-vedha-teal/40 hover:shadow-md",
+        canDrag && "cursor-grab active:cursor-grabbing",
         isDragging && "opacity-50 ring-2 ring-vedha-teal/25",
         (onTaskClick || href) && "cursor-pointer",
       )}
     >
       <div className={cn("absolute left-0 top-0 h-full w-1 rounded-l-xl", priorityBar[task.priority])} />
       <div className="flex items-start gap-2 pl-2">
-        <button
-          type="button"
-          {...attributes}
-          {...listeners}
-          className="mt-0.5 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:text-foreground"
-          aria-label="Drag task"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-        >
-          <GripVertical className="h-4 w-4" />
-        </button>
+        {canDrag ? (
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            className="mt-0.5 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:text-foreground"
+            aria-label="Drag task"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+        ) : (
+          <span className="mt-0.5 w-4 shrink-0" aria-hidden />
+        )}
         <div className="min-w-0 flex-1">
           {task.key && (
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -513,8 +522,9 @@ export function KanbanBoard({
 
   const handleDragStart = (event: DragStartEvent) => {
     if (readOnly) return;
-    const task = event.active.data.current?.task as KanbanTask;
-    setActiveTask(task);
+    const task = event.active.data.current?.task as KanbanTask | undefined;
+    if (task && task.canEditStatus === false) return;
+    setActiveTask(task ?? null);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -532,7 +542,7 @@ export function KanbanBoard({
     if (!sourceColumn || !destColumn || sourceColumn.id === destColumn.id) return;
 
     const task = sourceColumn.tasks.find((t) => t.id === activeId);
-    if (!task) return;
+    if (!task || task.canEditStatus === false) return;
 
     setColumns((prev) =>
       prev.map((col) => {

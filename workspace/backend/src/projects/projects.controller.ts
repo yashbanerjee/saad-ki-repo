@@ -72,6 +72,7 @@ export class ProjectsController {
       query.limit,
       query.status,
       query.tag,
+      user,
     );
   }
 
@@ -90,14 +91,14 @@ export class ProjectsController {
   @Get(':id')
   @Permissions('projects:read')
   findOne(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.projectsService.findOne(id, user.companyId!);
+    return this.projectsService.findOne(id, user.companyId!, user);
   }
 
   @Get(':id/board')
   @Permissions('projects:read')
   getBoard(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
     // Same Kanban for admin, employees, and clients
-    return this.issuesService.getBoard(id, user.companyId!);
+    return this.issuesService.getBoard(id, user.companyId!, user);
   }
 
   @Post(':id/board/columns')
@@ -154,7 +155,7 @@ export class ProjectsController {
       id,
       taskId,
       user.companyId!,
-      user.id,
+      user,
       dto.status,
     );
   }

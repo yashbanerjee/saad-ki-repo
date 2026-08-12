@@ -38,8 +38,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { clientsApi, documentsApi, projectsApi } from "@/lib/api";
+import { clientsApi, documentsApi, projectsApi, usersApi } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
+import { hasRole, useAuthStore } from "@/lib/auth-store";
 import { toast } from "sonner";
 
 const TAG_SUGGESTIONS = [
@@ -114,6 +115,8 @@ export default function ProjectDetailPage() {
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const logoRef = useRef<HTMLInputElement>(null);
+  const user = useAuthStore((s) => s.user);
+  const canManageMembers = hasRole(user, ["admin", "manager"]);
 
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
@@ -128,6 +131,8 @@ export default function ProjectDetailPage() {
   });
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [shareClientUpload, setShareClientUpload] = useState(true);
+  const [addMemberUserId, setAddMemberUserId] = useState("");
+  const [addMemberRole, setAddMemberRole] = useState("developer");
 
   const { data, isLoading } = useQuery({
     queryKey: ["project", id],
@@ -141,12 +146,41 @@ export default function ProjectDetailPage() {
     retry: false,
   });
 
+  const { data: usersData } = useQuery({
+    queryKey: ["users", "for-project-members"],
+    queryFn: () => usersApi.list({ limit: 100 }),
+    enabled: canManageMembers,
+    retry: false,
+  });
+
   const project = data?.data?.data ?? data?.data ?? null;
 
   const clients = useMemo(() => {
     const raw = clientsData?.data?.data ?? clientsData?.data ?? [];
     return Array.isArray(raw) ? raw : [];
   }, [clientsData]);
+
+  const companyUsers = useMemo(() => {
+    const raw = usersData?.data?.data ?? usersData?.data ?? [];
+    return Array.isArray(raw) ? raw : [];
+  }, [usersData]);
+
+  const members = useMemo(() => {
+    return Array.isArray(project?.members) ? project.members : [];
+  }, [project]);
+
+  const memberUserIds = useMemo(
+    () => new Set(members.map((m: { userId?: string; user?: { id?: string } }) => m.user?.id || m.userId)),
+    [members],
+  );
+
+  const availableUsers = useMemo(
+    () =>
+      companyUsers.filter(
+        (u: { id: string }) => u.id && !memberUserIds.has(u.id),
+      ),
+    [companyUsers, memberUserIds],
+  );
 
   useEffect(() => {
     if (!project) return;
@@ -226,6 +260,40 @@ export default function ProjectDetailPage() {
       toast.success("Share link turned off");
     },
     onError: () => toast.error("Could not disable link"),
+  });
+
+  const addMember = useMutation({
+    mutationFn: () =>
+      projectsApi.addMember(id, {
+        userId: addMemberUserId,
+        role: addMemberRole,
+      }),
+    onSuccess: () => {
+      setAddMemberUserId("");
+      setAddMemberRole("developer");
+      invalidate();
+      toast.success("Team member added (view + assigned task status only)");
+    },
+    onError: (err: unknown) => {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Could not add member";
+      toast.error(Array.isArray(message) ? message.join(", ") : message);
+    },
+  });
+
+  const removeMember = useMutation({
+    mutationFn: (userId: string) => projectsApi.removeMember(id, userId),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Member removed");
+    },
+    onError: (err: unknown) => {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Could not remove member";
+      toast.error(Array.isArray(message) ? message.join(", ") : message);
+    },
   });
 
   const uploadDoc = useMutation({
@@ -429,6 +497,132 @@ export default function ProjectDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Team members — developers / freelancers */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Users className="h-4 w-4" /> Team on this project
+          </CardTitle>
+          <CardDescription>
+            Developers and freelancers only see this project. They can view all
+            tasks and change status only on tasks assigned to them. Other tasks
+            stay with the project owner (admin).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <ul className="space-y-2">
+            {members.length === 0 ? (
+              <li className="text-sm text-muted-foreground">No members yet.</li>
+            ) : (
+              members.map(
+                (m: {
+                  id?: string;
+                  role?: string;
+                  userId?: string;
+                  user?: {
+                    id: string;
+                    firstName?: string;
+                    lastName?: string;
+                    email?: string;
+                  };
+                }) => {
+                  const uid = m.user?.id || m.userId || "";
+                  const name =
+                    `${m.user?.firstName || ""} ${m.user?.lastName || ""}`.trim() ||
+                    m.user?.email ||
+                    uid;
+                  const roleLabel = (m.role || "member").replace(/_/g, " ");
+                  return (
+                    <li
+                      key={m.id || uid}
+                      className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">{name}</p>
+                        <p className="text-xs text-muted-foreground capitalize">
+                          {roleLabel}
+                          {m.user?.email ? ` · ${m.user.email}` : ""}
+                        </p>
+                      </div>
+                      {canManageMembers && m.role !== "owner" && uid ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={removeMember.isPending}
+                          onClick={() => {
+                            if (window.confirm(`Remove ${name} from this project?`)) {
+                              removeMember.mutate(uid);
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      ) : null}
+                    </li>
+                  );
+                },
+              )
+            )}
+          </ul>
+
+          {canManageMembers && (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <div className="flex-1 space-y-1.5">
+                <Label>Add developer / freelancer</Label>
+                <Select
+                  value={addMemberUserId || undefined}
+                  onValueChange={setAddMemberUserId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select team user" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableUsers.length === 0 ? (
+                      <SelectItem value="__none" disabled>
+                        No more users to add
+                      </SelectItem>
+                    ) : (
+                      availableUsers.map(
+                        (u: {
+                          id: string;
+                          firstName?: string;
+                          lastName?: string;
+                          email?: string;
+                        }) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            {`${u.firstName || ""} ${u.lastName || ""}`.trim() ||
+                              u.email}
+                          </SelectItem>
+                        ),
+                      )
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-full sm:w-40 space-y-1.5">
+                <Label>Role</Label>
+                <Select value={addMemberRole} onValueChange={setAddMemberRole}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="developer">Developer</SelectItem>
+                    <SelectItem value="freelancer">Freelancer</SelectItem>
+                    <SelectItem value="member">Member</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                disabled={!addMemberUserId || addMember.isPending}
+                onClick={() => addMember.mutate()}
+              >
+                {addMember.isPending ? "Adding…" : "Add"}
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Client share link */}
       <Card className="border-primary/30 bg-primary/5">

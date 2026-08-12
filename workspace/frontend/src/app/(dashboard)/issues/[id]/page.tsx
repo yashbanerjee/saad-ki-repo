@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/select";
 import { issuesApi, projectsApi } from "@/lib/api";
 import { cn, formatDate, formatRelativeTime, getInitials } from "@/lib/utils";
+import { hasRole, useAuthStore } from "@/lib/auth-store";
 import { toast } from "sonner";
 
 const FALLBACK_STATUSES = [
@@ -72,6 +73,8 @@ export default function IssueDetailPage() {
   const [timeNote, setTimeNote] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const isPrivileged = hasRole(user, ["admin", "manager"]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["issue", id],
@@ -81,6 +84,19 @@ export default function IssueDetailPage() {
 
   const issue = data?.data?.data ?? data?.data ?? null;
   const projectId = issue?.project?.id as string | undefined;
+  const canEditStatus = issue?.canEditStatus !== false;
+  const canFullyEdit = issue?.canFullyEdit === true || isPrivileged;
+
+  const { data: projectDetail } = useQuery({
+    queryKey: ["project", projectId],
+    queryFn: () => projectsApi.get(projectId!),
+    enabled: Boolean(projectId && canFullyEdit),
+  });
+  const projectMembers = Array.isArray(
+    (projectDetail?.data?.data ?? projectDetail?.data)?.members,
+  )
+    ? (projectDetail?.data?.data ?? projectDetail?.data).members
+    : [];
 
   const { data: timeData, isLoading: timeLoading } = useQuery({
     queryKey: ["time-entries", id],
@@ -181,6 +197,21 @@ export default function IssueDetailPage() {
           ? "Session expired — please sign in again"
           : err?.response?.data?.message || "Failed to update status",
       );
+    },
+  });
+
+  const assigneeMutation = useMutation({
+    mutationFn: (nextAssigneeId: string | null) =>
+      issuesApi.update(id, { assigneeId: nextAssigneeId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["issue", id] });
+      if (projectId) {
+        queryClient.invalidateQueries({ queryKey: ["project-board", projectId] });
+      }
+      toast.success("Assignee updated");
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Failed to update assignee");
     },
   });
 
@@ -545,7 +576,7 @@ export default function IssueDetailPage() {
                 <span className="text-muted-foreground">Status</span>
                 <Select
                   value={boardColumnSelectValue}
-                  disabled={statusMutation.isPending}
+                  disabled={statusMutation.isPending || !canEditStatus}
                   onValueChange={(value) => {
                     if (value !== currentColumn) statusMutation.mutate(value);
                   }}
@@ -564,11 +595,58 @@ export default function IssueDetailPage() {
                 {statusMutation.isPending && (
                   <p className="text-[11px] text-muted-foreground">Updating status…</p>
                 )}
+                {!canEditStatus && (
+                  <p className="text-[11px] text-muted-foreground">
+                    You can only change status on tasks assigned to you.
+                  </p>
+                )}
               </div>
 
-              <div className="flex justify-between gap-2">
+              <div className="space-y-2">
                 <span className="text-muted-foreground">Assignee</span>
-                <span className="text-right">{personName(issue.assignee)}</span>
+                {canFullyEdit ? (
+                  <Select
+                    value={issue.assigneeId || issue.assignee?.id || "unassigned"}
+                    disabled={assigneeMutation.isPending}
+                    onValueChange={(value) => {
+                      assigneeMutation.mutate(value === "unassigned" ? null : value);
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select assignee" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
+                      {projectMembers.map(
+                        (m: {
+                          user?: {
+                            id: string;
+                            firstName?: string;
+                            lastName?: string;
+                            email?: string;
+                          };
+                          userId?: string;
+                        }) => {
+                          const uid = m.user?.id || m.userId;
+                          if (!uid) return null;
+                          const name =
+                            `${m.user?.firstName || ""} ${m.user?.lastName || ""}`.trim() ||
+                            m.user?.email ||
+                            uid;
+                          return (
+                            <SelectItem key={uid} value={uid}>
+                              {name}
+                            </SelectItem>
+                          );
+                        },
+                      )}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="flex justify-end">
+                    <span className="text-right">{personName(issue.assignee)}</span>
+                  </div>
+                )}
               </div>
               <div className="flex justify-between gap-2">
                 <span className="text-muted-foreground">Reporter</span>

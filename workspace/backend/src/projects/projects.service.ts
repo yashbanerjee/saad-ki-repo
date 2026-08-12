@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { IssueStatus, IssueType, Prisma } from '@prisma/client';
@@ -28,6 +29,8 @@ import {
   readCreatorKind,
   withCreatorKind,
 } from '../issues/creator-kind';
+import { isPrivilegedProjectUser } from '../common/project-access';
+import { AuthenticatedUser } from '../common/decorators';
 
 @Injectable()
 export class ProjectsService {
@@ -94,10 +97,12 @@ export class ProjectsService {
     limit = 20,
     status?: string,
     tag?: string,
+    user?: AuthenticatedUser,
   ) {
     const { skip, take } = paginate(page, limit);
     const tagFilter = tag?.trim();
-    const where = {
+    const privileged = user ? isPrivilegedProjectUser(user) : true;
+    const where: Prisma.ProjectWhereInput = {
       companyId,
       ...(status ? { status: status as never } : {}),
       ...(tagFilter
@@ -105,6 +110,14 @@ export class ProjectsService {
             tags: {
               has: tagFilter,
             },
+          }
+        : {}),
+      ...(!privileged && user
+        ? {
+            OR: [
+              { members: { some: { userId: user.id } } },
+              { client: { userId: user.id } },
+            ],
           }
         : {}),
     };
@@ -146,7 +159,71 @@ export class ProjectsService {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }
 
-  async findOne(id: string, companyId: string) {
+  async assertUserCanAccessProject(
+    projectId: string,
+    companyId: string,
+    user: AuthenticatedUser,
+  ) {
+    if (isPrivilegedProjectUser(user)) {
+      const exists = await this.prisma.project.findFirst({
+        where: { id: projectId, companyId },
+        select: { id: true },
+      });
+      if (!exists) throw new NotFoundException('Project not found');
+      return;
+    }
+    const member = await this.prisma.projectMember.findFirst({
+      where: { projectId, userId: user.id, project: { companyId } },
+      select: { id: true },
+    });
+    if (member) return;
+
+    // Linked CRM client may view their own projects
+    const asClient = await this.prisma.project.findFirst({
+      where: {
+        id: projectId,
+        companyId,
+        client: { userId: user.id },
+      },
+      select: { id: true },
+    });
+    if (asClient) return;
+
+    throw new ForbiddenException('You do not have access to this project');
+  }
+
+  /** Default assignee: project owner (admin / Vedha), else first privileged member. */
+  async resolveDefaultAssigneeId(projectId: string): Promise<string | null> {
+    const owner = await this.prisma.projectMember.findFirst({
+      where: { projectId, role: 'owner' },
+      select: { userId: true },
+      orderBy: { joinedAt: 'asc' },
+    });
+    if (owner) return owner.userId;
+
+    const adminMember = await this.prisma.projectMember.findFirst({
+      where: {
+        projectId,
+        user: {
+          roles: {
+            some: {
+              role: {
+                slug: { in: ['company_admin', 'super_admin', 'project_manager'] },
+              },
+            },
+          },
+        },
+      },
+      select: { userId: true },
+      orderBy: { joinedAt: 'asc' },
+    });
+    return adminMember?.userId ?? null;
+  }
+
+  async findOne(id: string, companyId: string, user?: AuthenticatedUser) {
+    if (user) {
+      await this.assertUserCanAccessProject(id, companyId, user);
+    }
     const project = await this.prisma.project.findFirst({
       where: { id, companyId },
       include: {
@@ -154,9 +231,19 @@ export class ProjectsService {
         members: {
           include: {
             user: {
-              select: { id: true, firstName: true, lastName: true, email: true, avatar: true },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                avatar: true,
+                roles: {
+                  select: { role: { select: { slug: true, name: true } } },
+                },
+              },
             },
           },
+          orderBy: { joinedAt: 'asc' },
         },
         milestones: {
           orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
@@ -183,6 +270,7 @@ export class ProjectsService {
             estimatedHours: true,
             loggedHours: true,
             dueDate: true,
+            assigneeId: true,
             assignee: {
               select: { id: true, firstName: true, lastName: true },
             },
@@ -345,15 +433,40 @@ export class ProjectsService {
 
   async addMember(id: string, companyId: string, dto: AddProjectMemberDto) {
     await this.findOne(id, companyId);
+    const user = await this.prisma.user.findFirst({
+      where: { id: dto.userId, companyId },
+      select: { id: true },
+    });
+    if (!user) throw new BadRequestException('User not found in this company');
+
+    const role = (dto.role?.trim() || 'developer').toLowerCase();
     return this.prisma.projectMember.upsert({
       where: { projectId_userId: { projectId: id, userId: dto.userId } },
-      create: { projectId: id, userId: dto.userId, role: dto.role ?? 'member' },
-      update: { role: dto.role ?? 'member' },
+      create: { projectId: id, userId: dto.userId, role },
+      update: { role },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            avatar: true,
+          },
+        },
+      },
     });
   }
 
   async removeMember(id: string, companyId: string, userId: string) {
     await this.findOne(id, companyId);
+    const member = await this.prisma.projectMember.findUnique({
+      where: { projectId_userId: { projectId: id, userId } },
+    });
+    if (!member) throw new NotFoundException('Member not found');
+    if (member.role === 'owner') {
+      throw new BadRequestException('Cannot remove the project owner');
+    }
     await this.prisma.projectMember.delete({
       where: { projectId_userId: { projectId: id, userId } },
     });
@@ -921,6 +1034,7 @@ export class ProjectsService {
     });
     const number = (lastIssue?.number ?? 0) + 1;
     const key = `${project.key}-${number}`;
+    const assigneeId = await this.resolveDefaultAssigneeId(projectId);
 
     const issue = await this.prisma.issue.create({
       data: {
@@ -934,6 +1048,7 @@ export class ProjectsService {
         status: placement.status,
         metadata: metadata as never,
         reporterId,
+        assigneeId: assigneeId || undefined,
         milestoneId: body.milestoneId || undefined,
       },
     });

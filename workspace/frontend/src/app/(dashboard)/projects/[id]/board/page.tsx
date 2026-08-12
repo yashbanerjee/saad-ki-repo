@@ -92,6 +92,7 @@ export default function ProjectBoardPage() {
   const [type, setType] = useState("TASK");
   const [milestoneId, setMilestoneId] = useState<string>("none");
   const [estimatedHours, setEstimatedHours] = useState("");
+  const [assigneeId, setAssigneeId] = useState<string>("default");
   const [createFiles, setCreateFiles] = useState<File[]>([]);
 
   const [msOpen, setMsOpen] = useState(false);
@@ -105,7 +106,18 @@ export default function ProjectBoardPage() {
     enabled: Boolean(accessToken && projectId),
   });
 
+  const { data: projectDetail } = useQuery({
+    queryKey: ["project", projectId],
+    queryFn: () => projectsApi.get(projectId),
+    enabled: Boolean(accessToken && projectId && canManageColumns),
+  });
+
   const boardData = data?.data?.data ?? data?.data;
+  const projectMembers = useMemo(() => {
+    const raw = projectDetail?.data?.data ?? projectDetail?.data;
+    const members = raw?.members;
+    return Array.isArray(members) ? members : [];
+  }, [projectDetail]);
   const milestones: Milestone[] = useMemo(() => {
     const raw = boardData?.milestones;
     return Array.isArray(raw) ? raw : [];
@@ -172,6 +184,9 @@ export default function ProjectBoardPage() {
         status: createStatus,
         milestoneId: milestoneId !== "none" ? milestoneId : undefined,
         estimatedHours: estimatedHours ? Number(estimatedHours) : undefined,
+        ...(canManageColumns && assigneeId !== "default"
+          ? { assigneeId }
+          : {}),
       });
       const created = res?.data?.data ?? res?.data;
       const issueId = created?.id as string | undefined;
@@ -236,11 +251,15 @@ export default function ProjectBoardPage() {
       invalidate();
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;
-      toast.error(
-        status === 401
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message ||
+        (status === 401
           ? "Session expired — please sign in again"
-          : "Failed to update status",
-      );
+          : status === 403
+            ? "You can only change status on tasks assigned to you"
+            : "Failed to update status");
+      toast.error(Array.isArray(msg) ? msg.join(", ") : msg);
       invalidate();
     }
   };
@@ -314,6 +333,7 @@ export default function ProjectBoardPage() {
     setTitle("");
     setDescription("");
     setEstimatedHours("");
+    setAssigneeId("default");
     setCreateFiles([]);
     setPriority("MEDIUM");
     setType("TASK");
@@ -413,9 +433,9 @@ export default function ProjectBoardPage() {
       )}
 
       <p className="text-xs text-muted-foreground">
-        Click a task to open the full Jira-style task page (documents, time, comments, creator).
+        Click a task to open the full task page. Developers can only drag tasks assigned to them.
         {canManageColumns
-          ? " Admins can rename, add, or delete columns on this board."
+          ? " Admins can rename, add, or delete columns and assign tasks."
           : ""}
       </p>
 
@@ -519,6 +539,47 @@ export default function ProjectBoardPage() {
                 />
               </div>
             </div>
+            {canManageColumns && (
+              <div className="space-y-2">
+                <Label>Assignee</Label>
+                <Select value={assigneeId} onValueChange={setAssigneeId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Project owner (default)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">
+                      Project owner (default)
+                    </SelectItem>
+                    {projectMembers.map(
+                      (m: {
+                        userId?: string;
+                        user?: {
+                          id: string;
+                          firstName?: string;
+                          lastName?: string;
+                          email?: string;
+                        };
+                      }) => {
+                        const uid = m.user?.id || m.userId;
+                        if (!uid) return null;
+                        const name =
+                          `${m.user?.firstName || ""} ${m.user?.lastName || ""}`.trim() ||
+                          m.user?.email ||
+                          uid;
+                        return (
+                          <SelectItem key={uid} value={uid}>
+                            {name}
+                          </SelectItem>
+                        );
+                      },
+                    )}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Unassigned tasks default to the project owner (admin).
+                </p>
+              </div>
+            )}
 
             <div className="space-y-2 rounded-lg border p-3">
               <div className="flex items-center justify-between gap-2">
