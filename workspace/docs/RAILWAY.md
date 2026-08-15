@@ -387,7 +387,7 @@ npm run prisma:seed
 | Issue | Fix |
 |-------|-----|
 | Railpack cannot determine how to build | Set **Root Directory** to `workspace` (backend) or `workspace/frontend` |
-| CORS errors | `CORS_ORIGIN` must match frontend URL exactly |
+| CORS errors | Set `CORS_ORIGIN` to the frontend URL (include `https://cms.vedha.ae`). Redeploy the backend after changing it. |
 | DB timeout | Use `${{Postgres.DATABASE_URL}}` private URL between Railway services |
 | Redis / queue errors | Add Redis and set `REDIS_URL` |
 | Prisma schema not found | Root Directory must be `workspace` so `prisma/` is available |

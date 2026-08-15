@@ -31,32 +31,56 @@ async function bootstrap() {
   app.use(express.json({ limit: '15mb' }));
   app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
-  app.use(helmet());
+  app.use(
+    helmet({
+      // API is called from cms.vedha.ae (different origin than Railway)
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
   app.use(cookieParser());
 
   // Comma-separated list, e.g.
-  // CORS_ORIGIN=http://localhost:3000,https://wonderful-love-production-24ff.up.railway.app
+  // CORS_ORIGIN=http://localhost:3000,https://cms.vedha.ae
   const corsOriginRaw = configService.get<string>(
     'CORS_ORIGIN',
     'http://localhost:3000',
   );
-  const allowedOrigins = corsOriginRaw
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
+  const normalizeOrigin = (value: string) =>
+    value.trim().replace(/\/+$/, '').toLowerCase();
+
+  const allowedOrigins = [
+    ...new Set(
+      [
+        ...corsOriginRaw.split(','),
+        'http://localhost:3000',
+        'https://cms.vedha.ae',
+        'https://vedha.ae',
+        'https://www.vedha.ae',
+      ]
+        .map(normalizeOrigin)
+        .filter(Boolean),
+    ),
+  ];
 
   app.enableCors({
     origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
       // Allow non-browser clients (no Origin header) and listed frontends
-      if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+      if (
+        !origin ||
+        allowedOrigins.includes('*') ||
+        allowedOrigins.includes(normalizeOrigin(origin))
+      ) {
         callback(null, true);
         return;
       }
-      callback(new Error(`CORS blocked for origin: ${origin}`), false);
+      console.warn(`CORS blocked origin: ${origin}`);
+      // Do not pass Error — that yields a 500 with no CORS headers on preflight
+      callback(null, false);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    optionsSuccessStatus: 204,
   });
   console.log(`CORS allowed origins: ${allowedOrigins.join(', ')}`);
 

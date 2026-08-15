@@ -35,7 +35,7 @@ JWT_REFRESH_SECRET=replace-with-long-random-string-2
 JWT_EXPIRES_IN=15m
 JWT_REFRESH_EXPIRES_IN=7d
 
-CORS_ORIGIN=https://YOUR-FRONTEND.up.railway.app
+CORS_ORIGIN=https://cms.vedha.ae
 
 # Optional — only if you added a Redis plugin
 # REDIS_URL=${{Redis.REDIS_URL}}
