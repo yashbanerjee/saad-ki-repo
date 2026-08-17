@@ -699,6 +699,7 @@ export class ProjectsService {
             id: issue.id,
             key: issue.key,
             title: issue.title,
+            description: issue.description,
             type: issue.type,
             status: issue.status,
             priority: issue.priority,
@@ -1113,6 +1114,145 @@ export class ProjectsService {
         storageUrl: url,
       },
     });
+  }
+
+  async portalGetTask(token: string, taskId: string) {
+    const { projectId } = await this.resolvePortalProject(token);
+    const issue = await this.prisma.issue.findFirst({
+      where: { id: taskId, projectId, status: { not: 'CANCELLED' } },
+      include: {
+        assignee: { select: { id: true, firstName: true, lastName: true } },
+        milestone: { select: { id: true, name: true } },
+        comments: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            author: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                linkedClient: { select: { id: true } },
+              },
+            },
+          },
+        },
+        attachments: {
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            name: true,
+            mimeType: true,
+            size: true,
+            storageUrl: true,
+          },
+        },
+      },
+    });
+    if (!issue) throw new NotFoundException('Task not found on this project');
+
+    const meta =
+      issue.metadata && typeof issue.metadata === 'object'
+        ? (issue.metadata as Record<string, unknown>)
+        : {};
+    const portalCommentIds = Array.isArray(meta.portalCommentIds)
+      ? (meta.portalCommentIds as unknown[]).filter((id) => typeof id === 'string')
+      : [];
+
+    return {
+      id: issue.id,
+      key: issue.key,
+      title: issue.title,
+      description: issue.description,
+      type: issue.type,
+      status: issue.status,
+      priority: issue.priority,
+      dueDate: issue.dueDate,
+      createdAt: issue.createdAt,
+      loggedHours: issue.loggedHours,
+      estimatedHours: issue.estimatedHours,
+      milestone: issue.milestone,
+      assignee: issue.assignee
+        ? `${issue.assignee.firstName} ${issue.assignee.lastName}`.trim()
+        : null,
+      attachments: issue.attachments,
+      comments: issue.comments.map((c) => {
+        const fromPortal = portalCommentIds.includes(c.id);
+        const fromClient = Boolean(c.author?.linkedClient) || fromPortal;
+        const name = `${c.author?.firstName || ''} ${c.author?.lastName || ''}`.trim();
+        return {
+          id: c.id,
+          body: c.body,
+          createdAt: c.createdAt,
+          authorName: fromClient ? 'Client' : name || 'Team',
+          fromClient,
+        };
+      }),
+    };
+  }
+
+  async portalAddComment(token: string, taskId: string, body: string) {
+    const text = body?.trim();
+    if (!text) throw new BadRequestException('Comment is required');
+
+    const { projectId, companyId, reporterId, clientId } =
+      await this.resolvePortalProject(token);
+    const issue = await this.prisma.issue.findFirst({
+      where: { id: taskId, projectId, status: { not: 'CANCELLED' } },
+      select: { id: true, key: true, metadata: true },
+    });
+    if (!issue) throw new NotFoundException('Task not found on this project');
+
+    let authorId = reporterId;
+    if (clientId) {
+      const client = await this.prisma.client.findFirst({
+        where: { id: clientId },
+        select: { userId: true },
+      });
+      if (client?.userId) authorId = client.userId;
+    }
+
+    const comment = await this.prisma.comment.create({
+      data: { issueId: taskId, authorId, body: text },
+    });
+
+    const meta =
+      issue.metadata && typeof issue.metadata === 'object'
+        ? { ...(issue.metadata as Record<string, unknown>) }
+        : {};
+    const existingIds = Array.isArray(meta.portalCommentIds)
+      ? (meta.portalCommentIds as unknown[]).filter((id) => typeof id === 'string')
+      : [];
+    await this.prisma.issue.update({
+      where: { id: taskId },
+      data: {
+        metadata: { ...meta, portalCommentIds: [...existingIds, comment.id] } as never,
+      },
+    });
+
+    try {
+      await this.prisma.activityLog.create({
+        data: {
+          companyId,
+          userId: authorId,
+          projectId,
+          entityType: 'Issue',
+          entityId: taskId,
+          action: 'commented',
+          message: `Client commented on ${issue.key}`,
+          metadata: {},
+        },
+      });
+    } catch {
+      // Comment is already saved; activity is best-effort.
+    }
+
+    return {
+      id: comment.id,
+      body: comment.body,
+      createdAt: comment.createdAt,
+      authorName: 'Client',
+      fromClient: true,
+    };
   }
 
   async portalUploadDocument(token: string, file: Express.Multer.File, name?: string) {

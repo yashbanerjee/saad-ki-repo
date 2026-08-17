@@ -221,6 +221,10 @@ export const projectsApi = {
 
 export const portalApi = {
   get: (token: string) => api.get(`/portal/${token}`),
+  getTask: (token: string, taskId: string) =>
+    api.get(`/portal/${token}/tasks/${taskId}`),
+  addComment: (token: string, taskId: string, body: string) =>
+    api.post(`/portal/${token}/tasks/${taskId}/comments`, { body }),
   createMilestone: (token: string, data: Record<string, unknown>) =>
     api.post(`/portal/${token}/milestones`, data),
   createTask: (token: string, data: Record<string, unknown>) =>

@@ -20,6 +20,8 @@ import {
   Plus,
   Link2,
   Upload,
+  MessageSquare,
+  Send,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,7 +52,7 @@ import {
   type KanbanTask,
 } from "@/components/features/KanbanBoard";
 import { portalApi } from "@/lib/api";
-import { formatDate, cn } from "@/lib/utils";
+import { formatDate, formatRelativeTime, cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 const MILESTONE_LABEL: Record<string, string> = {
@@ -104,6 +106,8 @@ export default function PublicPortalPage() {
   const [monthFilter, setMonthFilter] = useState<string>("all");
   /** all | client | admin | employee | other */
   const [creatorFilter, setCreatorFilter] = useState<string>("all");
+  const [viewTaskId, setViewTaskId] = useState<string | null>(null);
+  const [commentBody, setCommentBody] = useState("");
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["portal", token],
@@ -263,6 +267,7 @@ export default function PublicPortalPage() {
     id: string;
     key?: string;
     title: string;
+    description?: string | null;
     type?: string;
     priority?: string;
     status?: string;
@@ -271,6 +276,18 @@ export default function PublicPortalPage() {
     creatorKind?: string;
     creatorLabel?: string;
     reporter?: string;
+    loggedHours?: number | null;
+    estimatedHours?: number | null;
+  };
+
+  type PortalDocument = {
+    id: string;
+    name: string;
+    originalName?: string;
+    storageUrl?: string | null;
+    size?: number;
+    mimeType?: string;
+    createdAt?: string | null;
   };
 
   const monthOptions = useMemo(() => {
@@ -350,6 +367,8 @@ export default function PublicPortalPage() {
           creatorKind: t.creatorKind,
           creatorLabel: t.creatorLabel,
           reporter: t.reporter,
+          loggedHours: t.loggedHours ?? null,
+          estimatedHours: t.estimatedHours ?? null,
         })),
       }));
     }
@@ -361,6 +380,78 @@ export default function PublicPortalPage() {
     () => boardColumns.reduce((sum, col) => sum + col.tasks.length, 0),
     [boardColumns],
   );
+
+  const overview = useMemo(() => {
+    const tasks = boardColumns.flatMap((col) =>
+      col.tasks.map((t) => ({ ...t, columnId: col.id })),
+    );
+    const total = tasks.length;
+    const done = tasks.filter(
+      (t) =>
+        t.columnId === "DONE" ||
+        t.status === "DONE" ||
+        /^done$/i.test(String(t.columnId || "")),
+    ).length;
+    const todo = tasks.filter((t) => {
+      const isDone =
+        t.columnId === "DONE" ||
+        t.status === "DONE" ||
+        /^done$/i.test(String(t.columnId || ""));
+      if (isDone) return false;
+      return t.columnId === "TODO" || t.status === "TODO";
+    }).length;
+    const inProgress = Math.max(0, total - done - todo);
+    const loggedHours =
+      Math.round(
+        tasks.reduce((sum, t) => sum + (Number(t.loggedHours) || 0), 0) * 10,
+      ) / 10;
+    const estimatedHours =
+      Math.round(
+        tasks.reduce((sum, t) => sum + (Number(t.estimatedHours) || 0), 0) * 10,
+      ) / 10;
+    const progress = total ? Math.round((done / total) * 100) : 0;
+    return { total, done, todo, inProgress, loggedHours, estimatedHours, progress };
+  }, [boardColumns]);
+
+  const filteredDocuments = useMemo(() => {
+    const docs = (portal?.documents ?? []) as PortalDocument[];
+    if (monthFilter === "all") return docs;
+    return docs.filter((doc) => {
+      if (!doc.createdAt) return false;
+      const d = new Date(doc.createdAt);
+      if (Number.isNaN(d.getTime())) return false;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      return key === monthFilter;
+    });
+  }, [portal, monthFilter]);
+
+  const { data: taskViewRes, isLoading: taskViewLoading } = useQuery({
+    queryKey: ["portal-task", token, viewTaskId],
+    queryFn: () => portalApi.getTask(token, viewTaskId!),
+    enabled: Boolean(viewTaskId),
+  });
+
+  const viewTask = taskViewRes?.data?.data ?? taskViewRes?.data ?? null;
+
+  const addCommentMutation = useMutation({
+    mutationFn: () =>
+      portalApi.addComment(token, viewTaskId!, commentBody.trim()),
+    onSuccess: () => {
+      setCommentBody("");
+      queryClient.invalidateQueries({
+        queryKey: ["portal-task", token, viewTaskId],
+      });
+      toast.success("Comment added");
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Could not add comment");
+    },
+  });
+
+  const openTaskView = (taskId: string) => {
+    setCommentBody("");
+    setViewTaskId(taskId);
+  };
 
   if (isLoading) {
     return (
@@ -385,17 +476,16 @@ export default function PublicPortalPage() {
     );
   }
 
-  const progress = Number(portal.progressPercent ?? 0);
+  const progress = overview.progress;
   const milestones = portal.milestones ?? [];
   const tasks = portal.tasks ?? [];
-  const documents = portal.documents ?? [];
-  const issueCounts = portal.issueCounts ?? {};
-  const totalIssues = Number(issueCounts.total ?? 0);
-  const doneIssues = Number(issueCounts.done ?? 0);
-  const inProgressIssues = Number(issueCounts.inProgress ?? 0);
-  const todoIssues = Number(issueCounts.todo ?? 0);
-  const totalLoggedHours = Number(portal.totalLoggedHours ?? 0);
-  const totalEstimatedHours = Number(portal.totalEstimatedHours ?? 0);
+  const documents = filteredDocuments;
+  const todoIssues = overview.todo;
+  const inProgressIssues = overview.inProgress;
+  const doneIssues = overview.done;
+  const totalIssues = overview.total;
+  const totalLoggedHours = overview.loggedHours;
+  const totalEstimatedHours = overview.estimatedHours;
 
   return (
     <div className="min-h-screen bg-background">
@@ -463,113 +553,6 @@ export default function PublicPortalPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Card className="!shadow-sm border-primary/20">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Progress
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-display font-bold text-primary">{progress}%</p>
-              <div className="h-2 rounded-full bg-muted mt-2 overflow-hidden">
-                <div
-                  className="h-full bg-primary rounded-full transition-all"
-                  style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="!shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
-                <Activity className="h-3.5 w-3.5" /> Current work
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">To do</span>
-                <span className="font-semibold tabular-nums">{todoIssues}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">In progress</span>
-                <span className="font-semibold tabular-nums text-amber-700">
-                  {inProgressIssues}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Done</span>
-                <span className="font-semibold tabular-nums text-emerald-700">
-                  {doneIssues}
-                </span>
-              </div>
-              <div className="flex justify-between border-t pt-1 mt-1">
-                <span className="text-muted-foreground">Total items</span>
-                <span className="font-semibold tabular-nums">{totalIssues}</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="!shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
-                <Calendar className="h-3.5 w-3.5" /> Timeline
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1 text-sm">
-              <p className="flex items-start gap-1.5 pt-0">
-                <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-                <span>
-                  <span className="text-muted-foreground block text-xs">Hours worked</span>
-                  <span className="font-semibold tabular-nums text-base">
-                    {totalLoggedHours === 1
-                      ? "1 Hour"
-                      : `${totalLoggedHours} Hours`}
-                  </span>
-                  {totalEstimatedHours > 0 && (
-                    <span className="block text-xs text-muted-foreground mt-0.5">
-                      Planned:{" "}
-                      {totalEstimatedHours === 1
-                        ? "1 Hour"
-                        : `${totalEstimatedHours} Hours`}
-                    </span>
-                  )}
-                </span>
-              </p>
-              {portal.daysRemaining != null && (
-                <div className="pt-1">
-                  {portal.daysRemaining >= 0 ? (
-                    <Badge variant="secondary">
-                      {portal.daysRemaining} days remaining
-                    </Badge>
-                  ) : (
-                    <Badge variant="warning">
-                      {Math.abs(portal.daysRemaining)} days past end
-                    </Badge>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="!shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
-                <FileText className="h-3.5 w-3.5" /> Documents
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-display font-bold tabular-nums">
-                {documents.length}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Files & shared links
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
         <div className="space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
             <div>
@@ -622,7 +605,126 @@ export default function PublicPortalPage() {
             initialColumns={boardColumns}
             canCreate={false}
             readOnly
+            onTaskClick={(task) => openTaskView(task.id)}
           />
+        </div>
+
+        <div className="space-y-2">
+          {(monthFilter !== "all" || creatorFilter !== "all") && (
+            <p className="text-xs text-muted-foreground">
+              Overview matches the board filters
+              {monthFilter !== "all" ? ` · ${monthLabel(monthFilter)}` : ""}
+              {creatorFilter !== "all"
+                ? ` · ${creatorFilter.charAt(0).toUpperCase()}${creatorFilter.slice(1)}`
+                : ""}
+            </p>
+          )}
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <Card className="!shadow-sm border-primary/20">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  Progress
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-display font-bold text-primary">{progress}%</p>
+                <div className="h-2 rounded-full bg-muted mt-2 overflow-hidden">
+                  <div
+                    className="h-full bg-primary rounded-full transition-all"
+                    style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="!shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                  <Activity className="h-3.5 w-3.5" /> Current work
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">To do</span>
+                  <span className="font-semibold tabular-nums">{todoIssues}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">In progress</span>
+                  <span className="font-semibold tabular-nums text-amber-700">
+                    {inProgressIssues}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Done</span>
+                  <span className="font-semibold tabular-nums text-emerald-700">
+                    {doneIssues}
+                  </span>
+                </div>
+                <div className="flex justify-between border-t pt-1 mt-1">
+                  <span className="text-muted-foreground">Total items</span>
+                  <span className="font-semibold tabular-nums">{totalIssues}</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="!shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5" /> Timeline
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1 text-sm">
+                <p className="flex items-start gap-1.5 pt-0">
+                  <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                  <span>
+                    <span className="text-muted-foreground block text-xs">Hours worked</span>
+                    <span className="font-semibold tabular-nums text-base">
+                      {totalLoggedHours === 1
+                        ? "1 Hour"
+                        : `${totalLoggedHours} Hours`}
+                    </span>
+                    {totalEstimatedHours > 0 && (
+                      <span className="block text-xs text-muted-foreground mt-0.5">
+                        Planned:{" "}
+                        {totalEstimatedHours === 1
+                          ? "1 Hour"
+                          : `${totalEstimatedHours} Hours`}
+                      </span>
+                    )}
+                  </span>
+                </p>
+                {portal.daysRemaining != null && (
+                  <div className="pt-1">
+                    {portal.daysRemaining >= 0 ? (
+                      <Badge variant="secondary">
+                        {portal.daysRemaining} days remaining
+                      </Badge>
+                    ) : (
+                      <Badge variant="warning">
+                        {Math.abs(portal.daysRemaining)} days past end
+                      </Badge>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="!shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                  <FileText className="h-3.5 w-3.5" /> Documents
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-display font-bold tabular-nums">
+                  {documents.length}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Files & shared links
+                </p>
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">
@@ -640,7 +742,9 @@ export default function PublicPortalPage() {
             <CardContent>
               {documents.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4 text-center">
-                  No documents shared yet.
+                  {monthFilter !== "all"
+                    ? "No documents in this month."
+                    : "No documents shared yet."}
                 </p>
               ) : (
                 <ul className="space-y-2">
@@ -805,10 +909,12 @@ export default function PublicPortalPage() {
                                 Tasks on this milestone
                               </li>
                               {assigned.map((t) => (
-                                <li
-                                  key={t.id}
-                                  className="flex items-start gap-2 text-xs"
-                                >
+                                <li key={t.id}>
+                                  <button
+                                    type="button"
+                                    onClick={() => openTaskView(t.id)}
+                                    className="w-full flex items-start gap-2 text-xs rounded-md px-1 py-1 -mx-1 text-left hover:bg-muted/50 transition-colors"
+                                  >
                                   {t.done ? (
                                     <CheckCircle2 className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
                                   ) : (
@@ -836,6 +942,7 @@ export default function PublicPortalPage() {
                                         : ""}
                                     </p>
                                   </div>
+                                  </button>
                                 </li>
                               ))}
                             </ul>
@@ -1148,6 +1255,122 @@ export default function PublicPortalPage() {
               {createMilestoneMutation.isPending ? "Adding…" : "Add milestone"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(viewTaskId)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setViewTaskId(null);
+            setCommentBody("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-start gap-2 pr-6">
+              {taskViewLoading ? (
+                "Loading task…"
+              ) : (
+                <span className="min-w-0">
+                  {viewTask?.key && (
+                    <span className="block font-mono text-xs font-normal text-muted-foreground mb-1">
+                      {viewTask.key}
+                    </span>
+                  )}
+                  {viewTask?.title || "Task"}
+                </span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+
+          {taskViewLoading ? (
+            <div className="space-y-3 py-2">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-20 w-full" />
+            </div>
+          ) : viewTask ? (
+            <div className="space-y-4 py-1">
+              <div className="flex flex-wrap gap-2">
+                {viewTask.status && (
+                  <Badge variant="secondary">
+                    {String(viewTask.status).replace(/_/g, " ")}
+                  </Badge>
+                )}
+                {viewTask.priority && (
+                  <Badge variant="outline">{viewTask.priority}</Badge>
+                )}
+                {viewTask.milestone?.name && (
+                  <Badge variant="outline">{viewTask.milestone.name}</Badge>
+                )}
+              </div>
+
+              {viewTask.description ? (
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                  {viewTask.description}
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">No description.</p>
+              )}
+
+              <div className="space-y-3 border-t pt-3">
+                <h3 className="text-sm font-medium flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  Comments ({Array.isArray(viewTask.comments) ? viewTask.comments.length : 0})
+                </h3>
+                {Array.isArray(viewTask.comments) && viewTask.comments.length > 0 ? (
+                  <ul className="space-y-3 max-h-56 overflow-y-auto pr-1">
+                    {viewTask.comments.map(
+                      (c: {
+                        id: string;
+                        body: string;
+                        createdAt: string;
+                        authorName?: string;
+                        fromClient?: boolean;
+                      }) => (
+                        <li key={c.id} className="text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">
+                              {c.authorName || (c.fromClient ? "Client" : "Team")}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {formatRelativeTime(c.createdAt)}
+                            </span>
+                          </div>
+                          <p className="mt-0.5 whitespace-pre-wrap text-muted-foreground">
+                            {c.body}
+                          </p>
+                        </li>
+                      ),
+                    )}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No comments yet.</p>
+                )}
+                <div className="space-y-2">
+                  <Textarea
+                    placeholder="Add your comment…"
+                    value={commentBody}
+                    onChange={(e) => setCommentBody(e.target.value)}
+                    rows={3}
+                  />
+                  <Button
+                    size="sm"
+                    disabled={!commentBody.trim() || addCommentMutation.isPending}
+                    onClick={() => addCommentMutation.mutate()}
+                  >
+                    <Send className="h-4 w-4 mr-1" />
+                    {addCommentMutation.isPending ? "Posting…" : "Add comment"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground py-4">
+              This task could not be loaded.
+            </p>
+          )}
         </DialogContent>
       </Dialog>
     </div>

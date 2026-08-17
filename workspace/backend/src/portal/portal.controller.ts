@@ -48,6 +48,12 @@ class PortalAddLinkDto {
   url: string;
 }
 
+class PortalAddCommentDto {
+  @IsString()
+  @MinLength(1)
+  body: string;
+}
+
 const uploadMulterOptions = {
   storage: memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
@@ -66,6 +72,12 @@ export class PortalController {
     @Param('documentId') documentId: string,
   ) {
     return this.projectsService.portalDownloadDocument(token, documentId);
+  }
+
+  @Public()
+  @Get(':token/tasks/:taskId')
+  getTask(@Param('token') token: string, @Param('taskId') taskId: string) {
+    return this.projectsService.portalGetTask(token, taskId);
   }
 
   @Public()
@@ -90,6 +102,16 @@ export class PortalController {
     @Body() dto: PortalCreateTaskDto,
   ) {
     return this.projectsService.portalCreateTask(token, dto);
+  }
+
+  @Public()
+  @Post(':token/tasks/:taskId/comments')
+  addComment(
+    @Param('token') token: string,
+    @Param('taskId') taskId: string,
+    @Body() dto: PortalAddCommentDto,
+  ) {
+    return this.projectsService.portalAddComment(token, taskId, dto.body);
   }
 
   @Public()

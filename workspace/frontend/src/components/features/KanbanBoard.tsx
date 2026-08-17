@@ -257,9 +257,30 @@ function TaskOverlay({ task }: { task: KanbanTask }) {
   );
 }
 
-function StaticTask({ task }: { task: KanbanTask }) {
+function StaticTask({
+  task,
+  onTaskClick,
+}: {
+  task: KanbanTask;
+  onTaskClick?: (task: KanbanTask) => void;
+}) {
   return (
-    <div className="group relative z-10 overflow-hidden rounded-xl border border-border bg-background p-3 shadow-sm">
+    <div
+      role={onTaskClick ? "button" : undefined}
+      tabIndex={onTaskClick ? 0 : undefined}
+      onClick={() => onTaskClick?.(task)}
+      onKeyDown={(e) => {
+        if (!onTaskClick) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onTaskClick(task);
+        }
+      }}
+      className={cn(
+        "group relative z-10 overflow-hidden rounded-xl border border-border bg-background p-3 shadow-sm",
+        onTaskClick && "cursor-pointer hover:border-vedha-teal/40 hover:shadow-md",
+      )}
+    >
       <div
         className={cn(
           "absolute left-0 top-0 h-full w-1 rounded-l-xl",
@@ -593,7 +614,11 @@ export function KanbanBoard({
                   </p>
                 ) : (
                   column.tasks.map((task) => (
-                    <StaticTask key={task.id} task={task} />
+                    <StaticTask
+                      key={task.id}
+                      task={task}
+                      onTaskClick={onTaskClick}
+                    />
                   ))
                 )}
               </CardContent>
