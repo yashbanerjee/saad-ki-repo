@@ -59,12 +59,6 @@ export interface KanbanColumn {
   tasks: KanbanTask[];
 }
 
-const priorityColors = {
-  low: "secondary" as const,
-  medium: "warning" as const,
-  high: "destructive" as const,
-};
-
 const priorityBar = {
   low: "bg-vedha-cyan",
   medium: "bg-vedha-gold",
@@ -77,6 +71,16 @@ const creatorBadge: Record<string, string> = {
   employee: "bg-amber-500/15 text-amber-800 border-amber-500/30 dark:text-amber-200",
   other: "bg-muted text-muted-foreground border-border",
 };
+
+/** Tasks keep the project key (e.g. SENSIA1-3). Bugs/other types use BUG-1, EPIC-2, … */
+function boardItemKey(task: KanbanTask): string | undefined {
+  const type = (task.type || "TASK").toUpperCase();
+  if (type === "TASK") return task.key;
+  const suffix = task.key?.match(/(\d+)\s*$/)?.[1];
+  const prefix = type === "SUB_TASK" ? "SUBTASK" : type.replace(/_/g, "-");
+  if (suffix) return `${prefix}-${suffix}`;
+  return task.key || prefix;
+}
 
 function CreatorTag({ task }: { task: KanbanTask }) {
   const label =
@@ -197,29 +201,29 @@ function SortableTask({
           <span className="mt-0.5 w-4 shrink-0" aria-hidden />
         )}
         <div className="min-w-0 flex-1">
-          {task.key && (
+          {boardItemKey(task) && (
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              {task.key}
+              {boardItemKey(task)}
             </p>
           )}
-          <p className="text-sm font-medium leading-snug text-foreground">{task.title}</p>
-          {meta}
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <CreatorTag task={task} />
-            <Badge variant={priorityColors[task.priority]} className="text-[10px] capitalize">
-              {task.priority}
-            </Badge>
-            {task.type && (
-              <Badge variant="outline" className="text-[10px]">
-                {task.type}
-              </Badge>
-            )}
-            {task.labels?.map((label) => (
-              <Badge key={label} variant="outline" className="text-[10px]">
-                {label}
-              </Badge>
-            ))}
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-sm font-medium leading-snug text-foreground min-w-0">
+              {task.title}
+            </p>
+            <span className="shrink-0 mt-0.5">
+              <CreatorTag task={task} />
+            </span>
           </div>
+          {meta}
+          {!!task.labels?.length && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {task.labels.map((label) => (
+                <Badge key={label} variant="outline" className="text-[10px]">
+                  {label}
+                </Badge>
+              ))}
+            </div>
+          )}
           {(task.dueDate || task.assignee) && (
             <div className="mt-2.5 flex items-center gap-2">
               {task.assignee && (
@@ -246,13 +250,17 @@ function SortableTask({
 function TaskOverlay({ task }: { task: KanbanTask }) {
   return (
     <div className="w-72 rotate-1 rounded-xl border border-vedha-teal/30 bg-card p-3 shadow-lg">
-      {task.key && (
-        <p className="text-[10px] font-semibold uppercase text-muted-foreground">{task.key}</p>
+      {boardItemKey(task) && (
+        <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+          {boardItemKey(task)}
+        </p>
       )}
-      <p className="text-sm font-medium text-foreground">{task.title}</p>
-      <Badge variant={priorityColors[task.priority]} className="mt-2 text-[10px] capitalize">
-        {task.priority}
-      </Badge>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-medium text-foreground min-w-0">{task.title}</p>
+        <span className="shrink-0">
+          <CreatorTag task={task} />
+        </span>
+      </div>
     </div>
   );
 }
@@ -288,31 +296,28 @@ function StaticTask({
         )}
       />
       <div className="min-w-0 pl-2">
-        {task.key && (
+        {boardItemKey(task) && (
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            {task.key}
+            {boardItemKey(task)}
           </p>
         )}
-        <p className="text-sm font-medium leading-snug text-foreground">{task.title}</p>
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <CreatorTag task={task} />
-          <Badge
-            variant={priorityColors[task.priority]}
-            className="text-[10px] capitalize"
-          >
-            {task.priority}
-          </Badge>
-          {task.type && (
-            <Badge variant="outline" className="text-[10px]">
-              {task.type}
-            </Badge>
-          )}
-          {task.labels?.map((label) => (
-            <Badge key={label} variant="outline" className="text-[10px]">
-              {label}
-            </Badge>
-          ))}
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-sm font-medium leading-snug text-foreground min-w-0">
+            {task.title}
+          </p>
+          <span className="shrink-0 mt-0.5">
+            <CreatorTag task={task} />
+          </span>
         </div>
+        {!!task.labels?.length && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {task.labels.map((label) => (
+              <Badge key={label} variant="outline" className="text-[10px]">
+                {label}
+              </Badge>
+            ))}
+          </div>
+        )}
         {(task.dueDate || task.assignee) && (
           <div className="mt-2.5 flex items-center gap-2">
             {task.assignee && (

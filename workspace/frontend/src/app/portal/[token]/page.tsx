@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Calendar,
   CheckCircle2,
+  CheckSquare,
   Circle,
   Clock,
   FileText,
@@ -22,6 +23,9 @@ import {
   Upload,
   MessageSquare,
   Send,
+  Bug,
+  Bookmark,
+  Paperclip,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,8 +56,9 @@ import {
   type KanbanTask,
 } from "@/components/features/KanbanBoard";
 import { portalApi } from "@/lib/api";
-import { formatDate, formatRelativeTime, cn } from "@/lib/utils";
+import { formatDate, formatRelativeTime, cn, getInitials } from "@/lib/utils";
 import { toast } from "sonner";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const MILESTONE_LABEL: Record<string, string> = {
   PLANNED: "Planned",
@@ -79,6 +84,64 @@ function formatBytes(size?: number) {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function displayIssueKey(type?: string, key?: string) {
+  const t = (type || "TASK").toUpperCase();
+  if (t === "TASK") return key;
+  const suffix = key?.match(/(\d+)\s*$/)?.[1];
+  const prefix = t === "SUB_TASK" ? "SUBTASK" : t.replace(/_/g, "-");
+  if (suffix) return `${prefix}-${suffix}`;
+  return key || prefix;
+}
+
+function issueTypeIcon(type?: string) {
+  const t = (type || "TASK").toUpperCase();
+  if (t === "BUG") return Bug;
+  if (t === "STORY") return Bookmark;
+  if (t === "EPIC") return Layers;
+  return CheckSquare;
+}
+
+function formatStatusLabel(status?: string) {
+  return String(status || "TODO").replace(/_/g, " ");
+}
+
+function statusButtonClass(status?: string) {
+  const s = String(status || "").toUpperCase();
+  if (s === "DONE") return "bg-emerald-600 text-white";
+  if (s === "IN_PROGRESS" || s === "TESTING") return "bg-blue-600 text-white";
+  if (s === "BLOCKED") return "bg-red-600 text-white";
+  return "bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100";
+}
+
+function formatDateTime(date?: string | Date | null) {
+  if (!date) return null;
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d);
+}
+
+function DetailRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[88px_1fr] items-start gap-2 py-1.5 text-sm">
+      <span className="text-muted-foreground pt-0.5">{label}</span>
+      <div className="min-w-0">{children}</div>
+    </div>
+  );
 }
 
 export default function PublicPortalPage() {
@@ -519,17 +582,21 @@ export default function PublicPortalPage() {
               )}
             </div>
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2 mb-1">
-                {portal.projectKey && (
-                  <Badge variant="outline" className="font-mono">
-                    {portal.projectKey}
-                  </Badge>
-                )}
-                {portal.status && <Badge variant="success">{portal.status}</Badge>}
-              </div>
               <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">
                 {portal.projectName}
               </h1>
+              {portal.status && (
+                <p
+                  className={cn(
+                    "text-sm mt-0.5",
+                    String(portal.status).toUpperCase() === "ACTIVE"
+                      ? "text-emerald-700"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {String(portal.status).replace(/_/g, " ")}
+                </p>
+              )}
               {portal.clientName && (
                 <p className="text-muted-foreground text-sm mt-0.5">
                   For {portal.clientName}
@@ -1267,109 +1334,322 @@ export default function PublicPortalPage() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-start gap-2 pr-6">
-              {taskViewLoading ? (
-                "Loading task…"
-              ) : (
-                <span className="min-w-0">
-                  {viewTask?.key && (
-                    <span className="block font-mono text-xs font-normal text-muted-foreground mb-1">
-                      {viewTask.key}
-                    </span>
-                  )}
-                  {viewTask?.title || "Task"}
-                </span>
-              )}
-            </DialogTitle>
-          </DialogHeader>
-
+        <DialogContent className="sm:max-w-5xl w-[min(96vw,1080px)] max-h-[90vh] p-0 gap-0 overflow-hidden">
           {taskViewLoading ? (
-            <div className="space-y-3 py-2">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-20 w-full" />
+            <div className="p-6 space-y-4">
+              <DialogHeader>
+                <DialogTitle>Loading task…</DialogTitle>
+              </DialogHeader>
+              <Skeleton className="h-8 w-2/3" />
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-40 w-full" />
             </div>
           ) : viewTask ? (
-            <div className="space-y-4 py-1">
-              <div className="flex flex-wrap gap-2">
-                {viewTask.status && (
-                  <Badge variant="secondary">
-                    {String(viewTask.status).replace(/_/g, " ")}
-                  </Badge>
-                )}
-                {viewTask.priority && (
-                  <Badge variant="outline">{viewTask.priority}</Badge>
-                )}
-                {viewTask.milestone?.name && (
-                  <Badge variant="outline">{viewTask.milestone.name}</Badge>
-                )}
+            <div className="flex max-h-[90vh] flex-col">
+              <div className="flex items-center gap-2 px-6 pt-4 pb-1 pr-12">
+                {(() => {
+                  const TypeIcon = issueTypeIcon(viewTask.type);
+                  const isBug = String(viewTask.type || "").toUpperCase() === "BUG";
+                  return (
+                    <TypeIcon
+                      className={cn(
+                        "h-4 w-4 shrink-0",
+                        isBug ? "text-red-600" : "text-blue-600",
+                      )}
+                    />
+                  );
+                })()}
+                <span className="text-sm font-semibold tracking-wide">
+                  {displayIssueKey(viewTask.type, viewTask.key)}
+                </span>
               </div>
 
-              {viewTask.description ? (
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                  {viewTask.description}
-                </p>
-              ) : (
-                <p className="text-sm text-muted-foreground">No description.</p>
-              )}
+              <div className="grid min-h-0 flex-1 overflow-hidden md:grid-cols-[minmax(0,1fr)_280px]">
+                <div className="min-h-0 overflow-y-auto px-6 pb-6 pt-2 space-y-6">
+                  <DialogHeader className="space-y-0 text-left">
+                    <DialogTitle className="font-display text-2xl font-bold leading-snug tracking-tight">
+                      {viewTask.title}
+                    </DialogTitle>
+                  </DialogHeader>
 
-              <div className="space-y-3 border-t pt-3">
-                <h3 className="text-sm font-medium flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4" />
-                  Comments ({Array.isArray(viewTask.comments) ? viewTask.comments.length : 0})
-                </h3>
-                {Array.isArray(viewTask.comments) && viewTask.comments.length > 0 ? (
-                  <ul className="space-y-3 max-h-56 overflow-y-auto pr-1">
-                    {viewTask.comments.map(
-                      (c: {
-                        id: string;
-                        body: string;
-                        createdAt: string;
-                        authorName?: string;
-                        fromClient?: boolean;
-                      }) => (
-                        <li key={c.id} className="text-sm">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">
-                              {c.authorName || (c.fromClient ? "Client" : "Team")}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {formatRelativeTime(c.createdAt)}
-                            </span>
-                          </div>
-                          <p className="mt-0.5 whitespace-pre-wrap text-muted-foreground">
-                            {c.body}
-                          </p>
-                        </li>
-                      ),
+                  <section>
+                    <h3 className="text-sm font-semibold mb-2">Description</h3>
+                    {viewTask.description ? (
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                        {viewTask.description}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        No description.
+                      </p>
                     )}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No comments yet.</p>
-                )}
-                <div className="space-y-2">
-                  <Textarea
-                    placeholder="Add your comment…"
-                    value={commentBody}
-                    onChange={(e) => setCommentBody(e.target.value)}
-                    rows={3}
-                  />
-                  <Button
-                    size="sm"
-                    disabled={!commentBody.trim() || addCommentMutation.isPending}
-                    onClick={() => addCommentMutation.mutate()}
-                  >
-                    <Send className="h-4 w-4 mr-1" />
-                    {addCommentMutation.isPending ? "Posting…" : "Add comment"}
-                  </Button>
+                  </section>
+
+                  <section>
+                    <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                      <Paperclip className="h-4 w-4" />
+                      Attachments
+                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                        {Array.isArray(viewTask.attachments)
+                          ? viewTask.attachments.length
+                          : 0}
+                      </span>
+                    </h3>
+                    {Array.isArray(viewTask.attachments) &&
+                    viewTask.attachments.length > 0 ? (
+                      <ul className="grid gap-2 sm:grid-cols-2">
+                        {viewTask.attachments.map(
+                          (file: {
+                            id: string;
+                            name: string;
+                            mimeType?: string;
+                            size?: number;
+                            storageUrl?: string | null;
+                            createdAt?: string;
+                          }) => {
+                            const isImage = String(file.mimeType || "").startsWith(
+                              "image/",
+                            );
+                            const inner = (
+                              <>
+                                {isImage && file.storageUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={file.storageUrl}
+                                    alt=""
+                                    className="h-24 w-full object-cover bg-muted"
+                                  />
+                                ) : (
+                                  <div className="h-24 w-full bg-muted flex items-center justify-center">
+                                    <FileText className="h-8 w-8 text-muted-foreground" />
+                                  </div>
+                                )}
+                                <div className="p-2">
+                                  <p className="text-xs font-medium truncate">
+                                    {file.name}
+                                  </p>
+                                  <p className="text-[11px] text-muted-foreground">
+                                    {[
+                                      formatBytes(file.size),
+                                      file.createdAt
+                                        ? formatDateTime(file.createdAt)
+                                        : null,
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" · ")}
+                                  </p>
+                                </div>
+                              </>
+                            );
+                            return (
+                              <li key={file.id}>
+                                {file.storageUrl ? (
+                                  <a
+                                    href={file.storageUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="block overflow-hidden rounded-lg border hover:border-primary/40 transition-colors"
+                                  >
+                                    {inner}
+                                  </a>
+                                ) : (
+                                  <div className="overflow-hidden rounded-lg border">
+                                    {inner}
+                                  </div>
+                                )}
+                              </li>
+                            );
+                          },
+                        )}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        No attachments.
+                      </p>
+                    )}
+                  </section>
+
+                  <section className="space-y-3 border-t pt-4">
+                    <h3 className="text-sm font-semibold flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4" />
+                      Comments
+                    </h3>
+                    {Array.isArray(viewTask.comments) &&
+                    viewTask.comments.length > 0 ? (
+                      <ul className="space-y-4">
+                        {viewTask.comments.map(
+                          (c: {
+                            id: string;
+                            body: string;
+                            createdAt: string;
+                            authorName?: string;
+                            fromClient?: boolean;
+                          }) => {
+                            const name =
+                              c.authorName || (c.fromClient ? "Client" : "Team");
+                            return (
+                              <li key={c.id} className="flex gap-3">
+                                <Avatar className="h-8 w-8">
+                                  <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
+                                    {getInitials(name)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-sm font-medium">
+                                      {name}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {formatRelativeTime(c.createdAt)}
+                                    </span>
+                                  </div>
+                                  <p className="text-sm mt-0.5 whitespace-pre-wrap">
+                                    {c.body}
+                                  </p>
+                                </div>
+                              </li>
+                            );
+                          },
+                        )}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        No comments yet.
+                      </p>
+                    )}
+                    <div className="flex gap-3 pt-1">
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback className="text-[10px] bg-sky-500/15 text-sky-700">
+                          CL
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <Textarea
+                          placeholder="Add a comment..."
+                          value={commentBody}
+                          onChange={(e) => setCommentBody(e.target.value)}
+                          rows={3}
+                        />
+                        <Button
+                          size="sm"
+                          disabled={
+                            !commentBody.trim() || addCommentMutation.isPending
+                          }
+                          onClick={() => addCommentMutation.mutate()}
+                        >
+                          <Send className="h-4 w-4 mr-1" />
+                          {addCommentMutation.isPending ? "Posting…" : "Comment"}
+                        </Button>
+                      </div>
+                    </div>
+                  </section>
                 </div>
+
+                <aside className="border-t md:border-t-0 md:border-l bg-muted/20 overflow-y-auto px-4 py-4 space-y-4">
+                  <div>
+                    <span
+                      className={cn(
+                        "inline-flex items-center rounded px-3 py-1.5 text-sm font-semibold",
+                        statusButtonClass(viewTask.status),
+                      )}
+                    >
+                      {formatStatusLabel(viewTask.status)}
+                    </span>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold mb-1">Details</h3>
+                    <DetailRow label="Assignee">
+                      {viewTask.assignee ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Avatar className="h-5 w-5">
+                            <AvatarFallback className="text-[9px]">
+                              {getInitials(viewTask.assignee)}
+                            </AvatarFallback>
+                          </Avatar>
+                          {viewTask.assignee}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">Unassigned</span>
+                      )}
+                    </DetailRow>
+                    <DetailRow label="Parent">
+                      {viewTask.parent?.title ||
+                        viewTask.milestone?.name || (
+                          <span className="text-muted-foreground">None</span>
+                        )}
+                    </DetailRow>
+                    <DetailRow label="Due date">
+                      {viewTask.dueDate ? (
+                        formatDate(viewTask.dueDate)
+                      ) : (
+                        <span className="text-muted-foreground">None</span>
+                      )}
+                    </DetailRow>
+                    <DetailRow label="Labels">
+                      {Array.isArray(viewTask.labels) &&
+                      viewTask.labels.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {viewTask.labels.map(
+                            (label: { name: string; color?: string }) => (
+                              <span
+                                key={label.name}
+                                className="inline-flex rounded px-1.5 py-0.5 text-[11px] font-medium border bg-amber-50 text-amber-900 border-amber-200"
+                              >
+                                {label.name}
+                              </span>
+                            ),
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">None</span>
+                      )}
+                    </DetailRow>
+                    <DetailRow label="Reporter">
+                      {viewTask.reporter ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Avatar className="h-5 w-5">
+                            <AvatarFallback className="text-[9px]">
+                              {getInitials(viewTask.reporter)}
+                            </AvatarFallback>
+                          </Avatar>
+                          {viewTask.reporter}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">None</span>
+                      )}
+                    </DetailRow>
+                    {(viewTask.loggedHours != null ||
+                      viewTask.estimatedHours != null) && (
+                      <DetailRow label="Time">
+                        {Number(viewTask.loggedHours) || 0}h
+                        {viewTask.estimatedHours != null
+                          ? ` / ${viewTask.estimatedHours}h`
+                          : " spent"}
+                      </DetailRow>
+                    )}
+                  </div>
+
+                  <div className="pt-2 text-xs text-muted-foreground space-y-1">
+                    {formatDateTime(viewTask.createdAt) && (
+                      <p>Created {formatDateTime(viewTask.createdAt)}</p>
+                    )}
+                    {formatDateTime(viewTask.updatedAt) && (
+                      <p>Updated {formatDateTime(viewTask.updatedAt)}</p>
+                    )}
+                  </div>
+                </aside>
               </div>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground py-4">
-              This task could not be loaded.
-            </p>
+            <div className="p-6">
+              <DialogHeader>
+                <DialogTitle>Task</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground py-4">
+                This task could not be loaded.
+              </p>
+            </div>
           )}
         </DialogContent>
       </Dialog>

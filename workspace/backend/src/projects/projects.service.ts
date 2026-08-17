@@ -1122,7 +1122,10 @@ export class ProjectsService {
       where: { id: taskId, projectId, status: { not: 'CANCELLED' } },
       include: {
         assignee: { select: { id: true, firstName: true, lastName: true } },
+        reporter: { select: { id: true, firstName: true, lastName: true } },
         milestone: { select: { id: true, name: true } },
+        parent: { select: { id: true, key: true, title: true, type: true } },
+        labels: { include: { label: { select: { name: true, color: true } } } },
         comments: {
           orderBy: { createdAt: 'asc' },
           include: {
@@ -1144,6 +1147,7 @@ export class ProjectsService {
             mimeType: true,
             size: true,
             storageUrl: true,
+            createdAt: true,
           },
         },
       },
@@ -1168,11 +1172,20 @@ export class ProjectsService {
       priority: issue.priority,
       dueDate: issue.dueDate,
       createdAt: issue.createdAt,
+      updatedAt: issue.updatedAt,
       loggedHours: issue.loggedHours,
       estimatedHours: issue.estimatedHours,
       milestone: issue.milestone,
+      parent: issue.parent,
+      labels: issue.labels.map((l) => ({
+        name: l.label.name,
+        color: l.label.color,
+      })),
       assignee: issue.assignee
         ? `${issue.assignee.firstName} ${issue.assignee.lastName}`.trim()
+        : null,
+      reporter: issue.reporter
+        ? `${issue.reporter.firstName} ${issue.reporter.lastName}`.trim()
         : null,
       attachments: issue.attachments,
       comments: issue.comments.map((c) => {
