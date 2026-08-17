@@ -712,7 +712,6 @@ export default function PublicPortalPage() {
   const doneIssues = overview.done;
   const totalIssues = overview.total;
   const totalLoggedHours = overview.loggedHours;
-  const totalEstimatedHours = overview.estimatedHours;
 
   return (
     <div className="min-h-screen bg-background">
@@ -905,23 +904,12 @@ export default function PublicPortalPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-1 text-sm">
-                <p className="flex items-start gap-1.5 pt-0">
-                  <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-                  <span>
-                    <span className="text-muted-foreground block text-xs">Hours worked</span>
-                    <span className="font-semibold tabular-nums text-base">
-                      {totalLoggedHours === 1
-                        ? "1 Hour"
-                        : `${totalLoggedHours} Hours`}
-                    </span>
-                    {totalEstimatedHours > 0 && (
-                      <span className="block text-xs text-muted-foreground mt-0.5">
-                        Planned:{" "}
-                        {totalEstimatedHours === 1
-                          ? "1 Hour"
-                          : `${totalEstimatedHours} Hours`}
-                      </span>
-                    )}
+                <p className="flex items-center gap-1.5 pt-0">
+                  <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="font-semibold tabular-nums text-base">
+                    {totalLoggedHours === 1
+                      ? "1 Hour"
+                      : `${totalLoggedHours} Hours`}
                   </span>
                 </p>
                 {portal.daysRemaining != null && (
