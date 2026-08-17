@@ -599,6 +599,8 @@ export class ProjectsService {
             storageUrl: true,
             type: true,
             createdAt: true,
+            storageKey: true,
+            metadata: true,
           },
         },
         company: { select: { name: true } },
@@ -777,11 +779,23 @@ export class ProjectsService {
       columns,
       totalLoggedHours,
       totalEstimatedHours,
-      documents: project.documents.map((d) => ({
-        ...d,
-        // When no public CDN URL, client uses portal download endpoint
-        downloadable: true,
-      })),
+      documents: project.documents.map((d) => {
+        const meta =
+          d.metadata && typeof d.metadata === 'object'
+            ? (d.metadata as Record<string, unknown>)
+            : {};
+        const fromClient =
+          meta.portalClient === true ||
+          String(d.storageKey || '').includes('/portal') ||
+          String(d.storageKey || '').startsWith('portal-link/');
+        return {
+          ...d,
+          metadata: undefined,
+          storageKey: undefined,
+          downloadable: true,
+          fromClient,
+        };
+      }),
       ...progressMeta,
       progressPercent,
     };
@@ -934,6 +948,32 @@ export class ProjectsService {
   }
 
   // ── Public portal mutations (token-gated, no login) ─────
+
+  private asMeta(metadata: unknown): Record<string, unknown> {
+    if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
+      return { ...(metadata as Record<string, unknown>) };
+    }
+    return {};
+  }
+
+  private idList(meta: Record<string, unknown>, key: string): string[] {
+    return Array.isArray(meta[key])
+      ? (meta[key] as unknown[]).filter((id): id is string => typeof id === 'string')
+      : [];
+  }
+
+  private isClientIssue(metadata: unknown): boolean {
+    return readCreatorKind(metadata) === 'client';
+  }
+
+  private isClientDocument(doc: { metadata?: unknown; storageKey?: string | null }) {
+    const meta = this.asMeta(doc.metadata);
+    return (
+      meta.portalClient === true ||
+      String(doc.storageKey || '').includes('/portal') ||
+      String(doc.storageKey || '').startsWith('portal-link/')
+    );
+  }
 
   private async resolvePortalProject(token: string) {
     if (!token?.trim()) throw new NotFoundException('Portal not found or disabled');
@@ -1089,7 +1129,7 @@ export class ProjectsService {
 
     const issue = await this.prisma.issue.findFirst({
       where: { id: issueId, projectId },
-      select: { id: true },
+      select: { id: true, metadata: true },
     });
     if (!issue) throw new NotFoundException('Task not found on this project');
 
@@ -1103,7 +1143,7 @@ export class ProjectsService {
       file.mimetype || 'application/octet-stream',
     );
 
-    return this.prisma.attachment.create({
+    const attachment = await this.prisma.attachment.create({
       data: {
         issueId,
         uploadedById: reporterId,
@@ -1114,6 +1154,20 @@ export class ProjectsService {
         storageUrl: url,
       },
     });
+
+    const meta = this.asMeta(issue.metadata);
+    const existingIds = this.idList(meta, 'portalAttachmentIds');
+    await this.prisma.issue.update({
+      where: { id: issueId },
+      data: {
+        metadata: {
+          ...meta,
+          portalAttachmentIds: [...existingIds, attachment.id],
+        } as never,
+      },
+    });
+
+    return { ...attachment, fromClient: true };
   }
 
   async portalGetTask(token: string, taskId: string) {
@@ -1162,6 +1216,10 @@ export class ProjectsService {
       ? (meta.portalCommentIds as unknown[]).filter((id) => typeof id === 'string')
       : [];
 
+    const portalAttachmentIds = this.idList(meta, 'portalAttachmentIds');
+    const creatorKind = readCreatorKind(issue.metadata) || 'other';
+    const canEdit = creatorKind === 'client';
+
     return {
       id: issue.id,
       key: issue.key,
@@ -1187,7 +1245,12 @@ export class ProjectsService {
       reporter: issue.reporter
         ? `${issue.reporter.firstName} ${issue.reporter.lastName}`.trim()
         : null,
-      attachments: issue.attachments,
+      creatorKind,
+      canEdit,
+      attachments: issue.attachments.map((a) => ({
+        ...a,
+        fromClient: canEdit || portalAttachmentIds.includes(a.id),
+      })),
       comments: issue.comments.map((c) => {
         const fromPortal = portalCommentIds.includes(c.id);
         const fromClient = Boolean(c.author?.linkedClient) || fromPortal;
@@ -1268,6 +1331,242 @@ export class ProjectsService {
     };
   }
 
+  async portalUpdateTask(
+    token: string,
+    taskId: string,
+    body: {
+      title?: string;
+      description?: string;
+      status?: string;
+      priority?: string;
+      milestoneId?: string | null;
+    },
+  ) {
+    const { projectId } = await this.resolvePortalProject(token);
+    const issue = await this.prisma.issue.findFirst({
+      where: { id: taskId, projectId, status: { not: 'CANCELLED' } },
+      select: { id: true, metadata: true, status: true },
+    });
+    if (!issue) throw new NotFoundException('Task not found on this project');
+    if (!this.isClientIssue(issue.metadata)) {
+      throw new ForbiddenException('You can only edit tasks you created');
+    }
+
+    const data: Prisma.IssueUpdateInput = {};
+    if (body.title !== undefined) {
+      const title = body.title.trim();
+      if (!title) throw new BadRequestException('Title is required');
+      data.title = title;
+    }
+    if (body.description !== undefined) {
+      data.description = body.description.trim() || null;
+    }
+    if (body.priority !== undefined) {
+      const allowed = new Set(['LOWEST', 'LOW', 'MEDIUM', 'HIGH', 'HIGHEST', 'CRITICAL']);
+      if (allowed.has(body.priority.toUpperCase())) {
+        data.priority = body.priority.toUpperCase() as never;
+      }
+    }
+    if (body.milestoneId !== undefined) {
+      if (body.milestoneId) {
+        const ms = await this.prisma.milestone.findFirst({
+          where: { id: body.milestoneId, projectId },
+        });
+        if (!ms) throw new BadRequestException('Milestone not found on this project');
+        data.milestone = { connect: { id: body.milestoneId } };
+      } else {
+        data.milestone = { disconnect: true };
+      }
+    }
+    if (body.status !== undefined) {
+      const project = await this.prisma.project.findFirst({
+        where: { id: projectId },
+        select: { settings: true },
+      });
+      const boardColumns = parseBoardColumns(project?.settings);
+      const column =
+        boardColumns.find((c) => c.id === body.status) ||
+        boardColumns.find((c) => c.id === IssueStatus.TODO);
+      if (!column) throw new BadRequestException('Unknown status');
+      const placement = buildIssueUpdateForColumn(column.id, issue.metadata);
+      data.status = placement.status;
+      data.metadata = withCreatorKind(placement.metadata, 'client') as never;
+    }
+
+    return this.prisma.issue.update({ where: { id: taskId }, data });
+  }
+
+  async portalDeleteTask(token: string, taskId: string) {
+    const { projectId } = await this.resolvePortalProject(token);
+    const issue = await this.prisma.issue.findFirst({
+      where: { id: taskId, projectId },
+      select: { id: true, metadata: true, attachments: { select: { storageKey: true } } },
+    });
+    if (!issue) throw new NotFoundException('Task not found on this project');
+    if (!this.isClientIssue(issue.metadata)) {
+      throw new ForbiddenException('You can only delete tasks you created');
+    }
+    for (const file of issue.attachments) {
+      await this.storage.delete(file.storageKey);
+    }
+    await this.prisma.issue.delete({ where: { id: taskId } });
+    return { message: 'Task deleted' };
+  }
+
+  async portalUpdateComment(token: string, taskId: string, commentId: string, body: string) {
+    const text = body?.trim();
+    if (!text) throw new BadRequestException('Comment is required');
+    const { projectId } = await this.resolvePortalProject(token);
+    const issue = await this.prisma.issue.findFirst({
+      where: { id: taskId, projectId },
+      select: { id: true, metadata: true },
+    });
+    if (!issue) throw new NotFoundException('Task not found on this project');
+    const portalCommentIds = this.idList(this.asMeta(issue.metadata), 'portalCommentIds');
+    if (!portalCommentIds.includes(commentId)) {
+      throw new ForbiddenException('You can only edit your own comments');
+    }
+    const comment = await this.prisma.comment.findFirst({
+      where: { id: commentId, issueId: taskId },
+    });
+    if (!comment) throw new NotFoundException('Comment not found');
+    const updated = await this.prisma.comment.update({
+      where: { id: commentId },
+      data: { body: text },
+    });
+    return {
+      id: updated.id,
+      body: updated.body,
+      createdAt: updated.createdAt,
+      authorName: 'Client',
+      fromClient: true,
+    };
+  }
+
+  async portalDeleteComment(token: string, taskId: string, commentId: string) {
+    const { projectId } = await this.resolvePortalProject(token);
+    const issue = await this.prisma.issue.findFirst({
+      where: { id: taskId, projectId },
+      select: { id: true, metadata: true },
+    });
+    if (!issue) throw new NotFoundException('Task not found on this project');
+    const meta = this.asMeta(issue.metadata);
+    const portalCommentIds = this.idList(meta, 'portalCommentIds');
+    if (!portalCommentIds.includes(commentId)) {
+      throw new ForbiddenException('You can only delete your own comments');
+    }
+    const comment = await this.prisma.comment.findFirst({
+      where: { id: commentId, issueId: taskId },
+    });
+    if (!comment) throw new NotFoundException('Comment not found');
+    await this.prisma.comment.delete({ where: { id: commentId } });
+    await this.prisma.issue.update({
+      where: { id: taskId },
+      data: {
+        metadata: {
+          ...meta,
+          portalCommentIds: portalCommentIds.filter((id) => id !== commentId),
+        } as never,
+      },
+    });
+    return { message: 'Comment deleted' };
+  }
+
+  async portalUpdateAttachment(
+    token: string,
+    taskId: string,
+    attachmentId: string,
+    name: string,
+  ) {
+    const label = name?.trim();
+    if (!label) throw new BadRequestException('Name is required');
+    const { projectId } = await this.resolvePortalProject(token);
+    const issue = await this.prisma.issue.findFirst({
+      where: { id: taskId, projectId },
+      select: { id: true, metadata: true },
+    });
+    if (!issue) throw new NotFoundException('Task not found on this project');
+    const canManage =
+      this.isClientIssue(issue.metadata) ||
+      this.idList(this.asMeta(issue.metadata), 'portalAttachmentIds').includes(attachmentId);
+    if (!canManage) {
+      throw new ForbiddenException('You can only rename files you uploaded');
+    }
+    const attachment = await this.prisma.attachment.findFirst({
+      where: { id: attachmentId, issueId: taskId },
+    });
+    if (!attachment) throw new NotFoundException('File not found');
+    return this.prisma.attachment.update({
+      where: { id: attachmentId },
+      data: { name: label },
+    });
+  }
+
+  async portalDeleteAttachment(token: string, taskId: string, attachmentId: string) {
+    const { projectId } = await this.resolvePortalProject(token);
+    const issue = await this.prisma.issue.findFirst({
+      where: { id: taskId, projectId },
+      select: { id: true, metadata: true },
+    });
+    if (!issue) throw new NotFoundException('Task not found on this project');
+    const meta = this.asMeta(issue.metadata);
+    const portalAttachmentIds = this.idList(meta, 'portalAttachmentIds');
+    const canManage =
+      this.isClientIssue(issue.metadata) || portalAttachmentIds.includes(attachmentId);
+    if (!canManage) {
+      throw new ForbiddenException('You can only delete files you uploaded');
+    }
+    const attachment = await this.prisma.attachment.findFirst({
+      where: { id: attachmentId, issueId: taskId },
+    });
+    if (!attachment) throw new NotFoundException('File not found');
+    await this.storage.delete(attachment.storageKey);
+    await this.prisma.attachment.delete({ where: { id: attachmentId } });
+    if (portalAttachmentIds.includes(attachmentId)) {
+      await this.prisma.issue.update({
+        where: { id: taskId },
+        data: {
+          metadata: {
+            ...meta,
+            portalAttachmentIds: portalAttachmentIds.filter((id) => id !== attachmentId),
+          } as never,
+        },
+      });
+    }
+    return { message: 'File deleted' };
+  }
+
+  async portalUpdateDocument(token: string, documentId: string, name: string) {
+    const label = name?.trim();
+    if (!label) throw new BadRequestException('Name is required');
+    const { projectId } = await this.resolvePortalProject(token);
+    const doc = await this.prisma.document.findFirst({
+      where: { id: documentId, projectId },
+    });
+    if (!doc) throw new NotFoundException('Document not found');
+    if (!this.isClientDocument(doc)) {
+      throw new ForbiddenException('You can only rename files you uploaded');
+    }
+    return this.prisma.document.update({
+      where: { id: documentId },
+      data: { name: label, originalName: label },
+    });
+  }
+
+  async portalDeleteDocument(token: string, documentId: string) {
+    const { projectId } = await this.resolvePortalProject(token);
+    const doc = await this.prisma.document.findFirst({
+      where: { id: documentId, projectId },
+    });
+    if (!doc) throw new NotFoundException('Document not found');
+    if (!this.isClientDocument(doc)) {
+      throw new ForbiddenException('You can only delete files you uploaded');
+    }
+    await this.storage.delete(doc.storageKey);
+    await this.prisma.document.delete({ where: { id: documentId } });
+    return { message: 'Document deleted' };
+  }
+
   async portalUploadDocument(token: string, file: Express.Multer.File, name?: string) {
     const { projectId, companyId, clientId, reporterId } =
       await this.resolvePortalProject(token);
@@ -1300,6 +1599,7 @@ export class ProjectsService {
           storageKey: key,
           storageUrl: url,
           isClientVisible: true,
+          metadata: { portalClient: true } as Prisma.InputJsonValue,
         },
       });
     } catch (err) {
@@ -1400,7 +1700,7 @@ export class ProjectsService {
         storageKey,
         storageUrl: url,
         isClientVisible: true,
-        metadata: { kind: 'external_link' } as Prisma.InputJsonValue,
+        metadata: { kind: 'external_link', portalClient: true } as Prisma.InputJsonValue,
       },
     });
   }

@@ -225,6 +225,14 @@ export const portalApi = {
     api.get(`/portal/${token}/tasks/${taskId}`),
   addComment: (token: string, taskId: string, body: string) =>
     api.post(`/portal/${token}/tasks/${taskId}/comments`, { body }),
+  updateComment: (token: string, taskId: string, commentId: string, body: string) =>
+    api.patch(`/portal/${token}/tasks/${taskId}/comments/${commentId}`, { body }),
+  deleteComment: (token: string, taskId: string, commentId: string) =>
+    api.delete(`/portal/${token}/tasks/${taskId}/comments/${commentId}`),
+  updateTask: (token: string, taskId: string, data: Record<string, unknown>) =>
+    api.patch(`/portal/${token}/tasks/${taskId}`, data),
+  deleteTask: (token: string, taskId: string) =>
+    api.delete(`/portal/${token}/tasks/${taskId}`),
   createMilestone: (token: string, data: Record<string, unknown>) =>
     api.post(`/portal/${token}/milestones`, data),
   createTask: (token: string, data: Record<string, unknown>) =>
@@ -236,6 +244,17 @@ export const portalApi = {
       timeout: 120000,
     });
   },
+  renameTaskAttachment: (
+    token: string,
+    taskId: string,
+    attachmentId: string,
+    name: string,
+  ) =>
+    api.patch(`/portal/${token}/tasks/${taskId}/attachments/${attachmentId}`, {
+      name,
+    }),
+  deleteTaskAttachment: (token: string, taskId: string, attachmentId: string) =>
+    api.delete(`/portal/${token}/tasks/${taskId}/attachments/${attachmentId}`),
   addLink: (token: string, data: { name: string; url: string }) =>
     api.post(`/portal/${token}/links`, data),
   uploadDocument: (token: string, file: File, name?: string) => {
@@ -246,6 +265,10 @@ export const portalApi = {
       timeout: 120000,
     });
   },
+  renameDocument: (token: string, documentId: string, name: string) =>
+    api.patch(`/portal/${token}/documents/${documentId}`, { name }),
+  deleteDocument: (token: string, documentId: string) =>
+    api.delete(`/portal/${token}/documents/${documentId}`),
   downloadDocument: (token: string, documentId: string) =>
     api.get(`/portal/${token}/documents/${documentId}/download`, {
       timeout: 120000,

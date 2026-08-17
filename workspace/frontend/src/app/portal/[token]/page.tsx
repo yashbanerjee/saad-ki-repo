@@ -26,6 +26,8 @@ import {
   Bug,
   Bookmark,
   Paperclip,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -149,6 +151,8 @@ export default function PublicPortalPage() {
   const token = params.token as string;
   const queryClient = useQueryClient();
   const taskFileRef = useRef<HTMLInputElement>(null);
+  const attachFileRef = useRef<HTMLInputElement>(null);
+  const projectDocRef = useRef<HTMLInputElement>(null);
 
   const [taskOpen, setTaskOpen] = useState(false);
   const [milestoneOpen, setMilestoneOpen] = useState(false);
@@ -171,6 +175,16 @@ export default function PublicPortalPage() {
   const [creatorFilter, setCreatorFilter] = useState<string>("all");
   const [viewTaskId, setViewTaskId] = useState<string | null>(null);
   const [commentBody, setCommentBody] = useState("");
+  const [editingTask, setEditingTask] = useState(false);
+  const [taskEdit, setTaskEdit] = useState({ title: "", description: "" });
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentBody, setEditingCommentBody] = useState("");
+  const [renamingAttachmentId, setRenamingAttachmentId] = useState<string | null>(
+    null,
+  );
+  const [renameAttachmentName, setRenameAttachmentName] = useState("");
+  const [renamingDocId, setRenamingDocId] = useState<string | null>(null);
+  const [renameDocName, setRenameDocName] = useState("");
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["portal", token],
@@ -351,6 +365,7 @@ export default function PublicPortalPage() {
     size?: number;
     mimeType?: string;
     createdAt?: string | null;
+    fromClient?: boolean;
   };
 
   const monthOptions = useMemo(() => {
@@ -511,8 +526,157 @@ export default function PublicPortalPage() {
     },
   });
 
+  const invalidateTask = () => {
+    queryClient.invalidateQueries({
+      queryKey: ["portal-task", token, viewTaskId],
+    });
+    invalidate();
+  };
+
+  const updateTaskMutation = useMutation({
+    mutationFn: () =>
+      portalApi.updateTask(token, viewTaskId!, {
+        title: taskEdit.title.trim(),
+        description: taskEdit.description.trim(),
+      }),
+    onSuccess: () => {
+      setEditingTask(false);
+      invalidateTask();
+      toast.success("Task updated");
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Could not update task");
+    },
+  });
+
+  const deleteTaskMutation = useMutation({
+    mutationFn: () => portalApi.deleteTask(token, viewTaskId!),
+    onSuccess: () => {
+      setViewTaskId(null);
+      invalidate();
+      toast.success("Task deleted");
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Could not delete task");
+    },
+  });
+
+  const updateCommentMutation = useMutation({
+    mutationFn: () =>
+      portalApi.updateComment(
+        token,
+        viewTaskId!,
+        editingCommentId!,
+        editingCommentBody.trim(),
+      ),
+    onSuccess: () => {
+      setEditingCommentId(null);
+      setEditingCommentBody("");
+      invalidateTask();
+      toast.success("Comment updated");
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Could not update comment");
+    },
+  });
+
+  const deleteCommentMutation = useMutation({
+    mutationFn: (commentId: string) =>
+      portalApi.deleteComment(token, viewTaskId!, commentId),
+    onSuccess: () => {
+      invalidateTask();
+      toast.success("Comment deleted");
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Could not delete comment");
+    },
+  });
+
+  const uploadAttachmentMutation = useMutation({
+    mutationFn: (file: File) =>
+      portalApi.uploadTaskAttachment(token, viewTaskId!, file),
+    onSuccess: () => {
+      invalidateTask();
+      toast.success("File uploaded");
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Could not upload file");
+    },
+  });
+
+  const renameAttachmentMutation = useMutation({
+    mutationFn: () =>
+      portalApi.renameTaskAttachment(
+        token,
+        viewTaskId!,
+        renamingAttachmentId!,
+        renameAttachmentName.trim(),
+      ),
+    onSuccess: () => {
+      setRenamingAttachmentId(null);
+      setRenameAttachmentName("");
+      invalidateTask();
+      toast.success("File renamed");
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Could not rename file");
+    },
+  });
+
+  const deleteAttachmentMutation = useMutation({
+    mutationFn: (attachmentId: string) =>
+      portalApi.deleteTaskAttachment(token, viewTaskId!, attachmentId),
+    onSuccess: () => {
+      invalidateTask();
+      toast.success("File deleted");
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Could not delete file");
+    },
+  });
+
+  const uploadProjectDocMutation = useMutation({
+    mutationFn: (file: File) => portalApi.uploadDocument(token, file),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Document uploaded");
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Could not upload document");
+    },
+  });
+
+  const renameDocumentMutation = useMutation({
+    mutationFn: () =>
+      portalApi.renameDocument(token, renamingDocId!, renameDocName.trim()),
+    onSuccess: () => {
+      setRenamingDocId(null);
+      setRenameDocName("");
+      invalidate();
+      toast.success("Document renamed");
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Could not rename document");
+    },
+  });
+
+  const deleteDocumentMutation = useMutation({
+    mutationFn: (documentId: string) =>
+      portalApi.deleteDocument(token, documentId),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Document deleted");
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Could not delete document");
+    },
+  });
+
   const openTaskView = (taskId: string) => {
     setCommentBody("");
+    setEditingTask(false);
+    setEditingCommentId(null);
+    setRenamingAttachmentId(null);
     setViewTaskId(taskId);
   };
 
@@ -796,14 +960,40 @@ export default function PublicPortalPage() {
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>
-            <CardHeader className="pb-2">
+            <CardHeader className="pb-2 flex flex-row items-start justify-between gap-2">
               <div>
                 <CardTitle className="text-base flex items-center gap-2">
                   <FileText className="h-4 w-4" /> Documents
                 </CardTitle>
                 <CardDescription>
-                  Shared files from the project team (view only)
+                  Team files are view only. You can add, rename, or delete your own uploads.
                 </CardDescription>
+              </div>
+              <div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={uploadProjectDocMutation.isPending}
+                  onClick={() => projectDocRef.current?.click()}
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  {uploadProjectDocMutation.isPending ? "Uploading…" : "Upload"}
+                </Button>
+                <input
+                  ref={projectDocRef}
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file) return;
+                    if (file.size > MAX_FILE_BYTES) {
+                      toast.error(`${file.name} is over 15 MB`);
+                      return;
+                    }
+                    uploadProjectDocMutation.mutate(file);
+                  }}
+                />
               </div>
             </CardHeader>
             <CardContent>
@@ -823,35 +1013,100 @@ export default function PublicPortalPage() {
                       storageUrl?: string | null;
                       size?: number;
                       mimeType?: string;
+                      fromClient?: boolean;
                     }) => {
                       const label = doc.originalName || doc.name;
                       const isLink = doc.mimeType === "text/uri-list";
+                      const renaming = renamingDocId === doc.id;
                       return (
-                        <li key={doc.id}>
-                          <button
-                            type="button"
-                            onClick={() => handlePortalDownload(doc)}
-                            className="w-full flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-sm hover:bg-muted/40 transition-colors text-left"
-                          >
-                            <div className="min-w-0 flex items-center gap-2">
-                              {isLink ? (
-                                <Link2 className="h-4 w-4 shrink-0 text-primary" />
-                              ) : (
-                                <Download className="h-4 w-4 shrink-0 text-primary" />
-                              )}
-                              <div className="min-w-0">
-                                <p className="font-medium truncate">{label}</p>
-                                <p className="text-[11px] text-muted-foreground">
-                                  {isLink
-                                    ? "External link"
-                                    : [doc.mimeType, formatBytes(doc.size)]
-                                        .filter(Boolean)
-                                        .join(" · ")}
-                                </p>
-                              </div>
+                        <li key={doc.id} className="rounded-lg border px-3 py-2.5">
+                          {renaming ? (
+                            <div className="flex items-center gap-2">
+                              <Input
+                                value={renameDocName}
+                                onChange={(e) => setRenameDocName(e.target.value)}
+                                className="h-8"
+                              />
+                              <Button
+                                size="sm"
+                                disabled={
+                                  !renameDocName.trim() ||
+                                  renameDocumentMutation.isPending
+                                }
+                                onClick={() => renameDocumentMutation.mutate()}
+                              >
+                                Save
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setRenamingDocId(null)}
+                              >
+                                Cancel
+                              </Button>
                             </div>
-                            <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                          </button>
+                          ) : (
+                            <div className="flex items-center justify-between gap-3">
+                              <button
+                                type="button"
+                                onClick={() => handlePortalDownload(doc)}
+                                className="min-w-0 flex-1 flex items-center gap-2 text-sm hover:opacity-80 text-left"
+                              >
+                                {isLink ? (
+                                  <Link2 className="h-4 w-4 shrink-0 text-primary" />
+                                ) : (
+                                  <Download className="h-4 w-4 shrink-0 text-primary" />
+                                )}
+                                <div className="min-w-0">
+                                  <p className="font-medium truncate">{label}</p>
+                                  <p className="text-[11px] text-muted-foreground">
+                                    {isLink
+                                      ? "External link"
+                                      : [doc.mimeType, formatBytes(doc.size)]
+                                          .filter(Boolean)
+                                          .join(" · ")}
+                                    {doc.fromClient ? " · Yours" : ""}
+                                  </p>
+                                </div>
+                              </button>
+                              {doc.fromClient ? (
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8"
+                                    onClick={() => {
+                                      setRenamingDocId(doc.id);
+                                      setRenameDocName(label);
+                                    }}
+                                    aria-label={`Rename ${label}`}
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 text-destructive"
+                                    disabled={deleteDocumentMutation.isPending}
+                                    onClick={() => {
+                                      if (
+                                        window.confirm(
+                                          `Delete ${label}? This cannot be undone.`,
+                                        )
+                                      ) {
+                                        deleteDocumentMutation.mutate(doc.id);
+                                      }
+                                    }}
+                                    aria-label={`Delete ${label}`}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                              )}
+                            </div>
+                          )}
                         </li>
                       );
                     },
@@ -1331,6 +1586,9 @@ export default function PublicPortalPage() {
           if (!open) {
             setViewTaskId(null);
             setCommentBody("");
+            setEditingTask(false);
+            setEditingCommentId(null);
+            setRenamingAttachmentId(null);
           }
         }}
       >
@@ -1362,19 +1620,90 @@ export default function PublicPortalPage() {
                 <span className="text-sm font-semibold tracking-wide">
                   {displayIssueKey(viewTask.type, viewTask.key)}
                 </span>
+                {viewTask.canEdit && (
+                  <div className="ml-auto flex items-center gap-1 pr-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setEditingTask((v) => !v);
+                        setTaskEdit({
+                          title: viewTask.title || "",
+                          description: viewTask.description || "",
+                        });
+                      }}
+                    >
+                      <Pencil className="h-3.5 w-3.5 mr-1" />
+                      {editingTask ? "Cancel" : "Edit"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive"
+                      disabled={deleteTaskMutation.isPending}
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            "Delete this task? This cannot be undone.",
+                          )
+                        ) {
+                          deleteTaskMutation.mutate();
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 mr-1" />
+                      Delete
+                    </Button>
+                  </div>
+                )}
               </div>
 
               <div className="grid min-h-0 flex-1 overflow-hidden md:grid-cols-[minmax(0,1fr)_280px]">
                 <div className="min-h-0 overflow-y-auto px-6 pb-6 pt-2 space-y-6">
                   <DialogHeader className="space-y-0 text-left">
-                    <DialogTitle className="font-display text-2xl font-bold leading-snug tracking-tight">
-                      {viewTask.title}
-                    </DialogTitle>
+                    {editingTask ? (
+                      <div className="space-y-2">
+                        <Input
+                          value={taskEdit.title}
+                          onChange={(e) =>
+                            setTaskEdit((f) => ({ ...f, title: e.target.value }))
+                          }
+                          className="font-display text-xl font-bold h-auto py-2"
+                        />
+                      </div>
+                    ) : (
+                      <DialogTitle className="font-display text-2xl font-bold leading-snug tracking-tight">
+                        {viewTask.title}
+                      </DialogTitle>
+                    )}
                   </DialogHeader>
 
                   <section>
                     <h3 className="text-sm font-semibold mb-2">Description</h3>
-                    {viewTask.description ? (
+                    {editingTask ? (
+                      <div className="space-y-2">
+                        <Textarea
+                          value={taskEdit.description}
+                          onChange={(e) =>
+                            setTaskEdit((f) => ({
+                              ...f,
+                              description: e.target.value,
+                            }))
+                          }
+                          rows={4}
+                          placeholder="Add a description…"
+                        />
+                        <Button
+                          size="sm"
+                          disabled={
+                            !taskEdit.title.trim() || updateTaskMutation.isPending
+                          }
+                          onClick={() => updateTaskMutation.mutate()}
+                        >
+                          {updateTaskMutation.isPending ? "Saving…" : "Save changes"}
+                        </Button>
+                      </div>
+                    ) : viewTask.description ? (
                       <p className="text-sm leading-relaxed whitespace-pre-wrap">
                         {viewTask.description}
                       </p>
@@ -1386,15 +1715,43 @@ export default function PublicPortalPage() {
                   </section>
 
                   <section>
-                    <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                      <Paperclip className="h-4 w-4" />
-                      Attachments
-                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                        {Array.isArray(viewTask.attachments)
-                          ? viewTask.attachments.length
-                          : 0}
-                      </span>
-                    </h3>
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-semibold flex items-center gap-2">
+                        <Paperclip className="h-4 w-4" />
+                        Attachments
+                        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                          {Array.isArray(viewTask.attachments)
+                            ? viewTask.attachments.length
+                            : 0}
+                        </span>
+                      </h3>
+                      <div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={uploadAttachmentMutation.isPending}
+                          onClick={() => attachFileRef.current?.click()}
+                        >
+                          <Plus className="h-3.5 w-3.5 mr-1" />
+                          {uploadAttachmentMutation.isPending ? "Uploading…" : "Add"}
+                        </Button>
+                        <input
+                          ref={attachFileRef}
+                          type="file"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            e.target.value = "";
+                            if (!file) return;
+                            if (file.size > MAX_FILE_BYTES) {
+                              toast.error(`${file.name} is over 15 MB`);
+                              return;
+                            }
+                            uploadAttachmentMutation.mutate(file);
+                          }}
+                        />
+                      </div>
+                    </div>
                     {Array.isArray(viewTask.attachments) &&
                     viewTask.attachments.length > 0 ? (
                       <ul className="grid gap-2 sm:grid-cols-2">
@@ -1406,12 +1763,17 @@ export default function PublicPortalPage() {
                             size?: number;
                             storageUrl?: string | null;
                             createdAt?: string;
+                            fromClient?: boolean;
                           }) => {
                             const isImage = String(file.mimeType || "").startsWith(
                               "image/",
                             );
-                            const inner = (
-                              <>
+                            const renaming = renamingAttachmentId === file.id;
+                            return (
+                              <li
+                                key={file.id}
+                                className="overflow-hidden rounded-lg border"
+                              >
                                 {isImage && file.storageUrl ? (
                                   // eslint-disable-next-line @next/next/no-img-element
                                   <img
@@ -1424,39 +1786,97 @@ export default function PublicPortalPage() {
                                     <FileText className="h-8 w-8 text-muted-foreground" />
                                   </div>
                                 )}
-                                <div className="p-2">
-                                  <p className="text-xs font-medium truncate">
-                                    {file.name}
-                                  </p>
-                                  <p className="text-[11px] text-muted-foreground">
-                                    {[
-                                      formatBytes(file.size),
-                                      file.createdAt
-                                        ? formatDateTime(file.createdAt)
-                                        : null,
-                                    ]
-                                      .filter(Boolean)
-                                      .join(" · ")}
-                                  </p>
+                                <div className="p-2 space-y-2">
+                                  {renaming ? (
+                                    <div className="flex items-center gap-1">
+                                      <Input
+                                        value={renameAttachmentName}
+                                        onChange={(e) =>
+                                          setRenameAttachmentName(e.target.value)
+                                        }
+                                        className="h-7 text-xs"
+                                      />
+                                      <Button
+                                        size="sm"
+                                        className="h-7 px-2"
+                                        disabled={
+                                          !renameAttachmentName.trim() ||
+                                          renameAttachmentMutation.isPending
+                                        }
+                                        onClick={() =>
+                                          renameAttachmentMutation.mutate()
+                                        }
+                                      >
+                                        Save
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      {file.storageUrl ? (
+                                        <a
+                                          href={file.storageUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-xs font-medium truncate block hover:underline"
+                                        >
+                                          {file.name}
+                                        </a>
+                                      ) : (
+                                        <p className="text-xs font-medium truncate">
+                                          {file.name}
+                                        </p>
+                                      )}
+                                      <p className="text-[11px] text-muted-foreground">
+                                        {[
+                                          formatBytes(file.size),
+                                          file.createdAt
+                                            ? formatDateTime(file.createdAt)
+                                            : null,
+                                        ]
+                                          .filter(Boolean)
+                                          .join(" · ")}
+                                      </p>
+                                    </>
+                                  )}
+                                  {file.fromClient && !renaming && (
+                                    <div className="flex gap-1">
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-7 px-2"
+                                        onClick={() => {
+                                          setRenamingAttachmentId(file.id);
+                                          setRenameAttachmentName(file.name);
+                                        }}
+                                      >
+                                        <Pencil className="h-3 w-3 mr-1" />
+                                        Rename
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-7 px-2 text-destructive"
+                                        disabled={
+                                          deleteAttachmentMutation.isPending
+                                        }
+                                        onClick={() => {
+                                          if (
+                                            window.confirm(
+                                              `Delete ${file.name}?`,
+                                            )
+                                          ) {
+                                            deleteAttachmentMutation.mutate(
+                                              file.id,
+                                            );
+                                          }
+                                        }}
+                                      >
+                                        <Trash2 className="h-3 w-3 mr-1" />
+                                        Delete
+                                      </Button>
+                                    </div>
+                                  )}
                                 </div>
-                              </>
-                            );
-                            return (
-                              <li key={file.id}>
-                                {file.storageUrl ? (
-                                  <a
-                                    href={file.storageUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="block overflow-hidden rounded-lg border hover:border-primary/40 transition-colors"
-                                  >
-                                    {inner}
-                                  </a>
-                                ) : (
-                                  <div className="overflow-hidden rounded-lg border">
-                                    {inner}
-                                  </div>
-                                )}
                               </li>
                             );
                           },
@@ -1502,10 +1922,83 @@ export default function PublicPortalPage() {
                                     <span className="text-xs text-muted-foreground">
                                       {formatRelativeTime(c.createdAt)}
                                     </span>
+                                    {c.fromClient && (
+                                      <span className="ml-auto flex gap-1">
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-7 px-2"
+                                          onClick={() => {
+                                            setEditingCommentId(c.id);
+                                            setEditingCommentBody(c.body);
+                                          }}
+                                        >
+                                          <Pencil className="h-3 w-3 mr-1" />
+                                          Edit
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-7 px-2 text-destructive"
+                                          disabled={
+                                            deleteCommentMutation.isPending
+                                          }
+                                          onClick={() => {
+                                            if (
+                                              window.confirm(
+                                                "Delete this comment?",
+                                              )
+                                            ) {
+                                              deleteCommentMutation.mutate(c.id);
+                                            }
+                                          }}
+                                        >
+                                          <Trash2 className="h-3 w-3 mr-1" />
+                                          Delete
+                                        </Button>
+                                      </span>
+                                    )}
                                   </div>
-                                  <p className="text-sm mt-0.5 whitespace-pre-wrap">
-                                    {c.body}
-                                  </p>
+                                  {editingCommentId === c.id ? (
+                                    <div className="mt-2 space-y-2">
+                                      <Textarea
+                                        value={editingCommentBody}
+                                        onChange={(e) =>
+                                          setEditingCommentBody(e.target.value)
+                                        }
+                                        rows={3}
+                                      />
+                                      <div className="flex gap-2">
+                                        <Button
+                                          size="sm"
+                                          disabled={
+                                            !editingCommentBody.trim() ||
+                                            updateCommentMutation.isPending
+                                          }
+                                          onClick={() =>
+                                            updateCommentMutation.mutate()
+                                          }
+                                        >
+                                          {updateCommentMutation.isPending
+                                            ? "Saving…"
+                                            : "Save"}
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() =>
+                                            setEditingCommentId(null)
+                                          }
+                                        >
+                                          Cancel
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm mt-0.5 whitespace-pre-wrap">
+                                      {c.body}
+                                    </p>
+                                  )}
                                 </div>
                               </li>
                             );
@@ -1547,14 +2040,49 @@ export default function PublicPortalPage() {
 
                 <aside className="border-t md:border-t-0 md:border-l bg-muted/20 overflow-y-auto px-4 py-4 space-y-4">
                   <div>
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded px-3 py-1.5 text-sm font-semibold",
-                        statusButtonClass(viewTask.status),
-                      )}
-                    >
-                      {formatStatusLabel(viewTask.status)}
-                    </span>
+                    {viewTask.canEdit ? (
+                      <Select
+                        value={viewTask.status}
+                        onValueChange={(status) => {
+                          portalApi
+                            .updateTask(token, viewTaskId!, { status })
+                            .then(() => {
+                              invalidateTask();
+                              toast.success("Status updated");
+                            })
+                            .catch(
+                              (err: {
+                                response?: { data?: { message?: string } };
+                              }) => {
+                                toast.error(
+                                  err?.response?.data?.message ||
+                                    "Could not update status",
+                                );
+                              },
+                            );
+                        }}
+                      >
+                        <SelectTrigger className="w-auto h-9 font-semibold">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {boardColumns.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.title}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <span
+                        className={cn(
+                          "inline-flex items-center rounded px-3 py-1.5 text-sm font-semibold",
+                          statusButtonClass(viewTask.status),
+                        )}
+                      >
+                        {formatStatusLabel(viewTask.status)}
+                      </span>
+                    )}
                   </div>
 
                   <div>

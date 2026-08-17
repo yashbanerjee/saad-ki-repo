@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Delete,
   Param,
   Body,
   UploadedFile,
@@ -52,6 +54,35 @@ class PortalAddCommentDto {
   @IsString()
   @MinLength(1)
   body: string;
+}
+
+class PortalUpdateTaskDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @IsOptional()
+  @IsString()
+  priority?: string;
+
+  @IsOptional()
+  @IsString()
+  milestoneId?: string;
+}
+
+class PortalRenameDto {
+  @IsString()
+  @MinLength(1)
+  name: string;
 }
 
 const uploadMulterOptions = {
@@ -105,6 +136,22 @@ export class PortalController {
   }
 
   @Public()
+  @Patch(':token/tasks/:taskId')
+  updateTask(
+    @Param('token') token: string,
+    @Param('taskId') taskId: string,
+    @Body() dto: PortalUpdateTaskDto,
+  ) {
+    return this.projectsService.portalUpdateTask(token, taskId, dto);
+  }
+
+  @Public()
+  @Delete(':token/tasks/:taskId')
+  deleteTask(@Param('token') token: string, @Param('taskId') taskId: string) {
+    return this.projectsService.portalDeleteTask(token, taskId);
+  }
+
+  @Public()
   @Post(':token/tasks/:taskId/comments')
   addComment(
     @Param('token') token: string,
@@ -112,6 +159,27 @@ export class PortalController {
     @Body() dto: PortalAddCommentDto,
   ) {
     return this.projectsService.portalAddComment(token, taskId, dto.body);
+  }
+
+  @Public()
+  @Patch(':token/tasks/:taskId/comments/:commentId')
+  updateComment(
+    @Param('token') token: string,
+    @Param('taskId') taskId: string,
+    @Param('commentId') commentId: string,
+    @Body() dto: PortalAddCommentDto,
+  ) {
+    return this.projectsService.portalUpdateComment(token, taskId, commentId, dto.body);
+  }
+
+  @Public()
+  @Delete(':token/tasks/:taskId/comments/:commentId')
+  deleteComment(
+    @Param('token') token: string,
+    @Param('taskId') taskId: string,
+    @Param('commentId') commentId: string,
+  ) {
+    return this.projectsService.portalDeleteComment(token, taskId, commentId);
   }
 
   @Public()
@@ -132,6 +200,32 @@ export class PortalController {
   ) {
     if (!file) throw new BadRequestException('Please choose a file to upload');
     return this.projectsService.portalAddTaskAttachment(token, taskId, file);
+  }
+
+  @Public()
+  @Patch(':token/tasks/:taskId/attachments/:attachmentId')
+  renameAttachment(
+    @Param('token') token: string,
+    @Param('taskId') taskId: string,
+    @Param('attachmentId') attachmentId: string,
+    @Body() dto: PortalRenameDto,
+  ) {
+    return this.projectsService.portalUpdateAttachment(
+      token,
+      taskId,
+      attachmentId,
+      dto.name,
+    );
+  }
+
+  @Public()
+  @Delete(':token/tasks/:taskId/attachments/:attachmentId')
+  deleteAttachment(
+    @Param('token') token: string,
+    @Param('taskId') taskId: string,
+    @Param('attachmentId') attachmentId: string,
+  ) {
+    return this.projectsService.portalDeleteAttachment(token, taskId, attachmentId);
   }
 
   @Public()
@@ -161,5 +255,24 @@ export class PortalController {
   ) {
     if (!file) throw new BadRequestException('Please choose a file to upload');
     return this.projectsService.portalUploadDocument(token, file, body?.name);
+  }
+
+  @Public()
+  @Patch(':token/documents/:documentId')
+  renameDocument(
+    @Param('token') token: string,
+    @Param('documentId') documentId: string,
+    @Body() dto: PortalRenameDto,
+  ) {
+    return this.projectsService.portalUpdateDocument(token, documentId, dto.name);
+  }
+
+  @Public()
+  @Delete(':token/documents/:documentId')
+  deleteDocument(
+    @Param('token') token: string,
+    @Param('documentId') documentId: string,
+  ) {
+    return this.projectsService.portalDeleteDocument(token, documentId);
   }
 }
