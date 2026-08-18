@@ -35,8 +35,8 @@ export function EmptyState({
       )}
     >
       <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-vedha opacity-90">
-          <Icon className="h-5 w-5 text-white" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0a0a0a] dark:bg-white">
+          <Icon className="h-5 w-5 text-white dark:text-zinc-950" />
         </div>
       </div>
       <h3 className="text-lg font-semibold tracking-tight">{title}</h3>

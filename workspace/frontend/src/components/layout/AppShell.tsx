@@ -49,7 +49,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <VedhaMark className="h-8 w-8" />
                   <div>
                     <span className="text-lg font-bold text-foreground">TaskFlow</span>
-                    <p className="text-[10px] uppercase tracking-widest text-vedha-gold/80">
+                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
                       by Vedha
                     </p>
                   </div>

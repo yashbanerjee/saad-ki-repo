@@ -370,7 +370,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="h-2.5 overflow-hidden rounded-full bg-muted dark:bg-white/5">
                     <div
-                      className="h-full rounded-full gradient-vedha transition-all"
+                      className="h-full rounded-full bg-primary transition-all"
                       style={{
                         width: `${Math.min(
                           100,
@@ -478,7 +478,7 @@ export default function DashboardPage() {
                       </div>
                       <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-muted dark:bg-white/5">
                         <div
-                          className="h-full rounded-full gradient-vedha"
+                          className="h-full rounded-full bg-primary"
                           style={{
                             width: `${Math.min(100, Math.max(0, p.progress ?? 0))}%`,
                           }}

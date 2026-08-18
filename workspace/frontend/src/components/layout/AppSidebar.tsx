@@ -187,7 +187,7 @@ export function AppSidebar() {
                   className="overflow-hidden"
                 >
                   <p className="text-base font-bold tracking-tight">TaskFlow</p>
-                  <p className="text-[10px] uppercase tracking-[0.14em] text-vedha-gold/80">
+                  <p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
                     by Vedha
                   </p>
                 </motion.div>

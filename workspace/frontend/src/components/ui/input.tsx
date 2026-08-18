@@ -12,8 +12,8 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           "flex h-11 w-full rounded-xl border border-border bg-background px-4 py-2 text-sm text-foreground shadow-sm transition-all duration-300",
           "file:border-0 file:bg-transparent file:text-sm file:font-medium",
           "placeholder:text-muted-foreground/70",
-          "focus-visible:outline-none focus-visible:border-vedha-teal/40 focus-visible:ring-2 focus-visible:ring-vedha-teal/20",
-          "dark:border-white/10 dark:bg-white/[0.04] dark:focus-visible:border-vedha-cyan/40 dark:focus-visible:ring-vedha-cyan/20 dark:focus-visible:bg-white/[0.06]",
+          "focus-visible:outline-none focus-visible:border-foreground/30 focus-visible:ring-2 focus-visible:ring-foreground/15",
+          "dark:border-white/10 dark:bg-white/[0.04] dark:focus-visible:border-white/30 dark:focus-visible:ring-white/20 dark:focus-visible:bg-white/[0.06]",
           "disabled:cursor-not-allowed disabled:opacity-50",
           className
         )}

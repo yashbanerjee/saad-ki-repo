@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-/** Official Vedha “V” mark from vedha.ae — lime on black. */
+/** Official Vedha “V” mark — lime, no plate behind it. */
 export function VedhaMark({
   className,
   alt = "Vedha",
@@ -9,17 +9,12 @@ export function VedhaMark({
   alt?: string;
 }) {
   return (
-    <span
-      className={cn(
-        "flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black",
-        className,
-      )}
-    >
+    <span className={cn("flex shrink-0 items-center justify-center", className)}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src="/favicon.svg"
         alt={alt}
-        className="h-[78%] w-[78%] object-contain"
+        className="h-full w-full object-contain"
       />
     </span>
   );

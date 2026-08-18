@@ -77,8 +77,8 @@ export default function LandingPage() {
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#FBFCFD] text-slate-900">
       {/* Soft light atmosphere */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_60%_at_50%_-10%,rgba(15,102,97,0.12),transparent_55%)]" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_50%_40%_at_90%_10%,rgba(212,165,116,0.14),transparent_50%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_60%_at_50%_-10%,rgba(0,0,0,0.04),transparent_55%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_50%_40%_at_90%_10%,rgba(229,255,0,0.12),transparent_50%)]" />
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.35]"
         style={{
@@ -100,7 +100,7 @@ export default function LandingPage() {
             </motion.div>
             <div>
               <p className="text-lg font-bold tracking-tight text-slate-900">TaskFlow</p>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#0f6661]">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
                 by Vedha
               </p>
             </div>
@@ -113,7 +113,7 @@ export default function LandingPage() {
             >
               <Link href="/login">Sign in</Link>
             </Button>
-            <Button asChild className="shadow-md shadow-teal-900/10">
+            <Button asChild className="shadow-md shadow-black/10">
               <Link href="/register">
                 Get started <ArrowRight className="h-4 w-4" />
               </Link>
@@ -131,14 +131,14 @@ export default function LandingPage() {
               transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
               className="text-left"
             >
-              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50/80 px-3 py-1 text-xs font-medium text-teal-800">
+              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-700">
                 <Globe2 className="h-3.5 w-3.5" />
                 Vedha product ecosystem
               </div>
 
               <h1 className="max-w-xl text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl lg:text-[3.5rem] lg:leading-[1.08]">
                 Project delivery,{" "}
-                <span className="bg-gradient-to-r from-[#0f6661] via-[#2f5d5a] to-[#b8844f] bg-clip-text text-transparent">
+                <span className="text-zinc-900">
                   elevated
                 </span>
               </h1>
@@ -149,7 +149,7 @@ export default function LandingPage() {
               </p>
 
               <div className="mt-8 flex flex-wrap items-center gap-3">
-                <Button size="lg" asChild className="shadow-lg shadow-teal-900/15">
+                <Button size="lg" asChild className="shadow-lg shadow-black/10">
                   <Link href="/register">
                     Start free trial <ArrowRight className="h-4 w-4" />
                   </Link>
@@ -167,7 +167,7 @@ export default function LandingPage() {
               <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-slate-500">
                 {["No credit card", "14-day trial", "Built for agencies"].map((t) => (
                   <span key={t} className="inline-flex items-center gap-1.5">
-                    <CheckCircle2 className="h-4 w-4 text-[#0f6661]" />
+                    <CheckCircle2 className="h-4 w-4 text-zinc-900" />
                     {t}
                   </span>
                 ))}
@@ -238,7 +238,7 @@ export default function LandingPage() {
         <section className="border-y border-slate-200/80 bg-white">
           <div className="mx-auto max-w-6xl px-4 py-16 lg:px-6 lg:py-20">
             <div className="mb-10 max-w-2xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#0f6661]">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
                 Why agencies choose TaskFlow
               </p>
               <h2 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">
@@ -261,8 +261,8 @@ export default function LandingPage() {
                   whileHover={{ y: -3 }}
                   className="rounded-2xl border border-slate-200 bg-[#FBFCFD] p-6 shadow-sm transition-shadow hover:shadow-md"
                 >
-                  <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl border border-teal-100 bg-teal-50">
-                    <f.icon className="h-5 w-5 text-[#0f6661]" />
+                  <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50">
+                    <f.icon className="h-5 w-5 text-zinc-800" />
                   </div>
                   <h3 className="text-base font-semibold text-slate-900">{f.title}</h3>
                   <p className="mt-2 text-sm leading-relaxed text-slate-600">{f.desc}</p>
@@ -277,10 +277,10 @@ export default function LandingPage() {
             initial={{ opacity: 0, y: 16 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="relative overflow-hidden rounded-[1.75rem] border border-teal-200/70 bg-gradient-to-br from-white via-teal-50/50 to-amber-50/40 px-6 py-12 text-center shadow-[0_20px_60px_rgba(15,102,97,0.08)] sm:px-12"
+            className="relative overflow-hidden rounded-[1.75rem] border border-zinc-200 bg-zinc-50 px-6 py-12 text-center shadow-[0_20px_60px_rgba(0,0,0,0.06)] sm:px-12"
           >
-            <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-teal-200/40 blur-3xl" />
-            <div className="pointer-events-none absolute -bottom-12 -left-8 h-40 w-40 rounded-full bg-amber-200/40 blur-3xl" />
+            <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-[#E5FF00]/25 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-12 -left-8 h-40 w-40 rounded-full bg-zinc-300/40 blur-3xl" />
             <h2 className="relative text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">
               Ready to run projects the Vedha way?
             </h2>
@@ -289,7 +289,7 @@ export default function LandingPage() {
               deliver with confidence.
             </p>
             <div className="relative mt-8 flex flex-wrap items-center justify-center gap-3">
-              <Button size="lg" asChild className="shadow-lg shadow-teal-900/15">
+              <Button size="lg" asChild className="shadow-lg shadow-black/10">
                 <Link href="/register">
                   Create workspace <ArrowRight className="h-4 w-4" />
                 </Link>
@@ -314,7 +314,7 @@ export default function LandingPage() {
           href="https://vedha.ae/"
           target="_blank"
           rel="noreferrer"
-          className="font-medium text-[#0f6661] hover:underline"
+          className="font-medium text-zinc-800 hover:underline"
         >
           Vedha
         </a>{" "}

@@ -62,6 +62,7 @@ const config: Config = {
           cyan: "var(--vedha-cyan)",
           gold: "var(--vedha-gold)",
           champagne: "var(--vedha-champagne)",
+          lime: "#e5ff00",
         },
       },
       borderRadius: {
@@ -75,7 +76,7 @@ const config: Config = {
       boxShadow: {
         glass: "0 8px 32px rgba(0,0,0,0.28)",
         float: "0 16px 48px rgba(0,0,0,0.35)",
-        glow: "0 0 28px rgba(15,102,97,0.4)",
+        glow: "0 10px 28px rgba(0,0,0,0.16)",
         "glow-gold": "0 0 28px rgba(212,165,116,0.3)",
       },
       keyframes: {

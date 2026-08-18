@@ -68,7 +68,7 @@ export function AiAssistant() {
         animate={{ y: [0, -4, 0] }}
         transition={{ y: { repeat: Infinity, duration: 3, ease: "easeInOut" } }}
       >
-        <Sparkles className="h-6 w-6 text-white" />
+        <Sparkles className="h-6 w-6 text-white dark:text-zinc-950" />
       </motion.button>
 
       <AnimatePresence>
@@ -84,7 +84,7 @@ export function AiAssistant() {
           >
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl gradient-vedha">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#0a0a0a]">
                   <Sparkles className="h-4 w-4 text-white" />
                 </div>
                 <div>
