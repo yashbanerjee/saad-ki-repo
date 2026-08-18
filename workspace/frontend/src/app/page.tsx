@@ -4,7 +4,6 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
-  Sparkles,
   Kanban,
   Shield,
   Users,
@@ -15,6 +14,7 @@ import {
   Globe2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { VedhaMark } from "@/components/brand/VedhaMark";
 
 const features = [
   {
@@ -95,9 +95,8 @@ export default function LandingPage() {
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              className="flex h-10 w-10 items-center justify-center rounded-2xl gradient-vedha shadow-lg shadow-teal-900/15"
             >
-              <Sparkles className="h-5 w-5 text-white" />
+              <VedhaMark className="h-10 w-10 rounded-2xl" />
             </motion.div>
             <div>
               <p className="text-lg font-bold tracking-tight text-slate-900">TaskFlow</p>
@@ -309,6 +308,7 @@ export default function LandingPage() {
       </main>
 
       <footer className="relative z-10 border-t border-slate-200 bg-white py-8 text-center text-sm text-slate-500">
+        <VedhaMark className="mx-auto mb-3 h-8 w-8" />
         TaskFlow by{" "}
         <a
           href="https://vedha.ae/"

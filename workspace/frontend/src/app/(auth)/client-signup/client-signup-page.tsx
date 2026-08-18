@@ -6,7 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Sparkles, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { VedhaMark } from "@/components/brand/VedhaMark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -102,9 +103,7 @@ export default function ClientSignupPage() {
   return (
     <Card className="shadow-float">
       <CardHeader className="text-center">
-        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl gradient-vedha glow-vedha">
-          <Sparkles className="h-6 w-6 text-white" />
-        </div>
+        <VedhaMark className="mx-auto mb-4 h-12 w-12" />
         <CardTitle className="text-2xl">Create client account</CardTitle>
         <CardDescription>
           Enter email, mobile, or both — then log in anytime

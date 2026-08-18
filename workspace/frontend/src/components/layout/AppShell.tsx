@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { X, Sparkles } from "lucide-react";
+import { X } from "lucide-react";
+import { VedhaMark } from "@/components/brand/VedhaMark";
 import { AppSidebar } from "./AppSidebar";
 import { TopNavbar } from "./TopNavbar";
 import { AppBreadcrumbs } from "./Breadcrumbs";
@@ -45,9 +46,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   className="flex items-center gap-2"
                   onClick={() => setMobileOpen(false)}
                 >
-                  <div className="flex h-8 w-8 items-center justify-center rounded-xl gradient-vedha">
-                    <Sparkles className="h-4 w-4 text-white" />
-                  </div>
+                  <VedhaMark className="h-8 w-8" />
                   <div>
                     <span className="text-lg font-bold text-foreground">TaskFlow</span>
                     <p className="text-[10px] uppercase tracking-widest text-vedha-gold/80">

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { VedhaMark } from "@/components/brand/VedhaMark";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -10,9 +10,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.12),transparent_50%)]" />
         <div className="relative z-10 flex flex-col justify-between p-12 text-white">
           <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 backdrop-blur-md">
-              <Sparkles className="h-5 w-5" />
-            </div>
+            <VedhaMark className="h-10 w-10" />
             <div>
               <p className="text-lg font-bold">TaskFlow</p>
               <p className="text-[10px] uppercase tracking-[0.16em] text-white/70">by Vedha</p>

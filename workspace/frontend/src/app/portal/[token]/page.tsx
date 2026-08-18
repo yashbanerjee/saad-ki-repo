@@ -14,7 +14,6 @@ import {
   ExternalLink,
   Layers,
   ListTodo,
-  Sparkles,
   Kanban,
   Activity,
   Download,
@@ -61,6 +60,7 @@ import { portalApi } from "@/lib/api";
 import { formatDate, formatRelativeTime, cn, getInitials } from "@/lib/utils";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { VedhaMark } from "@/components/brand/VedhaMark";
 
 const MILESTONE_LABEL: Record<string, string> = {
   PLANNED: "Planned",
@@ -723,7 +723,7 @@ export default function PublicPortalPage() {
       <header className="border-b bg-card/80 backdrop-blur sticky top-0 z-20">
         <div className="mx-auto max-w-7xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm font-medium text-primary min-w-0">
-            <Sparkles className="h-4 w-4 shrink-0" />
+            <VedhaMark className="h-7 w-7 rounded-lg" />
             <span className="truncate">{portal.companyName || "TaskFlow by Vedha"}</span>
           </div>
           <Badge variant="secondary" className="shrink-0">
@@ -1335,7 +1335,8 @@ export default function PublicPortalPage() {
           </Card>
         )}
 
-        <p className="text-center text-xs text-muted-foreground pt-2 pb-8">
+        <p className="flex items-center justify-center gap-2 text-center text-xs text-muted-foreground pt-2 pb-8">
+          <VedhaMark className="h-5 w-5 rounded-md" />
           Powered by TaskFlow by Vedha · Shared collaborative link (no account required)
         </p>
       </div>

@@ -32,6 +32,7 @@ import {
   Receipt,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { VedhaMark } from "@/components/brand/VedhaMark";
 import { useSidebarStore } from "@/lib/sidebar-store";
 import { useAuthStore, hasRole, isClientUser } from "@/lib/auth-store";
 import { Button } from "@/components/ui/button";
@@ -176,9 +177,7 @@ export function AppSidebar() {
           )}
         >
           <Link href={homeHref} className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl gradient-vedha-animated glow-vedha shadow-glow">
-              <Sparkles className="h-4 w-4 text-white" />
-            </div>
+            <VedhaMark className="h-9 w-9" />
             <AnimatePresence>
               {!collapsed && (
                 <motion.div

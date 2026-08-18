@@ -21,6 +21,11 @@ export const metadata: Metadata = {
   title: "TaskFlow by Vedha",
   description:
     "Premium AI-powered project management & client onboarding — part of the Vedha product ecosystem.",
+  applicationName: "TaskFlow by Vedha",
+  icons: {
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/apple-touch-icon.png" }],
+  },
 };
 
 export const viewport: Viewport = {

@@ -3,12 +3,12 @@
 import { Suspense, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Sparkles } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { OnboardingFormFill } from "@/components/features/OnboardingFormFill";
 import { onboardingApi } from "@/lib/api";
+import { VedhaMark } from "@/components/brand/VedhaMark";
 
 export default function PublicOnboardingPage() {
   return (
@@ -84,9 +84,7 @@ function PublicOnboardingForm() {
       <div className="min-h-screen flex items-center justify-center p-6 bg-background">
         <Card className="w-full max-w-md text-center">
           <CardHeader>
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl gradient-vedha">
-              <Sparkles className="h-6 w-6 text-white" />
-            </div>
+            <VedhaMark className="mx-auto mb-4 h-12 w-12" />
             <CardTitle>Thank you!</CardTitle>
             <CardDescription>
               Your form has been submitted successfully. We&apos;ll be in touch soon.
@@ -102,9 +100,7 @@ function PublicOnboardingForm() {
       <div className="fixed inset-0 mesh-vedha pointer-events-none opacity-60" />
       <div className="relative z-10 container mx-auto max-w-lg py-12 px-4">
         <div className="text-center mb-8">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl gradient-vedha">
-            <Sparkles className="h-6 w-6 text-white" />
-          </div>
+          <VedhaMark className="mx-auto mb-4 h-12 w-12" />
           <h1 className="font-display text-2xl font-bold">{form.name ?? form.title}</h1>
           {form.description && (
             <p className="text-muted-foreground mt-2">{form.description}</p>
@@ -123,7 +119,8 @@ function PublicOnboardingForm() {
           </CardContent>
         </Card>
 
-        <p className="text-center text-xs text-muted-foreground mt-6">
+        <p className="mt-6 flex items-center justify-center gap-2 text-center text-xs text-muted-foreground">
+          <VedhaMark className="h-5 w-5 rounded-md" />
           Powered by TaskFlow by Vedha
         </p>
       </div>

@@ -12,7 +12,6 @@ import {
   ClipboardList,
   FileSignature,
   Loader2,
-  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +31,7 @@ import { authApi, setupApi } from "@/lib/api";
 import { normalizeAuthUser, useAuthStore } from "@/lib/auth-store";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { VedhaMark } from "@/components/brand/VedhaMark";
 
 const accountSchema = z
   .object({
@@ -241,9 +241,7 @@ export default function ClientSetupPage() {
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/8 via-background to-muted/40">
       <div className="mx-auto w-full max-w-xl sm:max-w-2xl lg:max-w-3xl px-4 pb-10 pt-6 sm:px-6 sm:pb-14 sm:pt-10">
         <header className="text-center space-y-3 mb-6 sm:mb-8">
-          <div className="mx-auto flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-xl gradient-vedha glow-vedha">
-            <Sparkles className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-          </div>
+          <VedhaMark className="mx-auto h-11 w-11 sm:h-12 sm:w-12" />
           <div className="space-y-1.5">
             <p className="text-[10px] sm:text-xs uppercase tracking-[0.16em] text-muted-foreground font-medium">
               {setup.companyName}
