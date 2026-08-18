@@ -702,63 +702,86 @@ export default function ProjectDetailPage() {
       */}
 
       <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Project settings</CardTitle>
-            <CardDescription>Name, timeline, status — no billing</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="space-y-2">
-              <Label>Project logo</Label>
-              <div className="flex items-center gap-3">
-                <div className="h-14 w-14 rounded-xl border overflow-hidden bg-muted/40 flex items-center justify-center shrink-0">
-                  {project.avatar ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={project.avatar}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-sm font-bold text-primary">
-                      {(project.name || "?").slice(0, 1).toUpperCase()}
-                    </span>
-                  )}
-                </div>
-                <div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={uploadLogo.isPending}
-                    onClick={() => logoRef.current?.click()}
-                  >
-                    {uploadLogo.isPending ? "Uploading…" : "Change logo"}
-                  </Button>
-                  <input
-                    ref={logoRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      if (file.size > 5 * 1024 * 1024) {
-                        toast.error("Logo must be 5 MB or smaller");
-                        e.target.value = "";
-                        return;
-                      }
-                      uploadLogo.mutate(file);
-                    }}
-                  />
-                  <p className="text-[11px] text-muted-foreground mt-1">
-                    Shown before the project name
-                  </p>
-                </div>
+        <CardHeader className="pb-2 pt-4">
+          <CardTitle className="text-base">Project settings</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2.5 pt-0">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="h-10 w-10 rounded-lg border overflow-hidden bg-muted/40 flex items-center justify-center shrink-0">
+              {project.avatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={project.avatar}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span className="text-xs font-bold text-primary">
+                  {(project.name || "?").slice(0, 1).toUpperCase()}
+                </span>
+              )}
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8"
+              disabled={uploadLogo.isPending}
+              onClick={() => logoRef.current?.click()}
+            >
+              {uploadLogo.isPending ? "Uploading…" : "Change logo"}
+            </Button>
+            <input
+              ref={logoRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                if (file.size > 5 * 1024 * 1024) {
+                  toast.error("Logo must be 5 MB or smaller");
+                  e.target.value = "";
+                  return;
+                }
+                uploadLogo.mutate(file);
+              }}
+            />
+            <div className="grid flex-1 grid-cols-2 gap-2 min-w-[200px] sm:max-w-xs">
+              <div className="space-y-1">
+                <Label className="text-xs flex items-center gap-1">
+                  <Calendar className="h-3 w-3" /> Start
+                </Label>
+                <Input
+                  type="date"
+                  className="h-9"
+                  value={settings.startDate}
+                  onChange={(e) => {
+                    setSettings((s) => ({ ...s, startDate: e.target.value }));
+                    setSettingsDirty(true);
+                  }}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">End</Label>
+                <Input
+                  type="date"
+                  className="h-9"
+                  value={settings.endDate}
+                  onChange={(e) => {
+                    setSettings((s) => ({ ...s, endDate: e.target.value }));
+                    setSettingsDirty(true);
+                  }}
+                />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Name</Label>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Name</Label>
               <Input
+                className="h-9"
                 value={settings.name}
                 onChange={(e) => {
                   setSettings((s) => ({ ...s, name: e.target.value }));
@@ -766,8 +789,8 @@ export default function ProjectDetailPage() {
                 }}
               />
             </div>
-            <div className="space-y-2">
-              <Label>Status</Label>
+            <div className="space-y-1">
+              <Label className="text-xs">Status</Label>
               <Select
                 value={settings.status}
                 onValueChange={(v) => {
@@ -775,7 +798,7 @@ export default function ProjectDetailPage() {
                   setSettingsDirty(true);
                 }}
               >
-                <SelectTrigger>
+                <SelectTrigger className="h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -787,34 +810,11 @@ export default function ProjectDetailPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label className="flex items-center gap-1">
-                  <Calendar className="h-3 w-3" /> Start
-                </Label>
-                <Input
-                  type="date"
-                  value={settings.startDate}
-                  onChange={(e) => {
-                    setSettings((s) => ({ ...s, startDate: e.target.value }));
-                    setSettingsDirty(true);
-                  }}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>End</Label>
-                <Input
-                  type="date"
-                  value={settings.endDate}
-                  onChange={(e) => {
-                    setSettings((s) => ({ ...s, endDate: e.target.value }));
-                    setSettingsDirty(true);
-                  }}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Description</Label>
+          </div>
+
+          <div className="grid gap-2 lg:grid-cols-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Description</Label>
               <Textarea
                 value={settings.description}
                 onChange={(e) => {
@@ -822,19 +822,17 @@ export default function ProjectDetailPage() {
                   setSettingsDirty(true);
                 }}
                 rows={3}
+                className="min-h-[72px] resize-y text-sm"
               />
             </div>
-            <div className="space-y-2">
-              <Label className="flex items-center gap-1.5">
-                <Tag className="h-3.5 w-3.5" /> Tags
+            <div className="space-y-1">
+              <Label className="text-xs flex items-center gap-1">
+                <Tag className="h-3 w-3" /> Tags
               </Label>
-              <p className="text-[11px] text-muted-foreground">
-                Client brand (Vedha, F&S) or type (Web, App Dev, ERP)
-              </p>
-              <div className="rounded-md border px-2 py-1.5 focus-within:ring-1 focus-within:ring-ring">
-                <div className="flex flex-wrap gap-1.5 mb-1.5">
+              <div className="rounded-md border px-2 py-1 focus-within:ring-1 focus-within:ring-ring min-h-[72px]">
+                <div className="flex flex-wrap gap-1 mb-1">
                   {tags.map((tag) => (
-                    <Badge key={tag} variant="outline" className="text-[11px] gap-1 pr-1">
+                    <Badge key={tag} variant="outline" className="text-[10px] gap-0.5 pr-1 h-5">
                       {tag}
                       <button
                         type="button"
@@ -843,7 +841,7 @@ export default function ProjectDetailPage() {
                           setTagsDirty(true);
                         }}
                       >
-                        <X className="h-3 w-3" />
+                        <X className="h-2.5 w-2.5" />
                       </button>
                     </Badge>
                   ))}
@@ -855,11 +853,11 @@ export default function ProjectDetailPage() {
                   onBlur={() => {
                     if (tagInput.trim()) addTag(tagInput);
                   }}
-                  placeholder="Type tag and press Enter"
-                  className="border-0 shadow-none focus-visible:ring-0 h-8 px-1"
+                  placeholder="Type tag, press Enter"
+                  className="border-0 shadow-none focus-visible:ring-0 h-7 px-1 text-sm"
                 />
               </div>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-1">
                 {TAG_SUGGESTIONS.filter(
                   (s) => !tags.some((t) => t.toLowerCase() === s.toLowerCase()),
                 ).map((s) => (
@@ -867,34 +865,37 @@ export default function ProjectDetailPage() {
                     key={s}
                     type="button"
                     onClick={() => addTag(s)}
-                    className="text-[11px] rounded-full border px-2 py-0.5 text-muted-foreground hover:bg-muted"
+                    className="text-[10px] rounded-full border px-1.5 py-0.5 text-muted-foreground hover:bg-muted"
                   >
                     + {s}
                   </button>
                 ))}
               </div>
             </div>
-            {(settingsDirty || tagsDirty) && (
-              <Button
-                size="sm"
-                disabled={updateProject.isPending || !settings.name.trim()}
-                onClick={() =>
-                  updateProject.mutate({
-                    name: settings.name.trim(),
-                    description: settings.description || undefined,
-                    status: settings.status,
-                    clientId: settings.clientId === "none" ? null : settings.clientId,
-                    startDate: settings.startDate || null,
-                    endDate: settings.endDate || null,
-                    tags,
-                  })
-                }
-              >
-                {updateProject.isPending ? "Saving…" : "Save settings"}
-              </Button>
-            )}
-          </CardContent>
-        </Card>
+          </div>
+
+          {(settingsDirty || tagsDirty) && (
+            <Button
+              size="sm"
+              className="h-8"
+              disabled={updateProject.isPending || !settings.name.trim()}
+              onClick={() =>
+                updateProject.mutate({
+                  name: settings.name.trim(),
+                  description: settings.description || undefined,
+                  status: settings.status,
+                  clientId: settings.clientId === "none" ? null : settings.clientId,
+                  startDate: settings.startDate || null,
+                  endDate: settings.endDate || null,
+                  tags,
+                })
+              }
+            >
+              {updateProject.isPending ? "Saving…" : "Save settings"}
+            </Button>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
       <Card className="flex h-full min-w-0 flex-col">
