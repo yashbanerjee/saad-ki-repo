@@ -35,7 +35,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       exception instanceof HttpException
         ? exception.getResponse()
         : isPayloadTooLarge
-          ? 'Upload is too large — keep files under 8 MB total'
+          ? 'Upload is too large — keep files under 100 MB'
           : 'Internal server error';
 
     if (status === HttpStatus.INTERNAL_SERVER_ERROR) {

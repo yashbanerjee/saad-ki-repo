@@ -43,7 +43,7 @@ import { issuesApi, projectsApi } from "@/lib/api";
 import { hasRole, useAuthStore } from "@/lib/auth-store";
 import { toast } from "sonner";
 
-const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+const MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
 const MAX_ATTACHMENTS = 10;
 
 type Milestone = {
@@ -159,7 +159,7 @@ export default function ProjectBoardPage() {
     const next: File[] = [...createFiles];
     for (const file of incoming) {
       if (file.size > MAX_ATTACHMENT_BYTES) {
-        toast.error(`${file.name} is over 15 MB`);
+        toast.error(`${file.name} is over 100 MB`);
         continue;
       }
       if (next.length >= MAX_ATTACHMENTS) {
@@ -620,7 +620,7 @@ export default function ProjectBoardPage() {
                 />
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Optional. Up to {MAX_ATTACHMENTS} files, 15 MB each. Same for admin,
+                Optional. Up to {MAX_ATTACHMENTS} files, 100 MB each. Same for admin,
                 employees, and clients.
               </p>
               {createFiles.length === 0 ? (

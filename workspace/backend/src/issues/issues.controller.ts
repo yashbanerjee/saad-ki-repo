@@ -31,7 +31,7 @@ import { memoryStorage } from 'multer';
 
 const uploadMulterOptions = {
   storage: memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 },
+  limits: { fileSize: 100 * 1024 * 1024 },
 };
 
 @ApiTags('issues')

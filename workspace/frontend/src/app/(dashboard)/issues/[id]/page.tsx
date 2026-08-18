@@ -400,6 +400,12 @@ export default function IssueDetailPage() {
                   className="hidden"
                   onChange={(e) => {
                     const files = e.target.files ? Array.from(e.target.files) : [];
+                    const tooBig = files.find((f) => f.size > 100 * 1024 * 1024);
+                    if (tooBig) {
+                      toast.error(`${tooBig.name} is over 100 MB`);
+                      e.target.value = "";
+                      return;
+                    }
                     if (files.length) uploadMutation.mutate(files);
                     e.target.value = "";
                   }}

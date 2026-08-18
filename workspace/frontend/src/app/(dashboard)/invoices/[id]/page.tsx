@@ -137,7 +137,13 @@ export default function InvoiceDetailPage() {
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                if (file) uploadMutation.mutate(file);
+                if (!file) return;
+                if (file.size > 100 * 1024 * 1024) {
+                  toast.error(`${file.name} is over 100 MB`);
+                  e.target.value = "";
+                  return;
+                }
+                uploadMutation.mutate(file);
                 e.target.value = "";
               }}
             />

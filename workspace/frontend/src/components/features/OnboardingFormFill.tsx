@@ -135,8 +135,8 @@ export function OnboardingFormFill({
       return;
     }
 
-    if (file.size > 8 * 1024 * 1024) {
-      toast.error("File must be under 8 MB");
+    if (file.size > 100 * 1024 * 1024) {
+      toast.error("File must be under 100 MB");
       return;
     }
 
@@ -265,7 +265,7 @@ export function OnboardingFormFill({
                           ? "Click to upload an image"
                           : "Click to upload a file")}
                     </span>
-                    <span className="text-xs text-muted-foreground">Max 8 MB</span>
+                    <span className="text-xs text-muted-foreground">Max 100 MB</span>
                     <input
                       type="file"
                       className="sr-only"

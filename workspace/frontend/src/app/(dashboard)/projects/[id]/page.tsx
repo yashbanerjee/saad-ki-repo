@@ -905,7 +905,13 @@ export default function ProjectDetailPage() {
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
-                  if (f) uploadDoc.mutate(f);
+                  if (!f) return;
+                  if (f.size > 100 * 1024 * 1024) {
+                    toast.error(`${f.name} is over 100 MB`);
+                    e.target.value = "";
+                    return;
+                  }
+                  uploadDoc.mutate(f);
                 }}
               />
               <Button

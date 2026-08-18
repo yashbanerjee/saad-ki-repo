@@ -200,14 +200,14 @@ export default function PublicPortalPage() {
   };
 
   const MAX_TASK_FILES = 10;
-  const MAX_FILE_BYTES = 15 * 1024 * 1024;
+  const MAX_FILE_BYTES = 100 * 1024 * 1024;
 
   const addTaskFiles = (list: FileList | null) => {
     if (!list?.length) return;
     const next = [...taskFiles];
     for (const file of Array.from(list)) {
       if (file.size > MAX_FILE_BYTES) {
-        toast.error(`${file.name} is over 15 MB`);
+        toast.error(`${file.name} is over 100 MB`);
         continue;
       }
       if (next.length >= MAX_TASK_FILES) {
@@ -994,7 +994,7 @@ export default function PublicPortalPage() {
                     e.target.value = "";
                     if (!file) return;
                     if (file.size > MAX_FILE_BYTES) {
-                      toast.error(`${file.name} is over 15 MB`);
+                      toast.error(`${file.name} is over 100 MB`);
                       return;
                     }
                     uploadProjectDocMutation.mutate(file);
@@ -1489,7 +1489,7 @@ export default function PublicPortalPage() {
                 />
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Optional. Up to 10 files, 15 MB each. This task will be tagged as{" "}
+                Optional. Up to 10 files, 100 MB each. This task will be tagged as{" "}
                 <span className="font-medium text-foreground">Client</span>.
               </p>
               {taskFiles.length === 0 ? (
@@ -1771,7 +1771,7 @@ export default function PublicPortalPage() {
                             e.target.value = "";
                             if (!file) return;
                             if (file.size > MAX_FILE_BYTES) {
-                              toast.error(`${file.name} is over 15 MB`);
+                              toast.error(`${file.name} is over 100 MB`);
                               return;
                             }
                             uploadAttachmentMutation.mutate(file);
