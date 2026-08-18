@@ -710,7 +710,11 @@ export default function PublicPortalPage() {
 
   const progress = overview.progress;
   const milestones = portal.milestones ?? [];
-  const tasks = portal.tasks ?? [];
+  const tasks = (
+    (portal.columns as Array<{ tasks?: PortalTask[] }> | undefined) ?? []
+  ).flatMap((col) =>
+    (col.tasks ?? []).filter((t) => t.creatorKind === "client"),
+  );
   const documents = filteredDocuments;
   const todoIssues = overview.todo;
   const inProgressIssues = overview.inProgress;
@@ -1290,16 +1294,13 @@ export default function PublicPortalPage() {
             </CardHeader>
             <CardContent>
               <ul className="space-y-3">
-                {tasks.map(
-                  (t: {
-                    id: string;
-                    title: string;
-                    description?: string | null;
-                    status: string;
-                    estimatedHours?: string | number | null;
-                    milestone?: { name: string } | null;
-                  }) => (
-                    <li key={t.id} className="flex items-start gap-3 text-sm">
+                {tasks.map((t) => (
+                    <li key={t.id}>
+                      <button
+                        type="button"
+                        onClick={() => openTaskView(t.id)}
+                        className="flex w-full items-start gap-3 rounded-md text-left text-sm hover:bg-muted/50 px-1 py-1 -mx-1 transition-colors"
+                      >
                       {t.status === "DONE" ? (
                         <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                       ) : t.status === "IN_PROGRESS" ? (
@@ -1315,6 +1316,11 @@ export default function PublicPortalPage() {
                               "line-through text-muted-foreground",
                           )}
                         >
+                          {t.key ? (
+                            <span className="font-mono text-[10px] text-muted-foreground mr-1">
+                              {t.key}
+                            </span>
+                          ) : null}
                           {t.title}
                         </p>
                         {t.description && (
@@ -1323,13 +1329,12 @@ export default function PublicPortalPage() {
                           </p>
                         )}
                         <p className="text-xs text-muted-foreground">
-                          {t.milestone?.name ? `${t.milestone.name} · ` : ""}
-                          {TASK_LABEL[t.status] ?? t.status}
+                          {TASK_LABEL[t.status ?? ""] ?? t.status}
                         </p>
                       </div>
+                      </button>
                     </li>
-                  ),
-                )}
+                  ))}
               </ul>
             </CardContent>
           </Card>

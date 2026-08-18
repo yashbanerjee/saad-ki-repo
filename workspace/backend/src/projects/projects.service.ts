@@ -967,6 +967,39 @@ export class ProjectsService {
     return readCreatorKind(metadata) === 'client';
   }
 
+  private portalClientTaskId(metadata: unknown): string | null {
+    const id = this.asMeta(metadata).portalClientTaskId;
+    return typeof id === 'string' && id.trim() ? id : null;
+  }
+
+  private clientTaskStatusFromIssue(status: string): 'TODO' | 'IN_PROGRESS' | 'DONE' {
+    if (status === IssueStatus.DONE) return 'DONE';
+    if (status === IssueStatus.IN_PROGRESS) return 'IN_PROGRESS';
+    return 'TODO';
+  }
+
+  private async findPortalClientTaskMirror(
+    projectId: string,
+    issue: { title?: string | null; description?: string | null; metadata?: unknown },
+  ) {
+    const linkedId = this.portalClientTaskId(issue.metadata);
+    if (linkedId) {
+      const linked = await this.prisma.clientTask.findFirst({
+        where: { id: linkedId, projectId },
+      });
+      if (linked) return linked;
+    }
+    if (!issue.title) return null;
+    return this.prisma.clientTask.findFirst({
+      where: {
+        projectId,
+        title: issue.title,
+        ...(issue.description ? { description: issue.description } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   private isClientDocument(doc: { metadata?: unknown; storageKey?: string | null }) {
     const meta = this.asMeta(doc.metadata);
     return (
@@ -1102,24 +1135,32 @@ export class ProjectsService {
       },
     });
 
-    // Mirror on client tasks list for progress tracking
-    await this.prisma.clientTask.create({
+    const clientTask = await this.prisma.clientTask.create({
       data: {
         projectId,
         title,
         description: body.description?.trim() || undefined,
         milestoneId: body.milestoneId || undefined,
-        status:
-          placement.status === IssueStatus.DONE
-            ? 'DONE'
-            : placement.status === IssueStatus.IN_PROGRESS
-              ? 'IN_PROGRESS'
-              : 'TODO',
+        status: this.clientTaskStatusFromIssue(placement.status),
+      },
+    });
+
+    await this.prisma.issue.update({
+      where: { id: issue.id },
+      data: {
+        metadata: {
+          ...this.asMeta(issue.metadata),
+          portalClientTaskId: clientTask.id,
+        } as never,
       },
     });
 
     return {
       ...issue,
+      metadata: {
+        ...this.asMeta(issue.metadata),
+        portalClientTaskId: clientTask.id,
+      },
       creatorKind: 'client' as const,
       creatorLabel: CREATOR_KIND_LABEL.client,
     };
@@ -1353,12 +1394,20 @@ export class ProjectsService {
     const { projectId } = await this.resolvePortalProject(token);
     const issue = await this.prisma.issue.findFirst({
       where: { id: taskId, projectId, status: { not: 'CANCELLED' } },
-      select: { id: true, metadata: true, status: true },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        metadata: true,
+        status: true,
+        milestoneId: true,
+      },
     });
     if (!issue) throw new NotFoundException('Task not found on this project');
     if (!this.isClientIssue(issue.metadata)) {
       throw new ForbiddenException('You can only edit tasks you created');
     }
+    const mirroredTask = await this.findPortalClientTaskMirror(projectId, issue);
 
     const data: Prisma.IssueUpdateInput = {};
     if (body.title !== undefined) {
@@ -1401,14 +1450,46 @@ export class ProjectsService {
       data.metadata = withCreatorKind(placement.metadata, 'client') as never;
     }
 
-    return this.prisma.issue.update({ where: { id: taskId }, data });
+    const updated = await this.prisma.issue.update({ where: { id: taskId }, data });
+
+    if (mirroredTask) {
+      const mirrorData: Prisma.ClientTaskUpdateInput = {};
+      if (body.title !== undefined) mirrorData.title = updated.title;
+      if (body.description !== undefined) {
+        mirrorData.description = updated.description;
+      }
+      if (body.milestoneId !== undefined) {
+        if (body.milestoneId) {
+          mirrorData.milestone = { connect: { id: body.milestoneId } };
+        } else {
+          mirrorData.milestone = { disconnect: true };
+        }
+      }
+      if (body.status !== undefined) {
+        mirrorData.status = this.clientTaskStatusFromIssue(updated.status);
+      }
+      if (Object.keys(mirrorData).length) {
+        await this.prisma.clientTask.update({
+          where: { id: mirroredTask.id },
+          data: mirrorData,
+        });
+      }
+    }
+
+    return updated;
   }
 
   async portalDeleteTask(token: string, taskId: string) {
     const { projectId } = await this.resolvePortalProject(token);
     const issue = await this.prisma.issue.findFirst({
       where: { id: taskId, projectId },
-      select: { id: true, metadata: true, attachments: { select: { storageKey: true } } },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        metadata: true,
+        attachments: { select: { storageKey: true } },
+      },
     });
     if (!issue) throw new NotFoundException('Task not found on this project');
     if (!this.isClientIssue(issue.metadata)) {
@@ -1416,6 +1497,10 @@ export class ProjectsService {
     }
     for (const file of issue.attachments) {
       await this.storage.delete(file.storageKey);
+    }
+    const mirroredTask = await this.findPortalClientTaskMirror(projectId, issue);
+    if (mirroredTask) {
+      await this.prisma.clientTask.delete({ where: { id: mirroredTask.id } });
     }
     await this.prisma.issue.delete({ where: { id: taskId } });
     return { message: 'Task deleted' };
