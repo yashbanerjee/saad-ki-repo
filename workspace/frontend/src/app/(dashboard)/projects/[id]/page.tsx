@@ -18,7 +18,6 @@ import {
   Upload,
   Users,
   X,
-  Kanban,
   Eye,
   EyeOff,
   Trash2,
@@ -427,34 +426,10 @@ export default function ProjectDetailPage() {
             )}
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button asChild>
-            <Link href={`/projects/${id}/board`}>
-              <Kanban className="h-4 w-4 mr-1" /> Open & edit board
-            </Link>
-          </Button>
-        </div>
       </div>
 
-      <Card className="border-primary/20 bg-primary/5">
-        <CardContent className="p-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-medium">Kanban board for admins</p>
-            <p className="text-xs text-muted-foreground">
-              Rename columns, add or delete columns, create tasks with documents, and see
-              who created each task (Client / Admin / Employee) on the project board.
-            </p>
-          </div>
-          <Button size="sm" asChild className="shrink-0">
-            <Link href={`/projects/${id}/board`}>
-              Manage board <ArrowRight className="h-3.5 w-3.5 ml-1" />
-            </Link>
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Work at a glance */}
-      <div className="grid sm:grid-cols-3 gap-4">
+      {/* Work at a glance + Kanban */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 lg:items-stretch">
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Progress</p>
@@ -476,13 +451,18 @@ export default function ProjectDetailPage() {
             </p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Board tasks</p>
-            <p className="text-2xl font-bold font-display">{issues.length}</p>
-            <Button variant="link" className="h-auto p-0 text-xs" asChild>
+        <Card className="bg-muted/50 sm:col-span-2">
+          <CardContent className="p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between h-full">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">Kanban board for admins</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Rename columns, add or delete columns, create tasks with documents, and see
+                who created each task (Client / Admin / Employee) on the project board.
+              </p>
+            </div>
+            <Button size="sm" asChild className="shrink-0 rounded-full">
               <Link href={`/projects/${id}/board`}>
-                Open board <ArrowRight className="h-3 w-3 ml-0.5" />
+                Manage board <ArrowRight className="h-3.5 w-3.5 ml-1" />
               </Link>
             </Button>
           </CardContent>
