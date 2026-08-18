@@ -5,25 +5,26 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowRight,
   Calendar,
   Copy,
+  Download,
   ExternalLink,
+  Eye,
+  EyeOff,
   FileText,
   Link2,
   Loader2,
   PowerOff,
   RefreshCw,
+  Settings,
   Tag,
+  Trash2,
   Upload,
   Users,
   X,
-  Eye,
-  EyeOff,
-  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -32,6 +33,16 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -39,8 +50,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { documentsApi, projectsApi, usersApi } from "@/lib/api";
-import { formatDate } from "@/lib/utils";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
+  defaultColumns,
+  type KanbanColumn,
+  type KanbanTask,
+} from "@/components/features/KanbanBoard";
+import { ProjectHubBoard } from "@/components/features/ProjectHubBoard";
+import { activityApi, documentsApi, projectsApi, usersApi } from "@/lib/api";
+import { cn, formatRelativeTime, getInitials } from "@/lib/utils";
 import { hasRole, useAuthStore } from "@/lib/auth-store";
 import { toast } from "sonner";
 
@@ -64,52 +87,95 @@ const PROJECT_STATUSES = [
   "CANCELLED",
 ];
 
-/* Client profile helper — restore with Client profile card
-function CreateClientLoginButton({
-  clientId,
-  onDone,
-}: {
-  clientId: string;
-  onDone: () => void;
-}) {
-  const mutation = useMutation({
-    mutationFn: () => clientsApi.createLogin(clientId, {}),
-    onSuccess: (res) => {
-      const result = res?.data?.data ?? res?.data ?? {};
-      onDone();
-      const loginWith = result.loginWith || result.email || result.phone;
-      const temp = result.temporaryPassword;
-      toast.success(
-        temp
-          ? `Login created for ${loginWith}. Temp password: ${temp}`
-          : `Login created for ${loginWith}`,
-        { duration: 12000 },
-      );
-    },
-    onError: (err: unknown) => {
-      const message =
-        (err as { response?: { data?: { message?: string } } })?.response?.data
-          ?.message || "Could not create login";
-      toast.error(Array.isArray(message) ? message.join(", ") : message);
-    },
-  });
-
-  return (
-    <Button
-      size="sm"
-      variant="secondary"
-      disabled={mutation.isPending}
-      onClick={() => mutation.mutate()}
-    >
-      {mutation.isPending ? "Creating…" : "Create client login"}
-    </Button>
-  );
-}
-*/
-
 function toDateInput(value?: string | null) {
   if (!value) return "";
   return new Date(value).toISOString().slice(0, 10);
+}
+
+function formatShortDate(value?: string | null) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+  }).format(new Date(value));
+}
+
+function personName(p?: { firstName?: string; lastName?: string } | string | null) {
+  if (!p) return "";
+  if (typeof p === "string") return p;
+  return `${p.firstName || ""} ${p.lastName || ""}`.trim();
+}
+
+function prettyProjectStatus(status?: string) {
+  const s = (status || "").toUpperCase();
+  if (s === "ACTIVE") return "In progress";
+  if (s === "PLANNING") return "Planning";
+  if (s === "ON_HOLD") return "On hold";
+  if (s === "COMPLETED") return "Done";
+  return (status || "").replace(/_/g, " ");
+}
+
+function prettyIssueStatus(status?: string) {
+  const s = (status || "").toUpperCase();
+  if (s === "TODO" || s === "BACKLOG") return "Not started";
+  if (s === "IN_PROGRESS") return "In progress";
+  if (s === "TESTING" || s === "IN_REVIEW") return "In review";
+  if (s === "DONE") return "Done";
+  if (s === "BLOCKED") return "Blocked";
+  return (status || "").replace(/_/g, " ");
+}
+
+function daysBetween(from: Date, to: Date) {
+  return Math.ceil((to.getTime() - from.getTime()) / 86400000);
+}
+
+function milestoneDot(status?: string) {
+  const s = (status || "").toUpperCase();
+  if (s === "DONE") return "bg-foreground";
+  if (s === "IN_PROGRESS") return "bg-[#E5FF00]";
+  return "border border-foreground/30 bg-transparent";
+}
+
+function milestoneLabel(status?: string) {
+  const s = (status || "").toUpperCase();
+  if (s === "DONE") return "Signed off";
+  if (s === "IN_PROGRESS") return "In progress";
+  return "Not started";
+}
+
+async function downloadDocument(doc: { id: string; name: string; originalName?: string }) {
+  const triggerBlobDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const res = await documentsApi.download(doc.id);
+  const payload = res.data?.data ?? res.data;
+  if (payload?.kind === "inline" && payload.content) {
+    triggerBlobDownload(
+      new Blob([payload.content], { type: payload.mimeType || "text/plain" }),
+      payload.name || `${doc.name}.txt`,
+    );
+    return;
+  }
+  if (payload?.kind === "base64" && payload.content) {
+    const binary = atob(payload.content);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    triggerBlobDownload(
+      new Blob([bytes], { type: payload.mimeType || "application/octet-stream" }),
+      payload.name || doc.originalName || doc.name,
+    );
+    return;
+  }
+  if (payload?.url) {
+    window.open(payload.url, "_blank", "noopener,noreferrer");
+    return;
+  }
+  throw new Error("unavailable");
 }
 
 export default function ProjectDetailPage() {
@@ -136,11 +202,27 @@ export default function ProjectDetailPage() {
   const [shareClientUpload, setShareClientUpload] = useState(true);
   const [addMemberUserId, setAddMemberUserId] = useState("");
   const [addMemberRole, setAddMemberRole] = useState("developer");
+  const [manageOpen, setManageOpen] = useState(false);
+  const [snoozed, setSnoozed] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["project", id],
     queryFn: () => projectsApi.get(id),
     retry: false,
+  });
+
+  const { data: boardRes } = useQuery({
+    queryKey: ["project-board", id],
+    queryFn: () => projectsApi.getBoard(id),
+    retry: false,
+    enabled: Boolean(id),
+  });
+
+  const { data: activityRes } = useQuery({
+    queryKey: ["activity", id],
+    queryFn: () => activityApi.list({ projectId: id, limit: 6 }),
+    retry: false,
+    enabled: Boolean(id),
   });
 
   const { data: usersData } = useQuery({
@@ -162,17 +244,38 @@ export default function ProjectDetailPage() {
   }, [project]);
 
   const memberUserIds = useMemo(
-    () => new Set(members.map((m: { userId?: string; user?: { id?: string } }) => m.user?.id || m.userId)),
+    () =>
+      new Set(
+        members.map(
+          (m: { userId?: string; user?: { id?: string } }) => m.user?.id || m.userId,
+        ),
+      ),
     [members],
   );
 
   const availableUsers = useMemo(
-    () =>
-      companyUsers.filter(
-        (u: { id: string }) => u.id && !memberUserIds.has(u.id),
-      ),
+    () => companyUsers.filter((u: { id: string }) => u.id && !memberUserIds.has(u.id)),
     [companyUsers, memberUserIds],
   );
+
+  const boardColumns: KanbanColumn[] = useMemo(() => {
+    const boardData = boardRes?.data?.data ?? boardRes?.data;
+    if (Array.isArray(boardData?.columns) && boardData.columns.length > 0) {
+      return boardData.columns.map((col: KanbanColumn & { tasks?: KanbanTask[] }) => ({
+        ...col,
+        title: col.title || col.id?.replace(/_/g, " ") || "Column",
+        tasks: Array.isArray(col.tasks) ? col.tasks : [],
+      }));
+    }
+    return defaultColumns.map((c) => ({ ...c, tasks: [] }));
+  }, [boardRes]);
+
+  const activity = useMemo(() => {
+    const body = activityRes?.data?.data ?? activityRes?.data;
+    if (Array.isArray(body)) return body;
+    if (body && Array.isArray(body.data)) return body.data;
+    return [];
+  }, [activityRes]);
 
   useEffect(() => {
     if (!project) return;
@@ -194,6 +297,7 @@ export default function ProjectDetailPage() {
     queryClient.invalidateQueries({ queryKey: ["projects"] });
     queryClient.invalidateQueries({ queryKey: ["project-tags"] });
     queryClient.invalidateQueries({ queryKey: ["documents"] });
+    queryClient.invalidateQueries({ queryKey: ["project-board", id] });
   };
 
   const updateProject = useMutation({
@@ -331,6 +435,13 @@ export default function ProjectDetailPage() {
     onError: () => toast.error("Could not delete"),
   });
 
+  const toggleClientTask = useMutation({
+    mutationFn: ({ taskId, status }: { taskId: string; status: string }) =>
+      projectsApi.updateClientTask(id, taskId, { status }),
+    onSuccess: () => invalidate(),
+    onError: () => toast.error("Could not update checklist"),
+  });
+
   const addTag = (raw: string) => {
     const t = raw.trim().slice(0, 40);
     if (!t) return;
@@ -352,11 +463,30 @@ export default function ProjectDetailPage() {
     }
   };
 
+  const handleTaskMove = async (taskId: string, _from: string, toColumn: string) => {
+    try {
+      await projectsApi.updateTaskStatus(id, taskId, toColumn);
+      toast.success("Status updated");
+      invalidate();
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Failed to update status";
+      toast.error(Array.isArray(msg) ? msg.join(", ") : msg);
+      invalidate();
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-10 w-64" />
-        <Skeleton className="h-48 w-full" />
+        <Skeleton className="h-16 w-2/3" />
+        <div className="grid gap-4 sm:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-24" />
+          ))}
+        </div>
+        <Skeleton className="h-64 w-full" />
       </div>
     );
   }
@@ -376,684 +506,925 @@ export default function ProjectDetailPage() {
   const documents = Array.isArray(project.documents) ? project.documents : [];
   const milestones = Array.isArray(project.milestones) ? project.milestones : [];
   const issues = Array.isArray(project.issues) ? project.issues : [];
+  const clientTasks = Array.isArray(project.clientTasks) ? project.clientTasks : [];
   const progress = project.progressPercent ?? 0;
+  const now = new Date();
+  const weekAhead = new Date(now.getTime() + 7 * 86400000);
 
   const shareUrl =
     project.portalEnabled && project.portalToken
       ? `${typeof window !== "undefined" ? window.location.origin : ""}/portal/${project.portalToken}`
       : "";
 
+  const openIssues = issues.filter(
+    (i: { status?: string }) => i.status && i.status !== "DONE" && i.status !== "CANCELLED",
+  );
+  const dueThisWeek = openIssues.filter((i: { dueDate?: string }) => {
+    if (!i.dueDate) return false;
+    const d = new Date(i.dueDate);
+    return d >= now && d <= weekAhead;
+  }).length;
+
+  const waitingIssues = openIssues.filter((i: { status?: string; dueDate?: string; priority?: string }) => {
+    const s = (i.status || "").toUpperCase();
+    const overdue = i.dueDate ? new Date(i.dueDate) < now : false;
+    const hot = ["HIGH", "HIGHEST", "CRITICAL"].includes((i.priority || "").toUpperCase());
+    return s === "TESTING" || s === "IN_REVIEW" || s === "BLOCKED" || overdue || hot;
+  });
+  const waiting = waitingIssues[0] as
+    | {
+        id: string;
+        title: string;
+        dueDate?: string;
+        status?: string;
+      }
+    | undefined;
+  const oldestWaitingDays = waitingIssues.reduce((max: number, i: { dueDate?: string }) => {
+    if (!i.dueDate) return max;
+    const overdue = daysBetween(new Date(i.dueDate), now);
+    return overdue > max ? overdue : max;
+  }, 0);
+
+  const doneMilestones = milestones.filter((m: { status?: string }) => m.status === "DONE").length;
+  const phase =
+    milestones.length === 0
+      ? 0
+      : Math.min(doneMilestones + (doneMilestones < milestones.length ? 1 : 0), milestones.length);
+
+  const daysToLaunch = project.endDate ? daysBetween(now, new Date(project.endDate)) : null;
+
+  const checklist = (
+    clientTasks.length
+      ? clientTasks.map(
+          (t: { id: string; title: string; status?: string; updatedAt?: string }) => ({
+            id: t.id,
+            title: t.title,
+            done: t.status === "DONE",
+            date: t.updatedAt,
+            kind: "client" as const,
+          }),
+        )
+      : issues.slice(0, 6).map(
+          (i: { id: string; title: string; status?: string; dueDate?: string }) => ({
+            id: i.id,
+            title: i.title,
+            done: i.status === "DONE",
+            date: i.dueDate,
+            kind: "issue" as const,
+          }),
+        )
+  ) as {
+    id: string;
+    title: string;
+    done: boolean;
+    date?: string;
+    kind: "client" | "issue";
+  }[];
+
+  const setupChecklist =
+    checklist.length === 0
+      ? [
+          { id: "client", title: "Link a client", done: Boolean(client), date: undefined },
+          {
+            id: "link",
+            title: "Create client share link",
+            done: Boolean(project.portalEnabled && project.portalToken),
+            date: undefined,
+          },
+          {
+            id: "docs",
+            title: "Upload project documents",
+            done: documents.length > 0,
+            date: undefined,
+          },
+          {
+            id: "ms",
+            title: "Add first milestone",
+            done: milestones.length > 0,
+            date: undefined,
+          },
+        ]
+      : [];
+
+  const shownChecklist = checklist.length ? checklist : setupChecklist;
+  const checklistDone = shownChecklist.filter((i) => i.done).length;
+  const checklistPct = shownChecklist.length
+    ? Math.round((checklistDone / shownChecklist.length) * 100)
+    : 0;
+
+  const briefDoc = documents[0] as
+    | { id: string; name: string; originalName?: string; storageUrl?: string | null }
+    | undefined;
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-3 min-w-0">
-          <div className="h-14 w-14 shrink-0 rounded-xl border bg-muted/40 overflow-hidden flex items-center justify-center">
-            {project.avatar ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={project.avatar}
-                alt={`${project.name} logo`}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <span className="text-lg font-bold text-primary">
-                {(project.name || "?").slice(0, 1).toUpperCase()}
-              </span>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-3xl font-bold tracking-tight">{project.name}</h1>
+            {project.status && (
+              <Badge variant="secondary" className="rounded-full font-normal">
+                {prettyProjectStatus(project.status)}
+              </Badge>
             )}
           </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 mb-1">
-              <h1 className="font-display text-2xl font-bold">{project.name}</h1>
-              {project.status && <Badge variant="success">{project.status}</Badge>}
-              {project.key && (
-                <Badge variant="outline" className="font-mono text-xs">
-                  {project.key}
-                </Badge>
-              )}
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {client?.name
-                ? `Client: ${client.name}`
-                : "No client linked yet — assign one below"}
-            </p>
-            {tags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {tags.map((t) => (
-                  <Badge key={t} variant="outline" className="text-[11px] font-normal">
-                    {t}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            {project.description ||
+              (client?.name
+                ? `Delivery workspace for ${client.name}.`
+                : "Project workspace for progress, files, and milestones.")}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            onClick={async () => {
+              if (briefDoc) {
+                try {
+                  await downloadDocument(briefDoc);
+                } catch {
+                  toast.error("Could not download");
+                }
+                return;
+              }
+              if (shareUrl) {
+                navigator.clipboard.writeText(shareUrl);
+                toast.success("Client link copied");
+                return;
+              }
+              setManageOpen(true);
+            }}
+          >
+            <Download className="h-4 w-4" />
+            {briefDoc ? "Download brief" : "Copy client link"}
+          </Button>
+          <Button asChild>
+            <Link href={`/projects/${id}/board`}>Open board</Link>
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => setManageOpen(true)} aria-label="Project settings">
+            <Settings className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
-      {/* Work at a glance + Kanban */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 lg:items-stretch">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Progress</p>
-            <p className="text-2xl font-bold font-display text-primary">{progress}%</p>
-            <Progress value={progress} className="mt-2 h-1.5" />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Milestones</p>
-            <p className="text-2xl font-bold font-display">{milestones.length}</p>
-            <p className="text-[11px] text-muted-foreground mt-1">
-              Group work like sprints
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="bg-muted/50 sm:col-span-2">
-          <CardContent className="p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between h-full">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold">Kanban board for admins</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Rename columns, add or delete columns, create tasks with documents, and see
-                who created each task (Client / Admin / Employee) on the project board.
-              </p>
-            </div>
-            <Button size="sm" asChild className="shrink-0 rounded-full">
-              <Link href={`/projects/${id}/board`}>
-                Manage board <ArrowRight className="h-3.5 w-3.5 ml-1" />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          {
+            label: "Project progress",
+            value: `${progress}%`,
+            hint: milestones.length ? `Phase ${phase} of ${milestones.length}` : "No milestones yet",
+          },
+          {
+            label: "Open work items",
+            value: String(openIssues.length),
+            hint: `${dueThisWeek} due this week`,
+          },
+          {
+            label: "Waiting on you",
+            value: String(waitingIssues.length),
+            hint: oldestWaitingDays > 0 ? `Oldest: ${oldestWaitingDays} days` : "Nothing overdue",
+          },
+          {
+            label: "Days to launch",
+            value: daysToLaunch == null ? "—" : String(Math.max(0, daysToLaunch)),
+            hint: project.endDate ? `Target ${formatShortDate(project.endDate)}` : "No end date",
+          },
+        ].map((stat) => (
+          <Card key={stat.label}>
+            <CardContent className="p-5">
+              <p className="text-sm text-muted-foreground">{stat.label}</p>
+              <p className="mt-2 text-3xl font-bold tracking-tight">{stat.value}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{stat.hint}</p>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
-        <Card className="flex h-full min-w-0 flex-col">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Users className="h-4 w-4" /> Team on this project
-            </CardTitle>
-            <CardDescription>
-              They only see this project. Status changes are limited to assigned
-              tasks; everything else stays with the owner.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-1 flex-col gap-3">
-            <ul className="space-y-1.5">
-              {members.length === 0 ? (
-                <li className="text-sm text-muted-foreground">No members yet.</li>
+      <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="min-w-0 space-y-8">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+              <CardTitle className="text-base font-semibold">Onboarding checklist</CardTitle>
+              <span className="text-sm text-muted-foreground">{checklistPct}%</span>
+            </CardHeader>
+            <CardContent>
+              <Progress value={checklistPct} className="mb-4 h-2.5" />
+              <ul>
+                {shownChecklist.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex items-center gap-3 border-b border-border/60 py-2.5 last:border-0"
+                  >
+                    <Checkbox
+                      checked={item.done}
+                      disabled={
+                        !("kind" in item) ||
+                        toggleClientTask.isPending
+                      }
+                      onCheckedChange={(checked) => {
+                        if (!("kind" in item)) return;
+                        if (item.kind === "client") {
+                          toggleClientTask.mutate({
+                            taskId: item.id,
+                            status: checked === true ? "DONE" : "TODO",
+                          });
+                          return;
+                        }
+                        void handleTaskMove(
+                          item.id,
+                          "",
+                          checked === true ? "DONE" : "TODO",
+                        );
+                      }}
+                    />
+                    <span className={cn("flex-1 text-sm", item.done && "text-foreground")}>
+                      {item.title}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {item.date
+                        ? item.done
+                          ? formatShortDate(item.date)
+                          : `due ${formatShortDate(item.date)}`
+                        : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+
+          <Tabs defaultValue="board">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <TabsList className="h-10 rounded-full bg-muted p-1">
+                <TabsTrigger value="board" className="rounded-full px-4">
+                  Board
+                </TabsTrigger>
+                <TabsTrigger value="list" className="rounded-full px-4">
+                  List
+                </TabsTrigger>
+                <TabsTrigger value="files" className="rounded-full px-4">
+                  Files
+                </TabsTrigger>
+                <TabsTrigger value="timeline" className="rounded-full px-4">
+                  Timeline
+                </TabsTrigger>
+              </TabsList>
+              <p className="text-xs text-muted-foreground">
+                Drag cards between columns to re-prioritize.
+              </p>
+            </div>
+
+            <TabsContent value="board" className="mt-6">
+              <ProjectHubBoard columns={boardColumns} onTaskMove={handleTaskMove} />
+            </TabsContent>
+
+            <TabsContent value="list" className="mt-6">
+              {issues.length === 0 ? (
+                <p className="py-10 text-center text-sm text-muted-foreground">No work items yet.</p>
               ) : (
-                members.map(
-                  (m: {
-                    id?: string;
-                    role?: string;
-                    userId?: string;
-                    user?: {
+                <Card>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Task</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="hidden sm:table-cell">Due</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {issues.map(
+                          (issue: {
+                            id: string;
+                            key?: string;
+                            title: string;
+                            status?: string;
+                            dueDate?: string;
+                            assignee?: { firstName?: string; lastName?: string };
+                          }) => (
+                            <TableRow key={issue.id}>
+                              <TableCell>
+                                <Link href={`/issues/${issue.id}`} className="font-medium hover:underline">
+                                  {issue.key ? `${issue.key} · ` : ""}
+                                  {issue.title}
+                                </Link>
+                                {personName(issue.assignee) && (
+                                  <p className="text-xs text-muted-foreground">
+                                    {personName(issue.assignee)}
+                                  </p>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline">{prettyIssueStatus(issue.status)}</Badge>
+                              </TableCell>
+                              <TableCell className="hidden text-muted-foreground sm:table-cell">
+                                {formatShortDate(issue.dueDate) || "—"}
+                              </TableCell>
+                            </TableRow>
+                          ),
+                        )}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+
+            <TabsContent value="files" className="mt-6">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Checkbox
+                    checked={shareClientUpload}
+                    onCheckedChange={(checked) => setShareClientUpload(checked === true)}
+                  />
+                  New uploads visible to client
+                </label>
+                <div>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      if (f.size > 100 * 1024 * 1024) {
+                        toast.error(`${f.name} is over 100 MB`);
+                        e.target.value = "";
+                        return;
+                      }
+                      uploadDoc.mutate(f);
+                    }}
+                  />
+                  <Button size="sm" onClick={() => fileRef.current?.click()} disabled={uploadDoc.isPending}>
+                    {uploadDoc.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                    Upload
+                  </Button>
+                </div>
+              </div>
+              {documents.length === 0 ? (
+                <p className="py-10 text-center text-sm text-muted-foreground">No project documents yet.</p>
+              ) : (
+                <Card>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>File</TableHead>
+                          <TableHead className="hidden sm:table-cell">Date</TableHead>
+                          <TableHead className="w-12" />
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {documents.map(
+                          (doc: {
+                            id: string;
+                            name: string;
+                            originalName?: string;
+                            isClientVisible?: boolean;
+                            createdAt?: string;
+                          }) => (
+                            <TableRow key={doc.id}>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <FileText className="h-4 w-4 text-muted-foreground" />
+                                  <span className="font-medium">{doc.originalName || doc.name}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="hidden text-muted-foreground sm:table-cell">
+                                {doc.createdAt ? formatShortDate(doc.createdAt) : "—"}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex justify-end gap-1">
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8"
+                                    onClick={() =>
+                                      toggleVisibility.mutate({
+                                        docId: doc.id,
+                                        visible: !doc.isClientVisible,
+                                      })
+                                    }
+                                  >
+                                    {doc.isClientVisible ? (
+                                      <Eye className="h-4 w-4" />
+                                    ) : (
+                                      <EyeOff className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8"
+                                    onClick={() => {
+                                      if (confirm("Delete this document?")) deleteDoc.mutate(doc.id);
+                                    }}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ),
+                        )}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+
+            <TabsContent value="timeline" className="mt-6">
+              {milestones.length === 0 ? (
+                <p className="py-10 text-center text-sm text-muted-foreground">
+                  No milestones yet — create them on the project board.
+                </p>
+              ) : (
+                <ul className="space-y-4">
+                  {milestones.map(
+                    (m: {
                       id: string;
-                      firstName?: string;
-                      lastName?: string;
-                      email?: string;
-                    };
-                  }) => {
-                    const uid = m.user?.id || m.userId || "";
-                    const name =
-                      `${m.user?.firstName || ""} ${m.user?.lastName || ""}`.trim() ||
-                      m.user?.email ||
-                      uid;
-                    const roleLabel = (m.role || "member").replace(/_/g, " ");
-                    return (
-                      <li
-                        key={m.id || uid}
-                        className="flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-sm"
-                      >
-                        <div className="min-w-0">
-                          <p className="font-medium truncate">{name}</p>
-                          <p className="text-xs text-muted-foreground capitalize truncate">
-                            {roleLabel}
-                            {m.user?.email ? ` · ${m.user.email}` : ""}
-                          </p>
+                      name: string;
+                      status?: string;
+                      dueDate?: string;
+                      _count?: { issues?: number };
+                    }) => (
+                      <li key={m.id} className="flex items-start gap-3">
+                        <span
+                          className={cn("mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full", milestoneDot(m.status))}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium">{m.name}</p>
+                          <p className="text-xs text-muted-foreground">{milestoneLabel(m.status)}</p>
                         </div>
-                        {canManageMembers && m.role !== "owner" && uid ? (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 w-8 shrink-0 p-0"
-                            disabled={removeMember.isPending}
-                            onClick={() => {
-                              if (window.confirm(`Remove ${name} from this project?`)) {
-                                removeMember.mutate(uid);
-                              }
-                            }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        ) : null}
+                        <span className="text-xs text-muted-foreground">
+                          {m.dueDate ? formatShortDate(m.dueDate) : "—"}
+                        </span>
+                      </li>
+                    ),
+                  )}
+                </ul>
+              )}
+            </TabsContent>
+          </Tabs>
+        </div>
+
+        <aside className="space-y-6">
+          {!snoozed && waiting && (
+            <Card>
+              <CardContent className="p-5">
+                <div className="flex items-start gap-2">
+                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#E5FF00]" />
+                  <div>
+                    <p className="text-sm font-semibold">Waiting on you</p>
+                    <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                      {waiting.title}
+                      {waiting.dueDate ? ` · due ${formatShortDate(waiting.dueDate)}` : ""}.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 flex gap-2">
+                  <Button size="sm" asChild>
+                    <Link href={`/issues/${waiting.id}`}>Review task</Link>
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setSnoozed(true)}>
+                    Snooze
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <div>
+            <h2 className="mb-4 text-base font-semibold">Milestones</h2>
+            {milestones.length === 0 ? (
+              <p className="text-sm text-muted-foreground">None yet.</p>
+            ) : (
+              <ul className="space-y-4">
+                {milestones.map(
+                  (m: { id: string; name: string; status?: string; dueDate?: string }) => (
+                    <li key={m.id} className="flex items-start gap-3">
+                      <span
+                        className={cn("mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full", milestoneDot(m.status))}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium">{m.name}</p>
+                        <p className="text-xs text-muted-foreground">{milestoneLabel(m.status)}</p>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {m.dueDate ? formatShortDate(m.dueDate) : "—"}
+                      </span>
+                    </li>
+                  ),
+                )}
+              </ul>
+            )}
+          </div>
+
+          <div>
+            <h2 className="mb-4 text-base font-semibold">Recent activity</h2>
+            {activity.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No recent activity.</p>
+            ) : (
+              <ul className="space-y-4">
+                {activity.map(
+                  (row: {
+                    id?: string;
+                    message?: string;
+                    createdAt?: string;
+                    user?: { firstName?: string; lastName?: string };
+                  }) => {
+                    const name = personName(row.user) || "Someone";
+                    return (
+                      <li key={row.id || row.createdAt} className="flex gap-3">
+                        <Avatar className="h-7 w-7">
+                          <AvatarFallback className="bg-muted text-[10px]">
+                            {getInitials(name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <p className="text-sm leading-snug">
+                            <span className="font-medium">{name}</span>{" "}
+                            <span className="text-muted-foreground">{row.message}</span>
+                          </p>
+                          {row.createdAt && (
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              {formatRelativeTime(row.createdAt)}
+                            </p>
+                          )}
+                        </div>
                       </li>
                     );
                   },
-                )
-              )}
-            </ul>
+                )}
+              </ul>
+            )}
+          </div>
+        </aside>
+      </div>
 
-            {canManageMembers && (
-              <div className="mt-auto flex flex-col gap-2 sm:flex-row sm:items-end">
-                <div className="min-w-0 flex-1 space-y-1">
-                  <Label className="text-xs">Add developer / freelancer</Label>
-                  <Select
-                    value={addMemberUserId || undefined}
-                    onValueChange={setAddMemberUserId}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Select team user" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableUsers.length === 0 ? (
-                        <SelectItem value="__none" disabled>
-                          No more users to add
-                        </SelectItem>
-                      ) : (
-                        availableUsers.map(
-                          (u: {
-                            id: string;
-                            firstName?: string;
-                            lastName?: string;
-                            email?: string;
-                          }) => (
-                            <SelectItem key={u.id} value={u.id}>
-                              {`${u.firstName || ""} ${u.lastName || ""}`.trim() ||
-                                u.email}
-                            </SelectItem>
-                          ),
-                        )
-                      )}
-                    </SelectContent>
-                  </Select>
+      <Sheet open={manageOpen} onOpenChange={setManageOpen}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
+          <SheetHeader>
+            <SheetTitle>Project settings</SheetTitle>
+          </SheetHeader>
+          <div className="mt-6 space-y-8">
+            <section className="space-y-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border bg-muted/40">
+                  {project.avatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={project.avatar} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="text-xs font-bold">
+                      {(project.name || "?").slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
                 </div>
-                <div className="w-full space-y-1 sm:w-32">
-                  <Label className="text-xs">Role</Label>
-                  <Select value={addMemberRole} onValueChange={setAddMemberRole}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={uploadLogo.isPending}
+                  onClick={() => logoRef.current?.click()}
+                >
+                  {uploadLogo.isPending ? "Uploading…" : "Change logo"}
+                </Button>
+                <input
+                  ref={logoRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    if (file.size > 5 * 1024 * 1024) {
+                      toast.error("Logo must be 5 MB or smaller");
+                      e.target.value = "";
+                      return;
+                    }
+                    uploadLogo.mutate(file);
+                  }}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">
+                    <Calendar className="mr-1 inline h-3 w-3" /> Start
+                  </Label>
+                  <Input
+                    type="date"
+                    className="h-9"
+                    value={settings.startDate}
+                    onChange={(e) => {
+                      setSettings((s) => ({ ...s, startDate: e.target.value }));
+                      setSettingsDirty(true);
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">End</Label>
+                  <Input
+                    type="date"
+                    className="h-9"
+                    value={settings.endDate}
+                    onChange={(e) => {
+                      setSettings((s) => ({ ...s, endDate: e.target.value }));
+                      setSettingsDirty(true);
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Name</Label>
+                  <Input
+                    className="h-9"
+                    value={settings.name}
+                    onChange={(e) => {
+                      setSettings((s) => ({ ...s, name: e.target.value }));
+                      setSettingsDirty(true);
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Status</Label>
+                  <Select
+                    value={settings.status}
+                    onValueChange={(v) => {
+                      setSettings((s) => ({ ...s, status: v }));
+                      setSettingsDirty(true);
+                    }}
+                  >
                     <SelectTrigger className="h-9">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="developer">Developer</SelectItem>
-                      <SelectItem value="freelancer">Freelancer</SelectItem>
-                      <SelectItem value="member">Member</SelectItem>
+                      {PROJECT_STATUSES.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {s.replace(/_/g, " ")}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Description</Label>
+                <Textarea
+                  value={settings.description}
+                  onChange={(e) => {
+                    setSettings((s) => ({ ...s, description: e.target.value }));
+                    setSettingsDirty(true);
+                  }}
+                  rows={3}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">
+                  <Tag className="mr-1 inline h-3 w-3" /> Tags
+                </Label>
+                <div className="min-h-[72px] rounded-md border px-2 py-1">
+                  <div className="mb-1 flex flex-wrap gap-1">
+                    {tags.map((tag) => (
+                      <Badge key={tag} variant="outline" className="h-5 gap-0.5 pr-1 text-[10px]">
+                        {tag}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTags((p) => p.filter((x) => x !== tag));
+                            setTagsDirty(true);
+                          }}
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                  <Input
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={onTagKeyDown}
+                    onBlur={() => {
+                      if (tagInput.trim()) addTag(tagInput);
+                    }}
+                    placeholder="Type tag, press Enter"
+                    className="h-7 border-0 px-1 shadow-none focus-visible:ring-0"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {TAG_SUGGESTIONS.filter(
+                    (s) => !tags.some((t) => t.toLowerCase() === s.toLowerCase()),
+                  ).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => addTag(s)}
+                      className="rounded-full border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted"
+                    >
+                      + {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {(settingsDirty || tagsDirty) && (
                 <Button
                   size="sm"
-                  className="h-9"
-                  disabled={!addMemberUserId || addMember.isPending}
-                  onClick={() => addMember.mutate()}
+                  disabled={updateProject.isPending || !settings.name.trim()}
+                  onClick={() =>
+                    updateProject.mutate({
+                      name: settings.name.trim(),
+                      description: settings.description || undefined,
+                      status: settings.status,
+                      clientId: settings.clientId === "none" ? null : settings.clientId,
+                      startDate: settings.startDate || null,
+                      endDate: settings.endDate || null,
+                      tags,
+                    })
+                  }
                 >
-                  {addMember.isPending ? "Adding…" : "Add"}
+                  {updateProject.isPending ? "Saving…" : "Save settings"}
                 </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              )}
+            </section>
 
-        <Card className="flex h-full min-w-0 flex-col">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Link2 className="h-4 w-4" /> Client share link
-              <Badge
-                variant={
-                  project.portalEnabled && project.portalToken ? "success" : "outline"
-                }
-                className="ml-auto text-[10px] font-normal"
-              >
-                {project.portalEnabled && project.portalToken ? "Active" : "Off"}
-              </Badge>
-            </CardTitle>
-            <CardDescription>
-              Client can view progress, tasks, and documents — no login.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-1 flex-col gap-3">
-            {!project.portalEnabled || !project.portalToken ? (
-              <Button
-                className="mt-auto w-full sm:w-auto"
-                onClick={() => enablePortal.mutate()}
-                disabled={enablePortal.isPending}
-              >
-                <Link2 className="h-4 w-4 mr-1" />
-                {enablePortal.isPending ? "Creating…" : "Create client link"}
-              </Button>
-            ) : (
-              <>
-                <div className="flex items-center gap-2">
-                  <div className="min-w-0 flex-1 truncate rounded-lg border bg-muted/40 px-3 py-2 font-mono text-xs">
-                    {shareUrl}
+            <section className="space-y-3">
+              <h3 className="flex items-center gap-2 text-sm font-semibold">
+                <Users className="h-4 w-4" /> Team
+              </h3>
+              <ul className="space-y-1.5">
+                {members.length === 0 ? (
+                  <li className="text-sm text-muted-foreground">No members yet.</li>
+                ) : (
+                  members.map(
+                    (m: {
+                      id?: string;
+                      role?: string;
+                      userId?: string;
+                      user?: {
+                        id: string;
+                        firstName?: string;
+                        lastName?: string;
+                        email?: string;
+                      };
+                    }) => {
+                      const uid = m.user?.id || m.userId || "";
+                      const name =
+                        `${m.user?.firstName || ""} ${m.user?.lastName || ""}`.trim() ||
+                        m.user?.email ||
+                        uid;
+                      return (
+                        <li
+                          key={m.id || uid}
+                          className="flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-sm"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{name}</p>
+                            <p className="truncate text-xs capitalize text-muted-foreground">
+                              {(m.role || "member").replace(/_/g, " ")}
+                            </p>
+                          </div>
+                          {canManageMembers && m.role !== "owner" && uid ? (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8"
+                              onClick={() => {
+                                if (window.confirm(`Remove ${name} from this project?`)) {
+                                  removeMember.mutate(uid);
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          ) : null}
+                        </li>
+                      );
+                    },
+                  )
+                )}
+              </ul>
+              {canManageMembers && (
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <Label className="text-xs">Add member</Label>
+                    <Select
+                      value={addMemberUserId || undefined}
+                      onValueChange={setAddMemberUserId}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Select team user" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableUsers.length === 0 ? (
+                          <SelectItem value="__none" disabled>
+                            No more users to add
+                          </SelectItem>
+                        ) : (
+                          availableUsers.map(
+                            (u: {
+                              id: string;
+                              firstName?: string;
+                              lastName?: string;
+                              email?: string;
+                            }) => (
+                              <SelectItem key={u.id} value={u.id}>
+                                {`${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email}
+                              </SelectItem>
+                            ),
+                          )
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="w-full space-y-1 sm:w-32">
+                    <Label className="text-xs">Role</Label>
+                    <Select value={addMemberRole} onValueChange={setAddMemberRole}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="developer">Developer</SelectItem>
+                        <SelectItem value="freelancer">Freelancer</SelectItem>
+                        <SelectItem value="member">Member</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <Button
                     size="sm"
-                    className="h-9 shrink-0"
-                    onClick={() => {
-                      navigator.clipboard.writeText(shareUrl);
-                      toast.success("Client link copied");
-                    }}
+                    className="h-9"
+                    disabled={!addMemberUserId || addMember.isPending}
+                    onClick={() => addMember.mutate()}
                   >
-                    <Copy className="h-3.5 w-3.5 mr-1" /> Copy
+                    {addMember.isPending ? "Adding…" : "Add"}
                   </Button>
                 </div>
-                <div className="mt-auto flex flex-wrap gap-2">
-                  <Button size="sm" variant="outline" asChild>
-                    <a href={shareUrl} target="_blank" rel="noreferrer">
-                      <ExternalLink className="h-3.5 w-3.5 mr-1" /> Preview
-                    </a>
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => rotatePortal.mutate()}
-                    disabled={rotatePortal.isPending}
-                  >
-                    <RefreshCw className="h-3.5 w-3.5 mr-1" /> New link
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => disablePortal.mutate()}
-                    disabled={disablePortal.isPending}
-                  >
-                    <PowerOff className="h-3.5 w-3.5 mr-1" /> Turn off
-                  </Button>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+              )}
+            </section>
 
-      {/* Client profile hidden for now
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Users className="h-4 w-4" /> Client profile
-          </CardTitle>
-          <CardDescription>Link a CRM client and see contact details</CardDescription>
-        </CardHeader>
-      </Card>
-      */}
-
-      <Card>
-        <CardHeader className="pb-2 pt-4">
-          <CardTitle className="text-base">Project settings</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2.5 pt-0">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="h-10 w-10 rounded-lg border overflow-hidden bg-muted/40 flex items-center justify-center shrink-0">
-              {project.avatar ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={project.avatar}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
+            <section className="space-y-3">
+              <h3 className="flex items-center gap-2 text-sm font-semibold">
+                <Link2 className="h-4 w-4" /> Client share link
+                <Badge
+                  variant={project.portalEnabled && project.portalToken ? "success" : "outline"}
+                  className="ml-auto text-[10px] font-normal"
+                >
+                  {project.portalEnabled && project.portalToken ? "Active" : "Off"}
+                </Badge>
+              </h3>
+              {!project.portalEnabled || !project.portalToken ? (
+                <Button onClick={() => enablePortal.mutate()} disabled={enablePortal.isPending}>
+                  {enablePortal.isPending ? "Creating…" : "Create client link"}
+                </Button>
               ) : (
-                <span className="text-xs font-bold text-primary">
-                  {(project.name || "?").slice(0, 1).toUpperCase()}
-                </span>
-              )}
-            </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-8"
-              disabled={uploadLogo.isPending}
-              onClick={() => logoRef.current?.click()}
-            >
-              {uploadLogo.isPending ? "Uploading…" : "Change logo"}
-            </Button>
-            <input
-              ref={logoRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                if (file.size > 5 * 1024 * 1024) {
-                  toast.error("Logo must be 5 MB or smaller");
-                  e.target.value = "";
-                  return;
-                }
-                uploadLogo.mutate(file);
-              }}
-            />
-            <div className="grid flex-1 grid-cols-2 gap-2 min-w-[200px] sm:max-w-xs">
-              <div className="space-y-1">
-                <Label className="text-xs flex items-center gap-1">
-                  <Calendar className="h-3 w-3" /> Start
-                </Label>
-                <Input
-                  type="date"
-                  className="h-9"
-                  value={settings.startDate}
-                  onChange={(e) => {
-                    setSettings((s) => ({ ...s, startDate: e.target.value }));
-                    setSettingsDirty(true);
-                  }}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">End</Label>
-                <Input
-                  type="date"
-                  className="h-9"
-                  value={settings.endDate}
-                  onChange={(e) => {
-                    setSettings((s) => ({ ...s, endDate: e.target.value }));
-                    setSettingsDirty(true);
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div className="space-y-1">
-              <Label className="text-xs">Name</Label>
-              <Input
-                className="h-9"
-                value={settings.name}
-                onChange={(e) => {
-                  setSettings((s) => ({ ...s, name: e.target.value }));
-                  setSettingsDirty(true);
-                }}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Status</Label>
-              <Select
-                value={settings.status}
-                onValueChange={(v) => {
-                  setSettings((s) => ({ ...s, status: v }));
-                  setSettingsDirty(true);
-                }}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PROJECT_STATUSES.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s.replace(/_/g, " ")}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid gap-2 lg:grid-cols-2">
-            <div className="space-y-1">
-              <Label className="text-xs">Description</Label>
-              <Textarea
-                value={settings.description}
-                onChange={(e) => {
-                  setSettings((s) => ({ ...s, description: e.target.value }));
-                  setSettingsDirty(true);
-                }}
-                rows={3}
-                className="min-h-[72px] resize-y text-sm"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs flex items-center gap-1">
-                <Tag className="h-3 w-3" /> Tags
-              </Label>
-              <div className="rounded-md border px-2 py-1 focus-within:ring-1 focus-within:ring-ring min-h-[72px]">
-                <div className="flex flex-wrap gap-1 mb-1">
-                  {tags.map((tag) => (
-                    <Badge key={tag} variant="outline" className="text-[10px] gap-0.5 pr-1 h-5">
-                      {tag}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setTags((p) => p.filter((x) => x !== tag));
-                          setTagsDirty(true);
-                        }}
-                      >
-                        <X className="h-2.5 w-2.5" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-                <Input
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={onTagKeyDown}
-                  onBlur={() => {
-                    if (tagInput.trim()) addTag(tagInput);
-                  }}
-                  placeholder="Type tag, press Enter"
-                  className="border-0 shadow-none focus-visible:ring-0 h-7 px-1 text-sm"
-                />
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {TAG_SUGGESTIONS.filter(
-                  (s) => !tags.some((t) => t.toLowerCase() === s.toLowerCase()),
-                ).map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => addTag(s)}
-                    className="text-[10px] rounded-full border px-1.5 py-0.5 text-muted-foreground hover:bg-muted"
-                  >
-                    + {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {(settingsDirty || tagsDirty) && (
-            <Button
-              size="sm"
-              className="h-8"
-              disabled={updateProject.isPending || !settings.name.trim()}
-              onClick={() =>
-                updateProject.mutate({
-                  name: settings.name.trim(),
-                  description: settings.description || undefined,
-                  status: settings.status,
-                  clientId: settings.clientId === "none" ? null : settings.clientId,
-                  startDate: settings.startDate || null,
-                  endDate: settings.endDate || null,
-                  tags,
-                })
-              }
-            >
-              {updateProject.isPending ? "Saving…" : "Save settings"}
-            </Button>
-          )}
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
-      <Card className="flex h-full min-w-0 flex-col">
-        <CardHeader className="pb-2">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <CardTitle className="text-base flex items-center gap-2">
-                <FileText className="h-4 w-4" /> Client documents
-              </CardTitle>
-              <CardDescription>
-                Upload files for this project. Toggle “Show to client” for the share portal.
-              </CardDescription>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
-                <Checkbox
-                  checked={shareClientUpload}
-                  onCheckedChange={(checked) =>
-                    setShareClientUpload(checked === true)
-                  }
-                />
-                New uploads visible to client
-              </label>
-              <input
-                ref={fileRef}
-                type="file"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  if (f.size > 100 * 1024 * 1024) {
-                    toast.error(`${f.name} is over 100 MB`);
-                    e.target.value = "";
-                    return;
-                  }
-                  uploadDoc.mutate(f);
-                }}
-              />
-              <Button
-                size="sm"
-                onClick={() => fileRef.current?.click()}
-                disabled={uploadDoc.isPending}
-              >
-                {uploadDoc.isPending ? (
-                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                ) : (
-                  <Upload className="h-4 w-4 mr-1" />
-                )}
-                Upload
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="flex-1">
-          {documents.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">
-              No project documents yet.
-            </p>
-          ) : (
-            <ul className="divide-y rounded-lg border">
-              {documents.map(
-                (doc: {
-                  id: string;
-                  name: string;
-                  originalName?: string;
-                  isClientVisible?: boolean;
-                  size?: number;
-                  mimeType?: string;
-                  createdAt?: string;
-                }) => (
-                  <li
-                    key={doc.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3 py-2.5 text-sm"
-                  >
-                    <div className="min-w-0">
-                      <p className="font-medium truncate">
-                        {doc.originalName || doc.name}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {[doc.mimeType, doc.createdAt ? formatDate(doc.createdAt) : null]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
+                <>
+                  <div className="flex items-center gap-2">
+                    <div className="min-w-0 flex-1 truncate rounded-lg border bg-muted/40 px-3 py-2 font-mono text-xs">
+                      {shareUrl}
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Button
-                        size="sm"
-                        variant={doc.isClientVisible ? "default" : "outline"}
-                        onClick={() =>
-                          toggleVisibility.mutate({
-                            docId: doc.id,
-                            visible: !doc.isClientVisible,
-                          })
-                        }
-                        title={
-                          doc.isClientVisible
-                            ? "Visible on client portal — click to hide"
-                            : "Hidden from client — click to show"
-                        }
-                      >
-                        {doc.isClientVisible ? (
-                          <>
-                            <Eye className="h-3.5 w-3.5 mr-1" /> Client can see
-                          </>
-                        ) : (
-                          <>
-                            <EyeOff className="h-3.5 w-3.5 mr-1" /> Hidden
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          if (confirm("Delete this document?")) deleteDoc.mutate(doc.id);
-                        }}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </li>
-                ),
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(shareUrl);
+                        toast.success("Client link copied");
+                      }}
+                    >
+                      <Copy className="h-3.5 w-3.5" /> Copy
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" asChild>
+                      <a href={shareUrl} target="_blank" rel="noreferrer">
+                        <ExternalLink className="h-3.5 w-3.5" /> Preview
+                      </a>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => rotatePortal.mutate()}
+                      disabled={rotatePortal.isPending}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" /> New link
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => disablePortal.mutate()}
+                      disabled={disablePortal.isPending}
+                    >
+                      <PowerOff className="h-3.5 w-3.5" /> Turn off
+                    </Button>
+                  </div>
+                </>
               )}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="flex h-full min-w-0 flex-col">
-        <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
-          <div>
-            <CardTitle className="text-base">Milestones</CardTitle>
-            <CardDescription>
-              Each milestone holds its own tasks on the board (like sprints)
-            </CardDescription>
+            </section>
           </div>
-          <Button size="sm" asChild>
-            <Link href={`/projects/${id}/board`}>Manage on board</Link>
-          </Button>
-        </CardHeader>
-        <CardContent className="flex-1">
-          {milestones.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No milestones yet — create them on the project board.
-            </p>
-          ) : (
-            <ul className="space-y-2">
-              {milestones.map(
-                (m: {
-                  id: string;
-                  name: string;
-                  status?: string;
-                  dueDate?: string;
-                  _count?: { issues?: number };
-                }) => (
-                  <li
-                    key={m.id}
-                    className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
-                  >
-                    <div>
-                      <p className="font-medium">{m.name}</p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {m.status}
-                        {m.dueDate ? ` · due ${formatDate(m.dueDate)}` : ""}
-                      </p>
-                    </div>
-                    <Badge variant="secondary">
-                      {m._count?.issues ??
-                        issues.filter(
-                          (i: { milestoneId?: string }) => i.milestoneId === m.id,
-                        ).length}{" "}
-                      tasks
-                    </Badge>
-                  </li>
-                ),
-              )}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-      </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
