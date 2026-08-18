@@ -23,6 +23,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 export type FieldType =
@@ -113,9 +121,9 @@ function UploadPreview({
   return (
     <div className="mt-1.5 flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/40 px-4 py-8 text-center dark:border-white/15 dark:bg-white/[0.03]">
       {kind === "image" ? (
-        <ImageIcon className="h-8 w-8 text-vedha-teal/70" />
+        <ImageIcon className="h-8 w-8 text-muted-foreground" />
       ) : (
-        <Upload className="h-8 w-8 text-vedha-teal/70" />
+        <Upload className="h-8 w-8 text-muted-foreground" />
       )}
       <p className="text-sm font-medium text-foreground">
         {placeholder || (kind === "image" ? "Upload an image" : "Upload a file")}
@@ -226,20 +234,24 @@ export function FormBuilder({ initialFields = [], onSave }: FormBuilderProps) {
                     <Textarea placeholder={field.placeholder} disabled className="mt-1.5" />
                   ) : field.type === "checkbox" ? (
                     <div className="mt-1.5 flex items-center gap-2">
-                      <input type="checkbox" disabled />
+                      <Checkbox disabled />
                       <span className="text-sm text-muted-foreground">
                         {field.placeholder || "Checkbox option"}
                       </span>
                     </div>
                   ) : field.type === "dropdown" ? (
-                    <select
-                      disabled
-                      className="mt-1.5 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
-                    >
-                      {field.options?.map((opt) => (
-                        <option key={opt}>{opt}</option>
-                      ))}
-                    </select>
+                    <Select disabled>
+                      <SelectTrigger className="mt-1.5">
+                        <SelectValue placeholder={field.options?.[0] || "Select…"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {field.options?.map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {opt}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   ) : field.type === "image" ? (
                     <UploadPreview kind="image" placeholder={field.placeholder} />
                   ) : field.type === "file" ? (

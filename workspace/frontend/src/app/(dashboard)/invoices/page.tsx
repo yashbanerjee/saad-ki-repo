@@ -8,7 +8,6 @@ import {
   Receipt,
   Send,
   Upload,
-  FileText,
   CheckCircle2,
   Trash2,
   ExternalLink,
@@ -21,6 +20,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -296,99 +303,115 @@ export default function InvoicesPage() {
           onAction={canManage ? () => setOpen(true) : undefined}
         />
       ) : (
-        <div className="space-y-3">
-          {invoices.map(
-            (inv: {
-              id: string;
-              number: string;
-              title: string;
-              status: string;
-              amount: number;
-              currency: string;
-              dueDate?: string;
-              pdfStorageUrl?: string | null;
-              pdfName?: string | null;
-              client?: { name?: string };
-              project?: { name?: string };
-            }) => (
-              <Card key={inv.id} className="!shadow-sm">
-                <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Link
-                        href={`/invoices/${inv.id}`}
-                        className="font-medium hover:underline"
-                      >
-                        {inv.number} · {inv.title}
-                      </Link>
-                      <Badge variant={statusVariant[inv.status] || "secondary"}>
-                        {inv.status}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Client: {inv.client?.name || "—"}
-                      {inv.project?.name ? ` · ${inv.project.name}` : ""}
-                      {inv.dueDate
-                        ? ` · Payment due ${formatDate(inv.dueDate)}`
-                        : ""}
-                    </p>
-                    {inv.pdfName && (
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <FileText className="h-3 w-3" /> {inv.pdfName}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-display text-lg font-semibold tabular-nums mr-2">
-                      {inv.currency} {Number(inv.amount).toLocaleString()}
-                    </p>
-                    {inv.pdfStorageUrl && (
-                      <Button size="sm" variant="outline" asChild>
-                        <a
-                          href={inv.pdfStorageUrl}
-                          target="_blank"
-                          rel="noreferrer"
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Invoice</TableHead>
+                  <TableHead className="hidden md:table-cell">Client</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead className="w-[1%] text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {invoices.map(
+                  (inv: {
+                    id: string;
+                    number: string;
+                    title: string;
+                    status: string;
+                    amount: number;
+                    currency: string;
+                    dueDate?: string;
+                    pdfStorageUrl?: string | null;
+                    pdfName?: string | null;
+                    client?: { name?: string };
+                    project?: { name?: string };
+                  }) => (
+                    <TableRow key={inv.id}>
+                      <TableCell>
+                        <Link
+                          href={`/invoices/${inv.id}`}
+                          className="font-medium hover:underline"
                         >
-                          <ExternalLink className="mr-1 h-3.5 w-3.5" /> PDF
-                        </a>
-                      </Button>
-                    )}
-                    <Button size="sm" variant="outline" asChild>
-                      <Link href={`/invoices/${inv.id}`}>Open</Link>
-                    </Button>
-                    {canManage && inv.status === "DRAFT" && (
-                      <Button
-                        size="sm"
-                        onClick={() => sendMutation.mutate(inv.id)}
-                        disabled={sendMutation.isPending}
-                      >
-                        <Send className="mr-1 h-3.5 w-3.5" /> Send
-                      </Button>
-                    )}
-                    {canManage && inv.status === "SENT" && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => paidMutation.mutate(inv.id)}
-                      >
-                        <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Paid
-                      </Button>
-                    )}
-                    {canManage && inv.status === "DRAFT" && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => deleteMutation.mutate(inv.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ),
-          )}
-        </div>
+                          {inv.number} · {inv.title}
+                        </Link>
+                        <p className="mt-0.5 text-xs text-muted-foreground md:hidden">
+                          {inv.client?.name || "—"}
+                        </p>
+                        {inv.dueDate && (
+                          <p className="text-xs text-muted-foreground">
+                            Due {formatDate(inv.dueDate)}
+                          </p>
+                        )}
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell text-muted-foreground">
+                        {inv.client?.name || "—"}
+                        {inv.project?.name ? ` · ${inv.project.name}` : ""}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={statusVariant[inv.status] || "secondary"}>
+                          {inv.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-medium tabular-nums">
+                        {inv.currency} {Number(inv.amount).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex flex-wrap items-center justify-end gap-1">
+                          {inv.pdfStorageUrl && (
+                            <Button size="sm" variant="outline" asChild>
+                              <a
+                                href={inv.pdfStorageUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                PDF
+                              </a>
+                            </Button>
+                          )}
+                          <Button size="sm" variant="outline" asChild>
+                            <Link href={`/invoices/${inv.id}`}>Open</Link>
+                          </Button>
+                          {canManage && inv.status === "DRAFT" && (
+                            <Button
+                              size="sm"
+                              onClick={() => sendMutation.mutate(inv.id)}
+                              disabled={sendMutation.isPending}
+                            >
+                              <Send className="h-3.5 w-3.5" /> Send
+                            </Button>
+                          )}
+                          {canManage && inv.status === "SENT" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => paidMutation.mutate(inv.id)}
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" /> Paid
+                            </Button>
+                          )}
+                          {canManage && inv.status === "DRAFT" && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => deleteMutation.mutate(inv.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ),
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>

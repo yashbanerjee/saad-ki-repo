@@ -63,14 +63,14 @@ export interface KanbanColumn {
 }
 
 const priorityBar = {
-  low: "bg-vedha-cyan",
-  medium: "bg-vedha-gold",
+  low: "bg-zinc-400",
+  medium: "bg-amber-400",
   high: "bg-red-400",
 };
 
 const creatorBadge: Record<string, string> = {
   client: "bg-sky-500/15 text-sky-700 border-sky-500/30 dark:text-sky-300",
-  admin: "bg-vedha-teal/15 text-vedha-teal border-vedha-teal/30 dark:text-vedha-cyan",
+  admin: "bg-muted text-foreground border-border",
   employee: "bg-amber-500/15 text-amber-800 border-amber-500/30 dark:text-amber-200",
   other: "bg-muted text-muted-foreground border-border",
 };
@@ -204,9 +204,9 @@ function SortableTask({
       }}
       className={cn(
         "group relative z-10 overflow-hidden rounded-xl border border-border bg-background p-3 shadow-sm",
-        "transition-all duration-200 hover:border-vedha-teal/40 hover:shadow-md",
+        "transition-all duration-200 hover:border-foreground/20 hover:shadow-md",
         canDrag && "cursor-grab active:cursor-grabbing",
-        isDragging && "opacity-50 ring-2 ring-vedha-teal/25",
+        isDragging && "opacity-50 ring-2 ring-ring/40",
         (onTaskClick || href) && "cursor-pointer",
       )}
     >
@@ -258,7 +258,7 @@ function SortableTask({
             <div className="mt-2.5 flex items-center gap-2">
               {task.assignee && (
                 <Avatar className="h-6 w-6 border border-border">
-                  <AvatarFallback className="bg-vedha-teal/15 text-[9px] text-vedha-teal dark:bg-vedha-teal/30 dark:text-vedha-cyan">
+                  <AvatarFallback className="bg-muted text-[9px] text-foreground">
                     {getInitials(task.assignee)}
                   </AvatarFallback>
                 </Avatar>
@@ -279,7 +279,7 @@ function SortableTask({
 
 function TaskOverlay({ task }: { task: KanbanTask }) {
   return (
-    <div className="w-72 rotate-1 rounded-xl border border-vedha-teal/30 bg-card p-3 shadow-lg">
+    <div className="w-72 rotate-1 rounded-xl border bg-card p-3 shadow-lg">
       {boardItemKey(task) && (
         <p className="text-[10px] font-semibold uppercase text-muted-foreground">
           {boardItemKey(task)}
@@ -318,7 +318,7 @@ function StaticTask({
       }}
       className={cn(
         "group relative z-10 overflow-hidden rounded-xl border border-border bg-background p-3 shadow-sm",
-        onTaskClick && "cursor-pointer hover:border-vedha-teal/40 hover:shadow-md",
+        onTaskClick && "cursor-pointer hover:border-foreground/20 hover:shadow-md",
       )}
     >
       <div
@@ -355,7 +355,7 @@ function StaticTask({
           <div className="mt-2.5 flex items-center gap-2">
             {task.assignee && (
               <Avatar className="h-6 w-6 border border-border">
-                <AvatarFallback className="bg-vedha-teal/15 text-[9px] text-vedha-teal dark:bg-vedha-teal/30 dark:text-vedha-cyan">
+                <AvatarFallback className="bg-muted text-[9px] text-foreground">
                   {getInitials(task.assignee)}
                 </AvatarFallback>
               </Avatar>
@@ -532,7 +532,7 @@ function DroppableColumn({
       <Card
         className={cn(
           "h-full border-border !bg-muted/50 !shadow-none",
-          isOver && "border-vedha-teal/40 !bg-muted/70",
+          isOver && "border-foreground/25 !bg-muted/70",
         )}
       >
         <CardHeader className="px-4 pb-3 pt-4">

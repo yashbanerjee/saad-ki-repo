@@ -22,6 +22,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -248,22 +257,16 @@ export default function DocumentsPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <div className="flex gap-1">
-          <Button
-            variant={view === "list" ? "secondary" : "ghost"}
-            size="icon"
-            onClick={() => setView("list")}
-          >
-            <List className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={view === "grid" ? "secondary" : "ghost"}
-            size="icon"
-            onClick={() => setView("grid")}
-          >
-            <Grid className="h-4 w-4" />
-          </Button>
-        </div>
+        <Tabs value={view} onValueChange={(v) => setView(v as "list" | "grid")}>
+          <TabsList>
+            <TabsTrigger value="list" aria-label="List view">
+              <List className="h-4 w-4" />
+            </TabsTrigger>
+            <TabsTrigger value="grid" aria-label="Grid view">
+              <Grid className="h-4 w-4" />
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
       {folders.length > 1 && (
@@ -303,61 +306,82 @@ export default function DocumentsPage() {
       ) : view === "list" ? (
         <Card>
           <CardContent className="p-0">
-            <div className="divide-y divide-border">
-              {filtered.map((doc) => {
-                const isNda = doc.kind === "nda" || doc.type === "NDA";
-                const Icon = isNda ? FileSignature : FileText;
-                return (
-                  <div
-                    key={doc.id}
-                    className="flex items-center gap-4 px-6 py-3 hover:bg-muted/50 transition-colors"
-                  >
-                    <Icon
-                      className={cn(
-                        "h-5 w-5 shrink-0",
-                        isNda ? "text-primary" : "text-muted-foreground",
-                      )}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{doc.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {doc.folder || (isNda ? "NDA" : "General")} ·{" "}
-                        {isNda ? "Signed agreement" : formatBytes(doc.size)}
-                      </p>
-                    </div>
-                    {isNda && <Badge variant="success">Signed</Badge>}
-                    <span className="text-xs text-muted-foreground hidden sm:block">
-                      {formatDate(doc.signedAt || doc.updatedAt || doc.createdAt || "")}
-                    </span>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {isNda && (
-                          <DropdownMenuItem onClick={() => openNda(doc)}>
-                            <Eye className="h-4 w-4 mr-2" /> View
-                          </DropdownMenuItem>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead className="hidden sm:table-cell">Folder</TableHead>
+                  <TableHead className="hidden md:table-cell">Date</TableHead>
+                  <TableHead className="w-12" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((doc) => {
+                  const isNda = doc.kind === "nda" || doc.type === "NDA";
+                  const Icon = isNda ? FileSignature : FileText;
+                  return (
+                    <TableRow key={doc.id}>
+                      <TableCell>
+                        <div className="flex min-w-0 items-center gap-3">
+                          <Icon
+                            className={cn(
+                              "h-4 w-4 shrink-0",
+                              isNda ? "text-primary" : "text-muted-foreground",
+                            )}
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{doc.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {isNda ? "Signed agreement" : formatBytes(doc.size)}
+                            </p>
+                          </div>
+                          {isNda && (
+                            <Badge variant="success" className="shrink-0">
+                              Signed
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden text-muted-foreground sm:table-cell">
+                        {doc.folder || (isNda ? "NDA" : "General")}
+                      </TableCell>
+                      <TableCell className="hidden text-muted-foreground md:table-cell">
+                        {formatDate(
+                          doc.signedAt || doc.updatedAt || doc.createdAt || "",
                         )}
-                        <DropdownMenuItem onClick={() => handleDownload(doc)}>
-                          <Download className="h-4 w-4 mr-2" /> Download
-                        </DropdownMenuItem>
-                        {!isNda && (
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => deleteMutation.mutate(doc.id)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" /> Delete
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                );
-              })}
-            </div>
+                      </TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {isNda && (
+                              <DropdownMenuItem onClick={() => openNda(doc)}>
+                                <Eye className="h-4 w-4 mr-2" /> View
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onClick={() => handleDownload(doc)}>
+                              <Download className="h-4 w-4 mr-2" /> Download
+                            </DropdownMenuItem>
+                            {!isNda && (
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                onClick={() => deleteMutation.mutate(doc.id)}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" /> Delete
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       ) : (

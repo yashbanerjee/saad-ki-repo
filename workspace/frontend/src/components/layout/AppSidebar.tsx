@@ -102,22 +102,15 @@ function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
     <Link
       href={item.href}
       className={cn(
-        "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-300",
+        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
         isActive
-          ? "nav-active"
-          : "text-muted-foreground nav-hover",
-        collapsed && "justify-center px-2"
+          ? "bg-accent text-accent-foreground"
+          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+        collapsed && "justify-center px-2",
       )}
     >
-      {isActive && (
-        <motion.span
-          layoutId="nav-glow"
-          className="absolute inset-0 rounded-xl bg-gradient-to-r from-vedha-teal/15 to-vedha-gold/10"
-          transition={{ type: "spring", stiffness: 380, damping: 30 }}
-        />
-      )}
-      <Icon className={cn("relative z-10 h-4 w-4 shrink-0", isActive && "text-vedha-cyan")} />
-      {!collapsed && <span className="relative z-10">{item.title}</span>}
+      <Icon className="h-4 w-4 shrink-0" />
+      {!collapsed && <span>{item.title}</span>}
     </Link>
   );
 
@@ -125,7 +118,7 @@ function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
     return (
       <Tooltip delayDuration={0}>
         <TooltipTrigger asChild>{link}</TooltipTrigger>
-        <TooltipContent side="right" className="glass border-white/10">
+        <TooltipContent side="right">
           {item.title}
         </TooltipContent>
       </Tooltip>
@@ -202,7 +195,7 @@ export function AppSidebar() {
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="flex w-full items-center justify-between rounded-xl border border-border bg-muted/40 px-3 py-2.5 text-left text-sm transition hover:border-vedha-teal/30 dark:border-white/8 dark:bg-white/[0.03] dark:hover:border-vedha-cyan/25"
+                  className="flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-left text-sm shadow-sm transition-colors hover:bg-accent"
                 >
                   <div className="min-w-0">
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -213,7 +206,7 @@ export function AppSidebar() {
                   <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56 glass border-white/10" align="start">
+              <DropdownMenuContent className="w-56" align="start">
                 <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
                 <DropdownMenuItem disabled>{workspace}</DropdownMenuItem>
               </DropdownMenuContent>
@@ -278,7 +271,7 @@ export function AppSidebar() {
           {!collapsed && (
             <Link
               href="/search"
-              className="nav-hover flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-muted-foreground"
+              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
             >
               <Search className="h-4 w-4" />
               Search workspace

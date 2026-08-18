@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Progress } from "@/components/ui/progress";
 import { projectsApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { formatDate } from "@/lib/utils";
@@ -160,12 +161,7 @@ export default function ClientPortalPage() {
                           <span className="text-muted-foreground">Progress</span>
                           <span className="font-medium">{progress}%</span>
                         </div>
-                        <div className="h-2 rounded-full bg-muted overflow-hidden">
-                          <div
-                            className="h-full bg-primary rounded-full"
-                            style={{ width: `${progress}%` }}
-                          />
-                        </div>
+                        <Progress value={progress} />
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Button size="sm" asChild>

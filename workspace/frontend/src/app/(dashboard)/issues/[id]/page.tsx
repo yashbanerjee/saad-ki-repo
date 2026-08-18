@@ -46,7 +46,7 @@ const FALLBACK_STATUSES = [
 
 const creatorStyles: Record<string, string> = {
   client: "bg-sky-500/15 text-sky-700 border-sky-500/30 dark:text-sky-300",
-  admin: "bg-vedha-teal/15 text-vedha-teal border-vedha-teal/30 dark:text-vedha-cyan",
+  admin: "bg-muted text-foreground border-border",
   employee: "bg-amber-500/15 text-amber-800 border-amber-500/30 dark:text-amber-200",
   other: "bg-muted text-muted-foreground border-border",
 };

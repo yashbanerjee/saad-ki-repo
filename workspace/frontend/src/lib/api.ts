@@ -710,9 +710,11 @@ function mapOverviewToStatsPayload(overview: Record<string, unknown>) {
     ? (overview.issuesByStatus as { status: string; count: number }[])
     : [];
   const colors: Record<string, string> = {
-    TODO: "#64748b",
-    IN_PROGRESS: "#a1c8cf",
-    DONE: "#10b981",
+    TODO: "#a1a1aa",
+    IN_PROGRESS: "#18181b",
+    TESTING: "#71717a",
+    DONE: "#22c55e",
+    CANCELLED: "#d4d4d8",
   };
   const distribution = issuesByStatus.map((g) => ({
     name: g.status,

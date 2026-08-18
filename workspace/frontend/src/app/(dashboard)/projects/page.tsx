@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -555,12 +556,7 @@ export default function ProjectsPage() {
                       <span className="text-muted-foreground">{taskCount} client tasks</span>
                       <span className="font-medium">{progress}%</span>
                     </div>
-                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-primary transition-all"
-                        style={{ width: `${progress}%` }}
-                      />
-                    </div>
+                    <Progress value={progress} className="h-1.5" />
                   </div>
                 </CardContent>
               </Card>

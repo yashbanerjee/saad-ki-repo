@@ -108,12 +108,12 @@ export function TopNavbar({ onOpenCommand }: TopNavbarProps) {
           onClick={onOpenCommand}
           whileHover={{ scale: 1.01 }}
           whileTap={{ scale: 0.99 }}
-          className="soft-panel group flex w-full max-w-xl items-center gap-3 rounded-2xl px-4 py-2.5 text-left text-sm text-muted-foreground shadow-sm transition-all hover:border-vedha-teal/30 hover:shadow-glow dark:hover:border-vedha-cyan/25"
+          className="flex h-10 w-full max-w-md items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-sm text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
           aria-label="Open command palette"
         >
-          <Search className="h-4 w-4 text-vedha-cyan/80" />
+          <Search className="h-4 w-4" />
           <span className="flex-1 truncate">Search projects, issues, clients…</span>
-          <kbd className="hidden items-center gap-1 rounded-lg border border-border bg-background px-2 py-0.5 text-[10px] font-medium sm:inline-flex dark:border-white/10 dark:bg-white/[0.04]">
+          <kbd className="pointer-events-none hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium sm:inline-flex">
             <Command className="h-3 w-3" />K
           </kbd>
         </motion.button>
@@ -151,7 +151,7 @@ export function TopNavbar({ onOpenCommand }: TopNavbarProps) {
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="end"
-            className="w-[min(100vw-2rem,22rem)] glass border-border p-0"
+            className="w-[min(100vw-2rem,22rem)] p-0"
             forceMount
           >
             <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
@@ -202,7 +202,7 @@ export function TopNavbar({ onOpenCommand }: TopNavbarProps) {
                       type="button"
                       className={cn(
                         "flex w-full flex-col gap-0.5 border-b border-border/60 px-3 py-2.5 text-left transition hover:bg-muted/50",
-                        !n.read && "bg-vedha-teal/5",
+                        !n.read && "bg-muted/70",
                       )}
                       onClick={() => {
                         if (!n.read) markRead.mutate(n.id);
@@ -213,7 +213,7 @@ export function TopNavbar({ onOpenCommand }: TopNavbarProps) {
                           {n.title || "Notification"}
                         </p>
                         {!n.read && (
-                          <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-vedha-teal" />
+                          <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
                         )}
                       </div>
                       {n.body && (
@@ -244,19 +244,19 @@ export function TopNavbar({ onOpenCommand }: TopNavbarProps) {
             <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0">
               <Avatar className="h-9 w-9 ring-1 ring-border ring-offset-2 ring-offset-background">
                 <AvatarImage src={user?.avatar} alt={user?.name} />
-                <AvatarFallback className="bg-vedha-teal/30 text-vedha-cyan text-xs">
+                <AvatarFallback className="bg-muted text-xs">
                   {user?.name ? getInitials(user.name) : "U"}
                 </AvatarFallback>
               </Avatar>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-56 glass border-border" align="end" forceMount>
+          <DropdownMenuContent className="w-56" align="end" forceMount>
             <DropdownMenuLabel className="font-normal">
               <div className="flex flex-col space-y-1">
                 <p className="text-sm font-medium leading-none">{user?.name}</p>
                 <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
                 {user?.companyName && (
-                  <p className="mt-1 text-xs text-vedha-gold/80">{user.companyName}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{user.companyName}</p>
                 )}
               </div>
             </DropdownMenuLabel>

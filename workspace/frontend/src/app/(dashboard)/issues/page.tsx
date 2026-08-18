@@ -3,13 +3,21 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bug, Plus, Filter, Search, Building2, Trash2 } from "lucide-react";
+import { Bug, Plus, Filter, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -198,103 +206,116 @@ export default function IssuesPage() {
       ) : (
         <Card>
           <CardContent className="p-0">
-            <div className="divide-y divide-border">
-              {filtered.map(
-                (issue: {
-                  id: string;
-                  key?: string;
-                  title: string;
-                  type?: string;
-                  priority?: string;
-                  status?: string;
-                  canDelete?: boolean;
-                  assignee?: { firstName?: string; lastName?: string } | string;
-                  project?: {
-                    name?: string;
-                    client?: { name?: string } | null;
-                  };
-                  updatedAt: string;
-                }) => {
-                  const Icon =
-                    typeIcons[issue.type as keyof typeof typeIcons] || Bug;
-                  const clientName = issue.project?.client?.name;
-                  return (
-                    <div
-                      key={issue.id}
-                      className="flex items-center gap-4 px-4 py-4 sm:px-6 hover:bg-muted/50 transition-colors"
-                    >
-                      <Link
-                        href={`/issues/${issue.id}`}
-                        className="flex min-w-0 flex-1 items-center gap-4"
-                      >
-                      <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {issue.key ? `${issue.key} · ` : ""}
-                          {issue.title}
-                        </p>
-                        <p className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5">
-                          {clientName && (
-                            <span className="inline-flex items-center gap-1">
-                              <Building2 className="h-3 w-3" />
-                              Client: {clientName}
-                            </span>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Issue</TableHead>
+                  <TableHead className="hidden md:table-cell">Client</TableHead>
+                  <TableHead className="hidden sm:table-cell">Priority</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="hidden lg:table-cell">Updated</TableHead>
+                  <TableHead className="w-12" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map(
+                  (issue: {
+                    id: string;
+                    key?: string;
+                    title: string;
+                    type?: string;
+                    priority?: string;
+                    status?: string;
+                    canDelete?: boolean;
+                    assignee?: { firstName?: string; lastName?: string } | string;
+                    project?: {
+                      name?: string;
+                      client?: { name?: string } | null;
+                    };
+                    updatedAt: string;
+                  }) => {
+                    const Icon =
+                      typeIcons[issue.type as keyof typeof typeIcons] || Bug;
+                    const clientName = issue.project?.client?.name;
+                    return (
+                      <TableRow key={issue.id}>
+                        <TableCell>
+                          <Link
+                            href={`/issues/${issue.id}`}
+                            className="flex min-w-0 items-center gap-3"
+                          >
+                            <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            <div className="min-w-0">
+                              <p className="truncate font-medium">
+                                {issue.key ? `${issue.key} · ` : ""}
+                                {issue.title}
+                              </p>
+                              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                                {[issue.project?.name, personName(issue.assignee)]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </p>
+                            </div>
+                          </Link>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          {clientName ? (
+                            <Badge variant="outline">{clientName}</Badge>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
                           )}
-                          {issue.project?.name && <span>{issue.project.name}</span>}
-                          {personName(issue.assignee) && (
-                            <span>{personName(issue.assignee)}</span>
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          {issue.priority ? (
+                            <Badge
+                              variant={
+                                priorityVariant[issue.priority] || "secondary"
+                              }
+                            >
+                              {issue.priority}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
                           )}
-                        </p>
-                      </div>
-                      {clientName && (
-                        <Badge variant="outline" className="hidden md:inline-flex shrink-0">
-                          {clientName}
-                        </Badge>
-                      )}
-                      {issue.priority && (
-                        <Badge
-                          variant={
-                            priorityVariant[issue.priority] || "secondary"
-                          }
-                          className="hidden sm:inline-flex"
-                        >
-                          {issue.priority}
-                        </Badge>
-                      )}
-                      {issue.status && (
-                        <Badge variant="secondary" className="shrink-0">
-                          {String(issue.status).replace(/_/g, " ")}
-                        </Badge>
-                      )}
-                      <span className="text-xs text-muted-foreground hidden lg:block shrink-0">
-                        {formatRelativeTime(issue.updatedAt)}
-                      </span>
-                      </Link>
-                      {issue.canDelete && (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
-                          disabled={deleteIssue.isPending}
-                          aria-label={`Delete ${issue.key || issue.title}`}
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                `Delete ${issue.key || issue.title}? This cannot be undone.`,
-                              )
-                            ) {
-                              deleteIssue.mutate(issue.id);
-                            }
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  );
-                },
-              )}
-            </div>
+                        </TableCell>
+                        <TableCell>
+                          {issue.status && (
+                            <Badge variant="secondary">
+                              {String(issue.status).replace(/_/g, " ")}
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
+                          {formatRelativeTime(issue.updatedAt)}
+                        </TableCell>
+                        <TableCell>
+                          {issue.canDelete && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              disabled={deleteIssue.isPending}
+                              aria-label={`Delete ${issue.key || issue.title}`}
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    `Delete ${issue.key || issue.title}? This cannot be undone.`,
+                                  )
+                                ) {
+                                  deleteIssue.mutate(issue.id);
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  },
+                )}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       )}

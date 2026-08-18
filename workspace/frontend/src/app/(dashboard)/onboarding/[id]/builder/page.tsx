@@ -183,11 +183,11 @@ export default function FormBuilderPage() {
       </div>
 
       {shareUrl && (
-        <Card className="border-vedha-teal/20 bg-teal-50/50 dark:bg-vedha-teal/10">
+        <Card className="bg-muted/40">
           <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
             <div className="flex min-w-0 flex-1 items-start gap-3">
-              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-vedha-teal/15">
-                <Link2 className="h-4 w-4 text-vedha-teal" />
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-background">
+                <Link2 className="h-4 w-4 text-muted-foreground" />
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-foreground">Client form link</p>

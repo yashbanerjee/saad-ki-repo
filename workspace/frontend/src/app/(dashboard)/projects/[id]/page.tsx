@@ -30,6 +30,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -434,12 +436,7 @@ export default function ProjectDetailPage() {
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Progress</p>
             <p className="text-2xl font-bold font-display text-primary">{progress}%</p>
-            <div className="h-1.5 rounded-full bg-muted mt-2 overflow-hidden">
-              <div
-                className="h-full bg-primary rounded-full"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
+            <Progress value={progress} className="mt-2 h-1.5" />
           </CardContent>
         </Card>
         <Card>
@@ -890,12 +887,12 @@ export default function ProjectDetailPage() {
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="rounded"
+              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                <Checkbox
                   checked={shareClientUpload}
-                  onChange={(e) => setShareClientUpload(e.target.checked)}
+                  onCheckedChange={(checked) =>
+                    setShareClientUpload(checked === true)
+                  }
                 />
                 New uploads visible to client
               </label>

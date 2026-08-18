@@ -36,6 +36,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -876,12 +877,10 @@ export default function PublicPortalPage() {
               </CardHeader>
               <CardContent>
                 <p className="text-3xl font-display font-bold text-primary">{progress}%</p>
-                <div className="h-2 rounded-full bg-muted mt-2 overflow-hidden">
-                  <div
-                    className="h-full bg-primary rounded-full transition-all"
-                    style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
-                  />
-                </div>
+                <Progress
+                  value={Math.min(100, Math.max(0, progress))}
+                  className="mt-2"
+                />
               </CardContent>
             </Card>
 
@@ -1219,12 +1218,9 @@ export default function PublicPortalPage() {
                                 {pct}%
                               </span>
                             </div>
-                            <div className="h-2 rounded-full bg-muted overflow-hidden">
-                              <div
-                                className="h-full rounded-full bg-primary transition-all"
-                                style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
-                              />
-                            </div>
+                            <Progress
+                              value={Math.min(100, Math.max(0, pct))}
+                            />
                           </div>
 
                           {assigned.length === 0 ? (

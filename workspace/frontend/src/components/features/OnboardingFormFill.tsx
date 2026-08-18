@@ -8,6 +8,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { fromApiFieldType } from "@/components/features/FormBuilder";
 import { onboardingApi } from "@/lib/api";
 import { toast } from "sonner";
@@ -237,20 +244,22 @@ export function OnboardingFormFill({
                   <span className="text-sm">{field.placeholder || field.label}</span>
                 </div>
               ) : uiType === "dropdown" ? (
-                <select
-                  className="flex h-11 sm:h-9 w-full rounded-md border border-input bg-transparent px-3 text-base sm:text-sm"
-                  required={field.required}
-                  onChange={(e) =>
-                    setFormData({ ...formData, [field.id]: e.target.value })
+                <Select
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, [field.id]: value })
                   }
                 >
-                  <option value="">Select...</option>
-                  {field.options?.map((opt: string) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="h-11 sm:h-10">
+                    <SelectValue placeholder="Select…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {field.options?.map((opt: string) => (
+                      <SelectItem key={opt} value={opt}>
+                        {opt}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               ) : isUploadType(field.type) ? (
                 <div className="space-y-2">
                   <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/40 px-4 py-8 text-center transition hover:border-primary/40 hover:bg-muted/70">

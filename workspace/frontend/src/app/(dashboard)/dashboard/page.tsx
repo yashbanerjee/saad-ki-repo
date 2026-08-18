@@ -35,6 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Progress } from "@/components/ui/progress";
 import { dashboardApi } from "@/lib/api";
 import { formatRelativeTime, formatDate } from "@/lib/utils";
 import { useAuthStore, isClientUser } from "@/lib/auth-store";
@@ -256,8 +257,8 @@ export default function DashboardPage() {
                           </p>
                         )}
                       </div>
-                      <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-muted/50 transition group-hover:border-vedha-teal/30 group-hover:shadow-glow dark:border-white/8 dark:bg-white/[0.04]">
-                        <Icon className="h-5 w-5 text-vedha-cyan" />
+                      <div className="flex h-10 w-10 items-center justify-center rounded-md border bg-muted">
+                        <Icon className="h-4 w-4 text-muted-foreground" />
                       </div>
                     </div>
                   </CardContent>
@@ -290,12 +291,12 @@ export default function DashboardPage() {
                   <AreaChart data={velocityData}>
                     <defs>
                       <linearGradient id="vedhaTasks" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#0f6661" stopOpacity={0.45} />
-                        <stop offset="100%" stopColor="#0f6661" stopOpacity={0} />
+                        <stop offset="0%" stopColor="#0a0a0a" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="#0a0a0a" stopOpacity={0} />
                       </linearGradient>
                       <linearGradient id="vedhaBugs" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#d4a574" stopOpacity={0.35} />
-                        <stop offset="100%" stopColor="#d4a574" stopOpacity={0} />
+                        <stop offset="0%" stopColor="#a1a1aa" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="#a1a1aa" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(100,116,139,0.2)" />
@@ -313,7 +314,7 @@ export default function DashboardPage() {
                       type="monotone"
                       dataKey="tasks"
                       name="Completed tasks"
-                      stroke="#a1c8cf"
+                      stroke="#0a0a0a"
                       fill="url(#vedhaTasks)"
                       strokeWidth={2}
                     />
@@ -321,7 +322,7 @@ export default function DashboardPage() {
                       type="monotone"
                       dataKey="bugs"
                       name="Completed bugs"
-                      stroke="#d4a574"
+                      stroke="#a1a1aa"
                       fill="url(#vedhaBugs)"
                       strokeWidth={2}
                     />
@@ -368,17 +369,10 @@ export default function DashboardPage() {
                       tasks done
                     </p>
                   </div>
-                  <div className="h-2.5 overflow-hidden rounded-full bg-muted dark:bg-white/5">
-                    <div
-                      className="h-full rounded-full bg-primary transition-all"
-                      style={{
-                        width: `${Math.min(
-                          100,
-                          Math.max(0, sprintProgress.progressPercent),
-                        )}%`,
-                      }}
-                    />
-                  </div>
+                  <Progress
+                    value={Math.min(100, Math.max(0, sprintProgress.progressPercent))}
+                    className="h-2.5"
+                  />
                 </div>
               )}
             </CardContent>
@@ -433,7 +427,7 @@ export default function DashboardPage() {
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2 text-base">
-                  <FolderKanban className="h-4 w-4 text-vedha-cyan" /> Project progress
+                  <FolderKanban className="h-4 w-4 text-muted-foreground" /> Project progress
                 </CardTitle>
                 <CardDescription>Based on completed board tasks</CardDescription>
               </div>
@@ -463,7 +457,7 @@ export default function DashboardPage() {
                     <Link
                       key={p.id}
                       href={`/projects/${p.id}`}
-                      className="block rounded-xl border border-border bg-muted/40 p-4 transition-colors hover:border-vedha-teal/30 dark:border-white/8 dark:bg-white/[0.03]"
+                      className="block rounded-lg border bg-muted/40 p-4 transition-colors hover:bg-muted/70"
                     >
                       <div className="mb-3 flex items-center justify-between gap-2">
                         <div className="min-w-0">
@@ -476,14 +470,10 @@ export default function DashboardPage() {
                           {p.progress ?? 0}%
                         </span>
                       </div>
-                      <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-muted dark:bg-white/5">
-                        <div
-                          className="h-full rounded-full bg-primary"
-                          style={{
-                            width: `${Math.min(100, Math.max(0, p.progress ?? 0))}%`,
-                          }}
-                        />
-                      </div>
+                      <Progress
+                        value={Math.min(100, Math.max(0, p.progress ?? 0))}
+                        className="mb-2 h-1.5"
+                      />
                       {p.dueDate && (
                         <p className="flex items-center gap-1 text-xs text-muted-foreground">
                           <Calendar className="h-3 w-3" /> {formatDate(p.dueDate)}
@@ -501,7 +491,7 @@ export default function DashboardPage() {
           <Card className="h-full">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-base">
-                <Activity className="h-4 w-4 text-vedha-gold" /> Recent activity
+                <Activity className="h-4 w-4 text-muted-foreground" /> Recent activity
               </CardTitle>
               <Button variant="ghost" size="sm" asChild>
                 <Link href="/activity">See All</Link>
@@ -525,8 +515,8 @@ export default function DashboardPage() {
                 <div className="max-h-[320px] space-y-4 overflow-hidden">
                   {activity.map((row) => (
                     <div key={row.id} className="flex gap-3 text-sm">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-muted/50 dark:border-white/8 dark:bg-white/[0.04]">
-                        <Clock className="h-3.5 w-3.5 text-vedha-cyan" />
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-muted">
+                        <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                       </div>
                       <div className="min-w-0">
                         <p>
@@ -557,8 +547,8 @@ export default function DashboardPage() {
           <Link key={q.href} href={q.href}>
             <Card className="h-full transition hover:-translate-y-0.5">
               <CardContent className="flex items-center gap-3 p-5">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-muted/50 dark:border-white/8 dark:bg-white/[0.04]">
-                  <q.icon className="h-4 w-4 text-vedha-cyan" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-md border bg-muted">
+                  <q.icon className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <p className="text-sm font-medium">{q.label}</p>
               </CardContent>

@@ -32,6 +32,7 @@ import { normalizeAuthUser, useAuthStore } from "@/lib/auth-store";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { VedhaMark } from "@/components/brand/VedhaMark";
+import { Progress } from "@/components/ui/progress";
 
 const accountSchema = z
   .object({
@@ -298,12 +299,10 @@ export default function ClientSetupPage() {
               );
             })}
           </ol>
-          <div className="mt-3 h-1 rounded-full bg-muted overflow-hidden">
-            <div
-              className="h-full rounded-full bg-primary transition-all duration-500"
-              style={{ width: `${Math.max(progressPct, currentStepIndex === 0 ? 8 : progressPct)}%` }}
-            />
-          </div>
+          <Progress
+            className="mt-3 h-1"
+            value={Math.max(progressPct, currentStepIndex === 0 ? 8 : progressPct)}
+          />
           <p className="mt-2 text-center text-[11px] text-muted-foreground sm:hidden">
             Step {currentStepIndex + 1} of {visibleSteps.length}
             {visibleSteps[currentStepIndex]

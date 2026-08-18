@@ -3,7 +3,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { X } from "lucide-react";
+import {
+  LayoutDashboard,
+  FolderKanban,
+  Bug,
+  FileText,
+  Receipt,
+  Users,
+  Settings,
+  Building2,
+} from "lucide-react";
 import { VedhaMark } from "@/components/brand/VedhaMark";
 import { AppSidebar } from "./AppSidebar";
 import { TopNavbar } from "./TopNavbar";
@@ -13,8 +22,13 @@ import { AuthGuard } from "./AuthGuard";
 import { AiAssistant } from "./AiAssistant";
 import { useSidebarStore } from "@/lib/sidebar-store";
 import { useAuthStore, hasRole, isClientUser } from "@/lib/auth-store";
-import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -29,41 +43,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex h-screen overflow-hidden bg-background">
         <AppSidebar />
 
-        {mobileOpen && (
-          <div className="fixed inset-0 z-50 md:hidden">
-            <div
-              className="absolute inset-0 bg-black/50 backdrop-blur-sm dark:bg-black/70"
-              onClick={() => setMobileOpen(false)}
-            />
-            <motion.div
-              initial={{ x: -280 }}
-              animate={{ x: 0 }}
-              className="chrome-sidebar absolute left-0 top-0 h-full w-72"
-            >
-              <div className="flex h-16 items-center justify-between border-b border-border px-4">
-                <Link
-                  href={homeHref}
-                  className="flex items-center gap-2"
-                  onClick={() => setMobileOpen(false)}
-                >
-                  <VedhaMark className="h-8 w-8" />
-                  <div>
-                    <span className="text-lg font-bold text-foreground">TaskFlow</span>
-                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
-                      by Vedha
-                    </p>
-                  </div>
-                </Link>
-                <Button variant="ghost" size="icon" onClick={() => setMobileOpen(false)}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-              <ScrollArea className="h-[calc(100%-4rem)]">
-                <MobileNav pathname={pathname} onNavigate={() => setMobileOpen(false)} />
-              </ScrollArea>
-            </motion.div>
-          </div>
-        )}
+        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+          <SheetContent side="left" className="flex w-72 flex-col gap-0 p-0 md:hidden">
+            <SheetHeader className="flex h-16 flex-row items-center space-y-0 border-b px-4 text-left">
+              <SheetTitle className="sr-only">Navigation</SheetTitle>
+              <Link
+                href={homeHref}
+                className="flex items-center gap-2"
+                onClick={() => setMobileOpen(false)}
+              >
+                <VedhaMark className="h-8 w-8" />
+                <span>
+                  <span className="block text-base font-bold">TaskFlow</span>
+                  <span className="block text-[10px] font-normal uppercase tracking-widest text-muted-foreground">
+                    by Vedha
+                  </span>
+                </span>
+              </Link>
+            </SheetHeader>
+            <ScrollArea className="flex-1">
+              <MobileNav pathname={pathname} onNavigate={() => setMobileOpen(false)} />
+            </ScrollArea>
+          </SheetContent>
+        </Sheet>
 
         <div className="flex flex-1 flex-col overflow-hidden">
           <TopNavbar onOpenCommand={() => setOpen(true)} />
@@ -91,15 +93,50 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 }
 
 const mobileLinks = [
-  { href: "/dashboard", label: "Dashboard", roles: ["admin", "manager", "member"] as const },
-  { href: "/client-portal", label: "Dashboard", roles: ["client"] as const },
-  { href: "/projects", label: "Projects", roles: ["admin", "manager", "member", "client"] as const },
-  { href: "/issues", label: "Issues", roles: ["client"] as const },
-  { href: "/documents", label: "Documents", roles: ["admin", "manager", "member", "client"] as const },
-  { href: "/invoices", label: "Invoices", roles: ["admin", "manager", "member", "client"] as const },
-  { href: "/clients", label: "Clients", roles: ["admin", "manager", "member"] as const },
-  { href: "/team", label: "Team", roles: ["admin", "manager"] as const },
-  { href: "/settings", label: "Settings", roles: ["admin", "manager", "member", "client"] as const },
+  {
+    href: "/dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    roles: ["admin", "manager", "member"] as const,
+  },
+  {
+    href: "/client-portal",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    roles: ["client"] as const,
+  },
+  {
+    href: "/projects",
+    label: "Projects",
+    icon: FolderKanban,
+    roles: ["admin", "manager", "member", "client"] as const,
+  },
+  { href: "/issues", label: "Issues", icon: Bug, roles: ["client"] as const },
+  {
+    href: "/documents",
+    label: "Documents",
+    icon: FileText,
+    roles: ["admin", "manager", "member", "client"] as const,
+  },
+  {
+    href: "/invoices",
+    label: "Invoices",
+    icon: Receipt,
+    roles: ["admin", "manager", "member", "client"] as const,
+  },
+  {
+    href: "/clients",
+    label: "Clients",
+    icon: Building2,
+    roles: ["admin", "manager", "member"] as const,
+  },
+  { href: "/team", label: "Team", icon: Users, roles: ["admin", "manager"] as const },
+  {
+    href: "/settings",
+    label: "Settings",
+    icon: Settings,
+    roles: ["admin", "manager", "member", "client"] as const,
+  },
 ];
 
 function MobileNav({
@@ -115,22 +152,27 @@ function MobileNav({
   );
 
   return (
-    <nav className="space-y-1 p-4">
-      {links.map((link) => (
-        <Link
-          key={`${link.href}-${link.label}`}
-          href={link.href}
-          onClick={onNavigate}
-          className={cn(
-            "block rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
-            pathname === link.href || pathname.startsWith(`${link.href}/`)
-              ? "nav-active text-vedha-teal dark:text-vedha-cyan"
-              : "text-muted-foreground nav-hover"
-          )}
-        >
-          {link.label}
-        </Link>
-      ))}
+    <nav className="space-y-1 p-3">
+      {links.map((link) => {
+        const Icon = link.icon;
+        const active = pathname === link.href || pathname.startsWith(`${link.href}/`);
+        return (
+          <Link
+            key={`${link.href}-${link.label}`}
+            href={link.href}
+            onClick={onNavigate}
+            className={cn(
+              "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              active
+                ? "bg-accent text-accent-foreground"
+                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+            )}
+          >
+            <Icon className="h-4 w-4" />
+            {link.label}
+          </Link>
+        );
+      })}
     </nav>
   );
 }

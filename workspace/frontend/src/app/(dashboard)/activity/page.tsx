@@ -39,7 +39,7 @@ export default function ActivityPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Activity className="h-4 w-4 text-vedha-gold" /> All activity
+            <Activity className="h-4 w-4 text-muted-foreground" /> All activity
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -87,7 +87,7 @@ export default function ActivityPage() {
                   return (
                     <div key={row.id} className="flex gap-3 text-sm">
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-muted/50">
-                        <Clock className="h-3.5 w-3.5 text-vedha-cyan" />
+                        <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                       </div>
                       <div className="min-w-0">
                         <p>

@@ -8,6 +8,14 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { teamApi } from "@/lib/api";
 import { getInitials } from "@/lib/utils";
 
@@ -53,24 +61,50 @@ export default function TeamPage() {
       ) : (
         <Card>
           <CardContent className="p-0">
-            <div className="divide-y divide-border">
-              {team.map((member) => (
-                <div key={member.id} className="flex items-center gap-4 px-6 py-4 hover:bg-muted/50 transition-colors">
-                  <Avatar className="h-10 w-10">
-                    <AvatarFallback className="bg-primary/10 text-primary">{getInitials(member.name)}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">{member.name}</p>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1"><Mail className="h-3 w-3" />{member.email}</p>
-                  </div>
-                  <Badge variant={roleVariant[member.role as keyof typeof roleVariant]}>
-                    <Shield className="h-3 w-3 mr-1" />{member.role}
-                  </Badge>
-                  <Badge variant="success">{member.status}</Badge>
-                  <span className="text-xs text-muted-foreground hidden sm:block">{member.projects ?? 0} projects</span>
-                </div>
-              ))}
-            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Member</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead className="hidden sm:table-cell">Status</TableHead>
+                  <TableHead className="hidden sm:table-cell text-right">Projects</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {team.map((member) => (
+                  <TableRow key={member.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-9 w-9">
+                          <AvatarFallback className="bg-muted text-xs">
+                            {getInitials(member.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <p className="font-medium">{member.name}</p>
+                          <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Mail className="h-3 w-3" />
+                            {member.email}
+                          </p>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={roleVariant[member.role as keyof typeof roleVariant]}>
+                        <Shield className="h-3 w-3 mr-1" />
+                        {member.role}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      <Badge variant="success">{member.status}</Badge>
+                    </TableCell>
+                    <TableCell className="hidden text-right text-muted-foreground sm:table-cell">
+                      {member.projects ?? 0}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       )}
