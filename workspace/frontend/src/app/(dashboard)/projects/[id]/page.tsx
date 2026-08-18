@@ -38,7 +38,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { clientsApi, documentsApi, projectsApi, usersApi } from "@/lib/api";
+import { documentsApi, projectsApi, usersApi } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { hasRole, useAuthStore } from "@/lib/auth-store";
 import { toast } from "sonner";
@@ -63,6 +63,7 @@ const PROJECT_STATUSES = [
   "CANCELLED",
 ];
 
+/* Client profile helper — restore with Client profile card
 function CreateClientLoginButton({
   clientId,
   onDone,
@@ -103,6 +104,7 @@ function CreateClientLoginButton({
     </Button>
   );
 }
+*/
 
 function toDateInput(value?: string | null) {
   if (!value) return "";
@@ -140,12 +142,6 @@ export default function ProjectDetailPage() {
     retry: false,
   });
 
-  const { data: clientsData } = useQuery({
-    queryKey: ["clients", "for-project"],
-    queryFn: () => clientsApi.list({ limit: 100 }),
-    retry: false,
-  });
-
   const { data: usersData } = useQuery({
     queryKey: ["users", "for-project-members"],
     queryFn: () => usersApi.list({ limit: 100 }),
@@ -154,11 +150,6 @@ export default function ProjectDetailPage() {
   });
 
   const project = data?.data?.data ?? data?.data ?? null;
-
-  const clients = useMemo(() => {
-    const raw = clientsData?.data?.data ?? clientsData?.data ?? [];
-    return Array.isArray(raw) ? raw : [];
-  }, [clientsData]);
 
   const companyUsers = useMemo(() => {
     const raw = usersData?.data?.data ?? usersData?.data ?? [];
@@ -498,258 +489,219 @@ export default function ProjectDetailPage() {
         </Card>
       </div>
 
-      {/* Team members — developers / freelancers */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Users className="h-4 w-4" /> Team on this project
-          </CardTitle>
-          <CardDescription>
-            Developers and freelancers only see this project. They can view all
-            tasks and change status only on tasks assigned to them. Other tasks
-            stay with the project owner (admin).
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <ul className="space-y-2">
-            {members.length === 0 ? (
-              <li className="text-sm text-muted-foreground">No members yet.</li>
-            ) : (
-              members.map(
-                (m: {
-                  id?: string;
-                  role?: string;
-                  userId?: string;
-                  user?: {
-                    id: string;
-                    firstName?: string;
-                    lastName?: string;
-                    email?: string;
-                  };
-                }) => {
-                  const uid = m.user?.id || m.userId || "";
-                  const name =
-                    `${m.user?.firstName || ""} ${m.user?.lastName || ""}`.trim() ||
-                    m.user?.email ||
-                    uid;
-                  const roleLabel = (m.role || "member").replace(/_/g, " ");
-                  return (
-                    <li
-                      key={m.id || uid}
-                      className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm"
-                    >
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">{name}</p>
-                        <p className="text-xs text-muted-foreground capitalize">
-                          {roleLabel}
-                          {m.user?.email ? ` · ${m.user.email}` : ""}
-                        </p>
-                      </div>
-                      {canManageMembers && m.role !== "owner" && uid ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={removeMember.isPending}
-                          onClick={() => {
-                            if (window.confirm(`Remove ${name} from this project?`)) {
-                              removeMember.mutate(uid);
-                            }
-                          }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      ) : null}
-                    </li>
-                  );
-                },
-              )
-            )}
-          </ul>
-
-          {canManageMembers && (
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-              <div className="flex-1 space-y-1.5">
-                <Label>Add developer / freelancer</Label>
-                <Select
-                  value={addMemberUserId || undefined}
-                  onValueChange={setAddMemberUserId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select team user" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableUsers.length === 0 ? (
-                      <SelectItem value="__none" disabled>
-                        No more users to add
-                      </SelectItem>
-                    ) : (
-                      availableUsers.map(
-                        (u: {
-                          id: string;
-                          firstName?: string;
-                          lastName?: string;
-                          email?: string;
-                        }) => (
-                          <SelectItem key={u.id} value={u.id}>
-                            {`${u.firstName || ""} ${u.lastName || ""}`.trim() ||
-                              u.email}
-                          </SelectItem>
-                        ),
-                      )
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="w-full sm:w-40 space-y-1.5">
-                <Label>Role</Label>
-                <Select value={addMemberRole} onValueChange={setAddMemberRole}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="developer">Developer</SelectItem>
-                    <SelectItem value="freelancer">Freelancer</SelectItem>
-                    <SelectItem value="member">Member</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button
-                disabled={!addMemberUserId || addMember.isPending}
-                onClick={() => addMember.mutate()}
-              >
-                {addMember.isPending ? "Adding…" : "Add"}
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Client share link */}
-      <Card className="border-primary/30 bg-primary/5">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Link2 className="h-4 w-4" /> Client share link
-          </CardTitle>
-          <CardDescription>
-            Status:{" "}
-            <span className="font-medium text-foreground">
-              {project.portalEnabled && project.portalToken ? "Active" : "Off"}
-            </span>
-            . Send the link so the client can see progress, tasks, and shared documents — no
-            login required.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {!project.portalEnabled || !project.portalToken ? (
-            <Button onClick={() => enablePortal.mutate()} disabled={enablePortal.isPending}>
-              <Link2 className="h-4 w-4 mr-1" />
-              {enablePortal.isPending ? "Creating…" : "Create client link"}
-            </Button>
-          ) : (
-            <>
-              <div className="rounded-lg border bg-background px-3 py-2 text-xs break-all font-mono">
-                {shareUrl}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    navigator.clipboard.writeText(shareUrl);
-                    toast.success("Client link copied");
-                  }}
-                >
-                  <Copy className="h-3.5 w-3.5 mr-1" /> Copy link
-                </Button>
-                <Button size="sm" variant="outline" asChild>
-                  <a href={shareUrl} target="_blank" rel="noreferrer">
-                    <ExternalLink className="h-3.5 w-3.5 mr-1" /> Preview
-                  </a>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => rotatePortal.mutate()}
-                  disabled={rotatePortal.isPending}
-                >
-                  <RefreshCw className="h-3.5 w-3.5 mr-1" /> New link
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => disablePortal.mutate()}
-                  disabled={disablePortal.isPending}
-                >
-                  <PowerOff className="h-3.5 w-3.5 mr-1" /> Turn off
-                </Button>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* Client profile */}
-        <Card>
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+        <Card className="flex h-full min-w-0 flex-col">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
-              <Users className="h-4 w-4" /> Client profile
+              <Users className="h-4 w-4" /> Team on this project
             </CardTitle>
-            <CardDescription>Link a CRM client and see contact details</CardDescription>
+            <CardDescription>
+              They only see this project. Status changes are limited to assigned
+              tasks; everything else stays with the owner.
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="space-y-2">
-              <Label>Assigned client</Label>
-              <Select
-                value={settings.clientId}
-                onValueChange={(v) => {
-                  setSettings((s) => ({ ...s, clientId: v }));
-                  setSettingsDirty(true);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select client" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No client</SelectItem>
-                  {clients.map((c: { id: string; name: string }) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {client ? (
-              <div className="rounded-lg border p-3 text-sm space-y-1">
-                <p className="font-medium">{client.name}</p>
-                {client.email && (
-                  <p className="text-muted-foreground text-xs">{client.email}</p>
-                )}
-                {client.phone && (
-                  <p className="text-muted-foreground text-xs">{client.phone}</p>
-                )}
-                {client.companyName && (
-                  <p className="text-muted-foreground text-xs">{client.companyName}</p>
-                )}
-                <div className="pt-2 flex flex-wrap gap-2">
-                  <Button size="sm" variant="outline" asChild>
-                    <Link href={`/clients/${client.id}`}>Open client record</Link>
-                  </Button>
-                  {!client.userId && (
-                    <CreateClientLoginButton clientId={client.id} onDone={invalidate} />
-                  )}
+          <CardContent className="flex flex-1 flex-col gap-3">
+            <ul className="space-y-1.5">
+              {members.length === 0 ? (
+                <li className="text-sm text-muted-foreground">No members yet.</li>
+              ) : (
+                members.map(
+                  (m: {
+                    id?: string;
+                    role?: string;
+                    userId?: string;
+                    user?: {
+                      id: string;
+                      firstName?: string;
+                      lastName?: string;
+                      email?: string;
+                    };
+                  }) => {
+                    const uid = m.user?.id || m.userId || "";
+                    const name =
+                      `${m.user?.firstName || ""} ${m.user?.lastName || ""}`.trim() ||
+                      m.user?.email ||
+                      uid;
+                    const roleLabel = (m.role || "member").replace(/_/g, " ");
+                    return (
+                      <li
+                        key={m.id || uid}
+                        className="flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-sm"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{name}</p>
+                          <p className="text-xs text-muted-foreground capitalize truncate">
+                            {roleLabel}
+                            {m.user?.email ? ` · ${m.user.email}` : ""}
+                          </p>
+                        </div>
+                        {canManageMembers && m.role !== "owner" && uid ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 shrink-0 p-0"
+                            disabled={removeMember.isPending}
+                            onClick={() => {
+                              if (window.confirm(`Remove ${name} from this project?`)) {
+                                removeMember.mutate(uid);
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        ) : null}
+                      </li>
+                    );
+                  },
+                )
+              )}
+            </ul>
+
+            {canManageMembers && (
+              <div className="mt-auto flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <Label className="text-xs">Add developer / freelancer</Label>
+                  <Select
+                    value={addMemberUserId || undefined}
+                    onValueChange={setAddMemberUserId}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Select team user" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableUsers.length === 0 ? (
+                        <SelectItem value="__none" disabled>
+                          No more users to add
+                        </SelectItem>
+                      ) : (
+                        availableUsers.map(
+                          (u: {
+                            id: string;
+                            firstName?: string;
+                            lastName?: string;
+                            email?: string;
+                          }) => (
+                            <SelectItem key={u.id} value={u.id}>
+                              {`${u.firstName || ""} ${u.lastName || ""}`.trim() ||
+                                u.email}
+                            </SelectItem>
+                          ),
+                        )
+                      )}
+                    </SelectContent>
+                  </Select>
                 </div>
+                <div className="w-full space-y-1 sm:w-32">
+                  <Label className="text-xs">Role</Label>
+                  <Select value={addMemberRole} onValueChange={setAddMemberRole}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="developer">Developer</SelectItem>
+                      <SelectItem value="freelancer">Freelancer</SelectItem>
+                      <SelectItem value="member">Member</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  size="sm"
+                  className="h-9"
+                  disabled={!addMemberUserId || addMember.isPending}
+                  onClick={() => addMember.mutate()}
+                >
+                  {addMember.isPending ? "Adding…" : "Add"}
+                </Button>
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Pick a client above and save settings to attach their profile.
-              </p>
             )}
           </CardContent>
         </Card>
 
-        {/* Settings + tags */}
-        <Card>
+        <Card className="flex h-full min-w-0 flex-col">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Link2 className="h-4 w-4" /> Client share link
+              <Badge
+                variant={
+                  project.portalEnabled && project.portalToken ? "success" : "outline"
+                }
+                className="ml-auto text-[10px] font-normal"
+              >
+                {project.portalEnabled && project.portalToken ? "Active" : "Off"}
+              </Badge>
+            </CardTitle>
+            <CardDescription>
+              Client can view progress, tasks, and documents — no login.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-1 flex-col gap-3">
+            {!project.portalEnabled || !project.portalToken ? (
+              <Button
+                className="mt-auto w-full sm:w-auto"
+                onClick={() => enablePortal.mutate()}
+                disabled={enablePortal.isPending}
+              >
+                <Link2 className="h-4 w-4 mr-1" />
+                {enablePortal.isPending ? "Creating…" : "Create client link"}
+              </Button>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1 truncate rounded-lg border bg-muted/40 px-3 py-2 font-mono text-xs">
+                    {shareUrl}
+                  </div>
+                  <Button
+                    size="sm"
+                    className="h-9 shrink-0"
+                    onClick={() => {
+                      navigator.clipboard.writeText(shareUrl);
+                      toast.success("Client link copied");
+                    }}
+                  >
+                    <Copy className="h-3.5 w-3.5 mr-1" /> Copy
+                  </Button>
+                </div>
+                <div className="mt-auto flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" asChild>
+                    <a href={shareUrl} target="_blank" rel="noreferrer">
+                      <ExternalLink className="h-3.5 w-3.5 mr-1" /> Preview
+                    </a>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => rotatePortal.mutate()}
+                    disabled={rotatePortal.isPending}
+                  >
+                    <RefreshCw className="h-3.5 w-3.5 mr-1" /> New link
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => disablePortal.mutate()}
+                    disabled={disablePortal.isPending}
+                  >
+                    <PowerOff className="h-3.5 w-3.5 mr-1" /> Turn off
+                  </Button>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Client profile hidden for now
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Users className="h-4 w-4" /> Client profile
+          </CardTitle>
+          <CardDescription>Link a CRM client and see contact details</CardDescription>
+        </CardHeader>
+      </Card>
+      */}
+
+      <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Project settings</CardTitle>
             <CardDescription>Name, timeline, status — no billing</CardDescription>
@@ -872,7 +824,57 @@ export default function ProjectDetailPage() {
                 rows={3}
               />
             </div>
-            {settingsDirty && (
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Tag className="h-3.5 w-3.5" /> Tags
+              </Label>
+              <p className="text-[11px] text-muted-foreground">
+                Client brand (Vedha, F&S) or type (Web, App Dev, ERP)
+              </p>
+              <div className="rounded-md border px-2 py-1.5 focus-within:ring-1 focus-within:ring-ring">
+                <div className="flex flex-wrap gap-1.5 mb-1.5">
+                  {tags.map((tag) => (
+                    <Badge key={tag} variant="outline" className="text-[11px] gap-1 pr-1">
+                      {tag}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTags((p) => p.filter((x) => x !== tag));
+                          setTagsDirty(true);
+                        }}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+                <Input
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={onTagKeyDown}
+                  onBlur={() => {
+                    if (tagInput.trim()) addTag(tagInput);
+                  }}
+                  placeholder="Type tag and press Enter"
+                  className="border-0 shadow-none focus-visible:ring-0 h-8 px-1"
+                />
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {TAG_SUGGESTIONS.filter(
+                  (s) => !tags.some((t) => t.toLowerCase() === s.toLowerCase()),
+                ).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => addTag(s)}
+                    className="text-[11px] rounded-full border px-2 py-0.5 text-muted-foreground hover:bg-muted"
+                  >
+                    + {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {(settingsDirty || tagsDirty) && (
               <Button
                 size="sm"
                 disabled={updateProject.isPending || !settings.name.trim()}
@@ -884,6 +886,7 @@ export default function ProjectDetailPage() {
                     clientId: settings.clientId === "none" ? null : settings.clientId,
                     startDate: settings.startDate || null,
                     endDate: settings.endDate || null,
+                    tags,
                   })
                 }
               >
@@ -892,75 +895,9 @@ export default function ProjectDetailPage() {
             )}
           </CardContent>
         </Card>
-      </div>
 
-      {/* Tags */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Tag className="h-4 w-4" /> Tags
-          </CardTitle>
-          <CardDescription>
-            Client brand (Vedha, F&S) or type (Web, App Dev, ERP)
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="rounded-md border px-2 py-1.5 focus-within:ring-1 focus-within:ring-ring">
-            <div className="flex flex-wrap gap-1.5 mb-1.5">
-              {tags.map((tag) => (
-                <Badge key={tag} variant="outline" className="text-[11px] gap-1 pr-1">
-                  {tag}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTags((p) => p.filter((x) => x !== tag));
-                      setTagsDirty(true);
-                    }}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              ))}
-            </div>
-            <Input
-              value={tagInput}
-              onChange={(e) => setTagInput(e.target.value)}
-              onKeyDown={onTagKeyDown}
-              onBlur={() => {
-                if (tagInput.trim()) addTag(tagInput);
-              }}
-              placeholder="Type tag and press Enter"
-              className="border-0 shadow-none focus-visible:ring-0 h-8 px-1"
-            />
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {TAG_SUGGESTIONS.filter(
-              (s) => !tags.some((t) => t.toLowerCase() === s.toLowerCase()),
-            ).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => addTag(s)}
-                className="text-[11px] rounded-full border px-2 py-0.5 text-muted-foreground hover:bg-muted"
-              >
-                + {s}
-              </button>
-            ))}
-          </div>
-          {tagsDirty && (
-            <Button
-              size="sm"
-              disabled={updateProject.isPending}
-              onClick={() => updateProject.mutate({ tags })}
-            >
-              Save tags
-            </Button>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Client documents */}
-      <Card>
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+      <Card className="flex h-full min-w-0 flex-col">
         <CardHeader className="pb-2">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
@@ -1005,9 +942,9 @@ export default function ProjectDetailPage() {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex-1">
           {documents.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">
+            <p className="text-sm text-muted-foreground py-4 text-center">
               No project documents yet.
             </p>
           ) : (
@@ -1080,9 +1017,8 @@ export default function ProjectDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Milestones preview */}
-      <Card>
-        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+      <Card className="flex h-full min-w-0 flex-col">
+        <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
           <div>
             <CardTitle className="text-base">Milestones</CardTitle>
             <CardDescription>
@@ -1093,7 +1029,7 @@ export default function ProjectDetailPage() {
             <Link href={`/projects/${id}/board`}>Manage on board</Link>
           </Button>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex-1">
           {milestones.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               No milestones yet — create them on the project board.
@@ -1133,6 +1069,7 @@ export default function ProjectDetailPage() {
           )}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
