@@ -715,6 +715,7 @@ export class ProjectsService {
             reporter: issue.reporter
               ? `${issue.reporter.firstName} ${issue.reporter.lastName}`.trim()
               : undefined,
+            canDelete: kind === 'client',
           };
         }),
     }));

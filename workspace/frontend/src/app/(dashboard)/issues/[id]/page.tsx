@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -68,6 +68,7 @@ function formatBytes(size?: number) {
 export default function IssueDetailPage() {
   const params = useParams();
   const id = params.id as string;
+  const router = useRouter();
   const [comment, setComment] = useState("");
   const [hours, setHours] = useState("");
   const [timeNote, setTimeNote] = useState("");
@@ -86,6 +87,7 @@ export default function IssueDetailPage() {
   const projectId = issue?.project?.id as string | undefined;
   const canEditStatus = issue?.canEditStatus !== false;
   const canFullyEdit = issue?.canFullyEdit === true || isPrivileged;
+  const canDelete = issue?.canDelete === true || isPrivileged;
 
   const { data: projectDetail } = useQuery({
     queryKey: ["project", projectId],
@@ -118,6 +120,22 @@ export default function IssueDetailPage() {
     String(issue?.boardColumnId || issue?.status || "TODO");
   const creatorKind = String(issue?.creatorKind || "other").toLowerCase();
   const creatorLabel = issue?.creatorLabel || creatorKind;
+
+  const deleteIssueMutation = useMutation({
+    mutationFn: () => issuesApi.delete(id),
+    onSuccess: () => {
+      toast.success("Task deleted");
+      if (projectId) {
+        queryClient.invalidateQueries({ queryKey: ["project-board", projectId] });
+        router.push(`/projects/${projectId}/board`);
+      } else {
+        router.push("/issues");
+      }
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Could not delete task");
+    },
+  });
 
   const commentMutation = useMutation({
     mutationFn: (body: string) => issuesApi.addComment(id, body),
@@ -329,6 +347,25 @@ export default function IssueDetailPage() {
             )}
           </p>
         </div>
+        {canDelete && (
+          <Button
+            variant="outline"
+            className="shrink-0 text-destructive hover:text-destructive"
+            disabled={deleteIssueMutation.isPending}
+            onClick={() => {
+              if (
+                window.confirm(
+                  `Delete ${issue.key || issue.title}? This cannot be undone.`,
+                )
+              ) {
+                deleteIssueMutation.mutate();
+              }
+            }}
+          >
+            <Trash2 className="h-4 w-4 mr-1" />
+            {deleteIssueMutation.isPending ? "Deleting…" : "Delete"}
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">

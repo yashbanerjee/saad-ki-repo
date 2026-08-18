@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { Bug, Plus, Filter, Search, Building2 } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Bug, Plus, Filter, Search, Building2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { clientsApi, issuesApi } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/utils";
+import { toast } from "sonner";
 
 const typeIcons = { BUG: Bug, TASK: Filter, STORY: Plus, FEATURE_REQUEST: Plus };
 const priorityVariant: Record<string, "destructive" | "warning" | "secondary"> = {
@@ -37,6 +38,7 @@ function personName(p?: { firstName?: string; lastName?: string } | string | nul
 }
 
 export default function IssuesPage() {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -69,6 +71,17 @@ export default function IssuesPage() {
     const raw = data?.data?.data ?? data?.data ?? [];
     return Array.isArray(raw) ? raw : [];
   }, [data]);
+
+  const deleteIssue = useMutation({
+    mutationFn: (issueId: string) => issuesApi.delete(issueId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["issues"] });
+      toast.success("Task deleted");
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Could not delete task");
+    },
+  });
 
   const filtered = issues.filter((issue: { title?: string; key?: string }) => {
     const q = search.trim().toLowerCase();
@@ -194,6 +207,7 @@ export default function IssuesPage() {
                   type?: string;
                   priority?: string;
                   status?: string;
+                  canDelete?: boolean;
                   assignee?: { firstName?: string; lastName?: string } | string;
                   project?: {
                     name?: string;
@@ -205,11 +219,14 @@ export default function IssuesPage() {
                     typeIcons[issue.type as keyof typeof typeIcons] || Bug;
                   const clientName = issue.project?.client?.name;
                   return (
-                    <Link
+                    <div
                       key={issue.id}
-                      href={`/issues/${issue.id}`}
                       className="flex items-center gap-4 px-4 py-4 sm:px-6 hover:bg-muted/50 transition-colors"
                     >
+                      <Link
+                        href={`/issues/${issue.id}`}
+                        className="flex min-w-0 flex-1 items-center gap-4"
+                      >
                       <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">
@@ -252,7 +269,28 @@ export default function IssuesPage() {
                       <span className="text-xs text-muted-foreground hidden lg:block shrink-0">
                         {formatRelativeTime(issue.updatedAt)}
                       </span>
-                    </Link>
+                      </Link>
+                      {issue.canDelete && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                          disabled={deleteIssue.isPending}
+                          aria-label={`Delete ${issue.key || issue.title}`}
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `Delete ${issue.key || issue.title}? This cannot be undone.`,
+                              )
+                            ) {
+                              deleteIssue.mutate(issue.id);
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   );
                 },
               )}

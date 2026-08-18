@@ -90,9 +90,9 @@ export class IssuesController {
   }
 
   @Delete(':id')
-  @Permissions('issues:manage')
+  @Permissions('issues:read')
   remove(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.issuesService.remove(id, user.companyId!);
+    return this.issuesService.remove(id, user.companyId!, user);
   }
 
   @Post(':id/comments')

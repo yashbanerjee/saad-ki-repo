@@ -51,6 +51,9 @@ export interface KanbanTask {
   creatorKind?: string;
   creatorLabel?: string;
   reporter?: string;
+  reporterId?: string | null;
+  /** Current user may delete this task (admin, or creator) */
+  canDelete?: boolean;
 }
 
 export interface KanbanColumn {
@@ -80,6 +83,30 @@ function boardItemKey(task: KanbanTask): string | undefined {
   const prefix = type === "SUB_TASK" ? "SUBTASK" : type.replace(/_/g, "-");
   if (suffix) return `${prefix}-${suffix}`;
   return task.key || prefix;
+}
+
+function TaskDeleteButton({
+  task,
+  onTaskDelete,
+}: {
+  task: KanbanTask;
+  onTaskDelete?: (task: KanbanTask) => void;
+}) {
+  if (!onTaskDelete || task.canDelete !== true) return null;
+  return (
+    <button
+      type="button"
+      className="shrink-0 rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+      aria-label={`Delete ${task.key || task.title}`}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onTaskDelete(task);
+      }}
+    >
+      <Trash2 className="h-3.5 w-3.5" />
+    </button>
+  );
 }
 
 function CreatorTag({ task }: { task: KanbanTask }) {
@@ -114,10 +141,12 @@ function SortableTask({
   task,
   href,
   onTaskClick,
+  onTaskDelete,
 }: {
   task: KanbanTask;
   href?: string;
   onTaskClick?: (task: KanbanTask) => void;
+  onTaskDelete?: (task: KanbanTask) => void;
 }) {
   const router = useRouter();
   const canDrag = task.canEditStatus !== false;
@@ -210,8 +239,9 @@ function SortableTask({
             <p className="text-sm font-medium leading-snug text-foreground min-w-0">
               {task.title}
             </p>
-            <span className="shrink-0 mt-0.5">
+            <span className="shrink-0 mt-0.5 flex items-center gap-0.5">
               <CreatorTag task={task} />
+              <TaskDeleteButton task={task} onTaskDelete={onTaskDelete} />
             </span>
           </div>
           {meta}
@@ -268,9 +298,11 @@ function TaskOverlay({ task }: { task: KanbanTask }) {
 function StaticTask({
   task,
   onTaskClick,
+  onTaskDelete,
 }: {
   task: KanbanTask;
   onTaskClick?: (task: KanbanTask) => void;
+  onTaskDelete?: (task: KanbanTask) => void;
 }) {
   return (
     <div
@@ -305,8 +337,9 @@ function StaticTask({
           <p className="text-sm font-medium leading-snug text-foreground min-w-0">
             {task.title}
           </p>
-          <span className="shrink-0 mt-0.5">
+          <span className="shrink-0 mt-0.5 flex items-center gap-0.5">
             <CreatorTag task={task} />
+            <TaskDeleteButton task={task} onTaskDelete={onTaskDelete} />
           </span>
         </div>
         {!!task.labels?.length && (
@@ -345,6 +378,7 @@ interface KanbanBoardProps {
   onTaskMove?: (taskId: string, fromColumn: string, toColumn: string) => void;
   onAddTask?: (columnId: string) => void;
   onTaskClick?: (task: KanbanTask) => void;
+  onTaskDelete?: (task: KanbanTask) => void;
   canCreate?: boolean;
   /** Admins/managers can rename, add, delete columns */
   canManageColumns?: boolean;
@@ -527,6 +561,7 @@ export function KanbanBoard({
   onAddColumn,
   readOnly = false,
   taskHref,
+  onTaskDelete,
 }: KanbanBoardProps) {
   const [columns, setColumns] = useState(initialColumns);
   const [activeTask, setActiveTask] = useState<KanbanTask | null>(null);
@@ -623,6 +658,7 @@ export function KanbanBoard({
                       key={task.id}
                       task={task}
                       onTaskClick={onTaskClick}
+                      onTaskDelete={onTaskDelete}
                     />
                   ))
                 )}
@@ -660,6 +696,7 @@ export function KanbanBoard({
                   task={task}
                   href={taskHref?.(task)}
                   onTaskClick={onTaskClick}
+                  onTaskDelete={onTaskDelete}
                 />
               ))}
             </SortableContext>

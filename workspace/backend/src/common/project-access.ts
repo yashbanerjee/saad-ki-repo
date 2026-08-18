@@ -38,3 +38,22 @@ export function assertCanFullyEditIssue(
     'Only admins can fully edit tasks. You may change status on tasks assigned to you.',
   );
 }
+
+/** Admins/PMs can delete any task; everyone else can delete only tasks they created. */
+export function canDeleteIssue(
+  user: AuthenticatedUser,
+  reporterId?: string | null,
+): boolean {
+  if (isPrivilegedProjectUser(user)) return true;
+  return Boolean(reporterId && reporterId === user.id);
+}
+
+export function assertCanDeleteIssue(
+  user: AuthenticatedUser,
+  reporterId?: string | null,
+): void {
+  if (canDeleteIssue(user, reporterId)) return;
+  throw new ForbiddenException(
+    'You can only delete tasks you created. Admins can delete any task.',
+  );
+}

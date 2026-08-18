@@ -33,7 +33,9 @@ import {
 } from './creator-kind';
 import {
   assertCanChangeTaskStatus,
+  assertCanDeleteIssue,
   assertCanFullyEditIssue,
+  canDeleteIssue,
   isPrivilegedProjectUser,
 } from '../common/project-access';
 import { AuthenticatedUser } from '../common/decorators';
@@ -130,7 +132,11 @@ export class IssuesService {
       }),
       this.prisma.issue.count({ where }),
     ]);
-    return paginatedResponse(data, total, page, limit);
+    const mapped = data.map((issue) => ({
+      ...issue,
+      canDelete: !user || canDeleteIssue(user, issue.reporterId),
+    }));
+    return paginatedResponse(mapped, total, page, limit);
   }
 
   private async resolveDefaultAssigneeId(projectId: string): Promise<string | null> {
@@ -268,6 +274,7 @@ export class IssuesService {
       isPrivilegedProjectUser(user) ||
       issue.assigneeId === user.id;
     const canFullyEdit = !user || isPrivilegedProjectUser(user);
+    const canDelete = !user || canDeleteIssue(user, issue.reporterId);
 
     return {
       ...issue,
@@ -277,6 +284,7 @@ export class IssuesService {
       creatorLabel: CREATOR_KIND_LABEL[creatorKind],
       canEditStatus,
       canFullyEdit,
+      canDelete,
     };
   }
 
@@ -327,6 +335,7 @@ export class IssuesService {
             ));
       const canEditStatus =
         privileged || (Boolean(user) && i.assigneeId === user!.id);
+      const canDelete = !user || canDeleteIssue(user, i.reporterId);
       return {
         id: i.id,
         key: i.key,
@@ -340,6 +349,7 @@ export class IssuesService {
         estimatedHours: i.estimatedHours,
         loggedHours: i.loggedHours,
         assigneeId: i.assigneeId,
+        reporterId: i.reporterId,
         assignee: i.assignee
           ? `${i.assignee.firstName} ${i.assignee.lastName}`.trim()
           : undefined,
@@ -351,6 +361,7 @@ export class IssuesService {
         labels: i.labels.map((l) => l.label.name),
         dueDate: i.dueDate ? i.dueDate.toISOString().slice(0, 10) : undefined,
         canEditStatus,
+        canDelete,
       };
     };
 
@@ -725,8 +736,14 @@ export class IssuesService {
     return updated;
   }
 
-  async remove(id: string, companyId: string) {
-    await this.findOne(id, companyId);
+  async remove(id: string, companyId: string, user: AuthenticatedUser) {
+    const issue = await this.prisma.issue.findFirst({
+      where: { id, project: { companyId } },
+      select: { id: true, reporterId: true, projectId: true },
+    });
+    if (!issue) throw new NotFoundException('Issue not found');
+    await this.assertProjectAccess(issue.projectId, companyId, user);
+    assertCanDeleteIssue(user, issue.reporterId);
     await this.prisma.issue.delete({ where: { id } });
     return { message: 'Issue deleted' };
   }

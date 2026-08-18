@@ -355,6 +355,7 @@ export default function PublicPortalPage() {
     reporter?: string;
     loggedHours?: number | null;
     estimatedHours?: number | null;
+    canDelete?: boolean;
   };
 
   type PortalDocument = {
@@ -447,6 +448,7 @@ export default function PublicPortalPage() {
           reporter: t.reporter,
           loggedHours: t.loggedHours ?? null,
           estimatedHours: t.estimatedHours ?? null,
+          canDelete: t.canDelete === true || t.creatorKind === "client",
         })),
       }));
     }
@@ -550,9 +552,9 @@ export default function PublicPortalPage() {
   });
 
   const deleteTaskMutation = useMutation({
-    mutationFn: () => portalApi.deleteTask(token, viewTaskId!),
-    onSuccess: () => {
-      setViewTaskId(null);
+    mutationFn: (taskId: string) => portalApi.deleteTask(token, taskId),
+    onSuccess: (_data, taskId) => {
+      if (viewTaskId === taskId) setViewTaskId(null);
       invalidate();
       toast.success("Task deleted");
     },
@@ -836,6 +838,15 @@ export default function PublicPortalPage() {
             canCreate={false}
             readOnly
             onTaskClick={(task) => openTaskView(task.id)}
+            onTaskDelete={(task) => {
+              if (
+                window.confirm(
+                  `Delete ${task.key || task.title}? This cannot be undone.`,
+                )
+              ) {
+                deleteTaskMutation.mutate(task.id);
+              }
+            }}
           />
         </div>
 
@@ -1635,7 +1646,7 @@ export default function PublicPortalPage() {
                             "Delete this task? This cannot be undone.",
                           )
                         ) {
-                          deleteTaskMutation.mutate();
+                          deleteTaskMutation.mutate(viewTaskId!);
                         }
                       }}
                     >

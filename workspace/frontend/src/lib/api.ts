@@ -283,6 +283,7 @@ export const issuesApi = {
   create: (data: Record<string, unknown>) => api.post("/issues", data),
   update: (id: string, data: Record<string, unknown>) =>
     api.patch(`/issues/${id}`, data),
+  delete: (id: string) => api.delete(`/issues/${id}`),
   transition: (id: string, status: string) =>
     api.post(`/issues/${id}/transition`, { status }),
   addComment: (id: string, body: string) =>

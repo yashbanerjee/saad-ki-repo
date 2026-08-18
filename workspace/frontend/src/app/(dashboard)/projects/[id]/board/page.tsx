@@ -244,6 +244,17 @@ export default function ProjectBoardPage() {
     onError: () => toast.error("Could not create milestone"),
   });
 
+  const deleteTask = useMutation({
+    mutationFn: (taskId: string) => issuesApi.delete(taskId),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Task deleted");
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Could not delete task");
+    },
+  });
+
   const handleTaskMove = async (taskId: string, _from: string, toColumn: string) => {
     try {
       await projectsApi.updateTaskStatus(projectId, taskId, toColumn);
@@ -429,6 +440,11 @@ export default function ProjectBoardPage() {
           onRenameColumn={handleRenameColumn}
           onAddColumn={handleAddColumn}
           onDeleteColumn={handleDeleteColumn}
+          onTaskDelete={(task) => {
+            if (window.confirm(`Delete ${task.key || task.title}? This cannot be undone.`)) {
+              deleteTask.mutate(task.id);
+            }
+          }}
         />
       )}
 
