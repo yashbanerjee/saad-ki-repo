@@ -37,6 +37,10 @@ class PortalCreateTaskDto {
 
   @IsOptional()
   @IsString()
+  type?: string;
+
+  @IsOptional()
+  @IsString()
   milestoneId?: string;
 }
 

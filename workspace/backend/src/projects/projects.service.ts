@@ -1029,6 +1029,7 @@ export class ProjectsService {
       description?: string;
       status?: string;
       priority?: string;
+      type?: string;
       milestoneId?: string;
     },
   ) {
@@ -1063,6 +1064,12 @@ export class ProjectsService {
           | 'CRITICAL')
       : 'MEDIUM';
 
+    const allowedTypes = new Set(Object.values(IssueType));
+    const requestedType = (body.type || 'TASK').toUpperCase();
+    const type = allowedTypes.has(requestedType as IssueType)
+      ? (requestedType as IssueType)
+      : IssueType.TASK;
+
     if (body.milestoneId) {
       const ms = await this.prisma.milestone.findFirst({
         where: { id: body.milestoneId, projectId },
@@ -1085,7 +1092,7 @@ export class ProjectsService {
         key,
         title,
         description: body.description?.trim() || undefined,
-        type: IssueType.TASK,
+        type,
         priority: priority as never,
         status: placement.status,
         metadata: metadata as never,

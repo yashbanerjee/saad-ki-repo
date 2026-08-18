@@ -161,6 +161,7 @@ export default function PublicPortalPage() {
     description: "",
     status: "TODO",
     priority: "MEDIUM",
+    type: "TASK",
     milestoneId: "",
   });
   const [taskFiles, setTaskFiles] = useState<File[]>([]);
@@ -227,6 +228,7 @@ export default function PublicPortalPage() {
         description: taskForm.description.trim() || undefined,
         status: taskForm.status,
         priority: taskForm.priority,
+        type: taskForm.type,
         milestoneId: taskForm.milestoneId || undefined,
       });
       const created = res?.data?.data ?? res?.data;
@@ -253,6 +255,7 @@ export default function PublicPortalPage() {
         description: "",
         status: "TODO",
         priority: "MEDIUM",
+        type: "TASK",
         milestoneId: "",
       });
       setTaskFiles([]);
@@ -1407,6 +1410,25 @@ export default function PublicPortalPage() {
                     <SelectItem value="LOW">Low</SelectItem>
                     <SelectItem value="MEDIUM">Medium</SelectItem>
                     <SelectItem value="HIGH">High</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Type</Label>
+                <Select
+                  value={taskForm.type}
+                  onValueChange={(v) =>
+                    setTaskForm((f) => ({ ...f, type: v }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="TASK">Task</SelectItem>
+                    <SelectItem value="BUG">Bug</SelectItem>
+                    <SelectItem value="STORY">Story</SelectItem>
+                    <SelectItem value="EPIC">Epic</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
