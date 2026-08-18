@@ -431,6 +431,21 @@ export class ProjectsService {
     });
   }
 
+  async remove(id: string, companyId: string) {
+    await this.findOne(id, companyId);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.issue.updateMany({ where: { projectId: id }, data: { parentId: null } });
+      await tx.invoice.updateMany({
+        where: { projectId: id },
+        data: { projectId: null, milestoneId: null },
+      });
+      await tx.document.updateMany({ where: { projectId: id }, data: { projectId: null } });
+      await tx.activityLog.updateMany({ where: { projectId: id }, data: { projectId: null } });
+      await tx.project.delete({ where: { id } });
+    });
+    return { deleted: true };
+  }
+
   async addMember(id: string, companyId: string, dto: AddProjectMemberDto) {
     await this.findOne(id, companyId);
     const user = await this.prisma.user.findFirst({

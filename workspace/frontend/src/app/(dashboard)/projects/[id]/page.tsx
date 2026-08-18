@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, KeyboardEvent } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Calendar,
@@ -14,6 +14,8 @@ import {
   FileText,
   Link2,
   Loader2,
+  MoreHorizontal,
+  Pencil,
   PowerOff,
   RefreshCw,
   Settings,
@@ -57,12 +59,36 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   defaultColumns,
   type KanbanColumn,
   type KanbanTask,
 } from "@/components/features/KanbanBoard";
 import { ProjectHubBoard } from "@/components/features/ProjectHubBoard";
-import { activityApi, documentsApi, projectsApi, usersApi } from "@/lib/api";
+import { activityApi, clientsApi, documentsApi, projectsApi, usersApi } from "@/lib/api";
 import { cn, formatRelativeTime, getInitials } from "@/lib/utils";
 import { hasRole, useAuthStore } from "@/lib/auth-store";
 import { toast } from "sonner";
@@ -180,12 +206,14 @@ async function downloadDocument(doc: { id: string; name: string; originalName?: 
 
 export default function ProjectDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const id = params.id as string;
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const logoRef = useRef<HTMLInputElement>(null);
   const user = useAuthStore((s) => s.user);
-  const canManageMembers = hasRole(user, ["admin", "manager"]);
+  const canManage = hasRole(user, ["admin", "manager"]);
+  const canManageMembers = canManage;
 
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
@@ -204,6 +232,19 @@ export default function ProjectDetailPage() {
   const [addMemberRole, setAddMemberRole] = useState("developer");
   const [manageOpen, setManageOpen] = useState(false);
   const [snoozed, setSnoozed] = useState(false);
+  const [clientOpen, setClientOpen] = useState(false);
+  const [linkClientId, setLinkClientId] = useState("");
+  const [milestoneOpen, setMilestoneOpen] = useState(false);
+  const [msName, setMsName] = useState("");
+  const [msDue, setMsDue] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const checklistFileRef = useRef<HTMLInputElement>(null);
+
+  const { data: clientsData } = useQuery({
+    queryKey: ["clients", "project-onboarding"],
+    queryFn: () => clientsApi.list({ limit: 100 }),
+    retry: false,
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ["project", id],
@@ -233,6 +274,11 @@ export default function ProjectDetailPage() {
   });
 
   const project = data?.data?.data ?? data?.data ?? null;
+
+  const clients = useMemo(() => {
+    const raw = clientsData?.data?.data ?? clientsData?.data ?? [];
+    return Array.isArray(raw) ? raw : [];
+  }, [clientsData]);
 
   const companyUsers = useMemo(() => {
     const raw = usersData?.data?.data ?? usersData?.data ?? [];
@@ -292,6 +338,12 @@ export default function ProjectDetailPage() {
     }
   }, [project, tagsDirty, settingsDirty]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("edit") === "1") setManageOpen(true);
+  }, [id]);
+
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["project", id] });
     queryClient.invalidateQueries({ queryKey: ["projects"] });
@@ -316,11 +368,35 @@ export default function ProjectDetailPage() {
     },
   });
 
+  const deleteProject = useMutation({
+    mutationFn: () => projectsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["project-tags"] });
+      toast.success("Project deleted");
+      router.push("/projects");
+    },
+    onError: (err: unknown) => {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Could not delete project";
+      toast.error(Array.isArray(message) ? message.join(", ") : message);
+    },
+  });
+
   const enablePortal = useMutation({
     mutationFn: () => projectsApi.enablePortal(id),
-    onSuccess: () => {
+    onSuccess: (res) => {
       invalidate();
-      toast.success("Client share link created");
+      const payload = res?.data?.data ?? res?.data;
+      const token = payload?.portalToken as string | undefined;
+      if (token) {
+        const url = `${window.location.origin}/portal/${token}`;
+        navigator.clipboard.writeText(url);
+        toast.success("Client share link created and copied");
+      } else {
+        toast.success("Client share link created");
+      }
     },
     onError: () => toast.error("Could not create share link"),
   });
@@ -435,11 +511,42 @@ export default function ProjectDetailPage() {
     onError: () => toast.error("Could not delete"),
   });
 
-  const toggleClientTask = useMutation({
-    mutationFn: ({ taskId, status }: { taskId: string; status: string }) =>
-      projectsApi.updateClientTask(id, taskId, { status }),
-    onSuccess: () => invalidate(),
-    onError: () => toast.error("Could not update checklist"),
+  const linkClient = useMutation({
+    mutationFn: (clientId: string) => projectsApi.update(id, { clientId }),
+    onSuccess: (_, clientId) => {
+      setClientOpen(false);
+      setSettings((s) => ({ ...s, clientId }));
+      invalidate();
+      toast.success("Client linked");
+    },
+    onError: (err: unknown) => {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Could not link client";
+      toast.error(Array.isArray(message) ? message.join(", ") : message);
+    },
+  });
+
+  const createMilestone = useMutation({
+    mutationFn: () =>
+      projectsApi.createMilestone(id, {
+        name: msName.trim(),
+        dueDate: msDue || undefined,
+        status: "PLANNED",
+      }),
+    onSuccess: () => {
+      invalidate();
+      setMilestoneOpen(false);
+      setMsName("");
+      setMsDue("");
+      toast.success("Milestone added");
+    },
+    onError: (err: unknown) => {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Could not add milestone";
+      toast.error(Array.isArray(message) ? message.join(", ") : message);
+    },
   });
 
   const addTag = (raw: string) => {
@@ -506,7 +613,6 @@ export default function ProjectDetailPage() {
   const documents = Array.isArray(project.documents) ? project.documents : [];
   const milestones = Array.isArray(project.milestones) ? project.milestones : [];
   const issues = Array.isArray(project.issues) ? project.issues : [];
-  const clientTasks = Array.isArray(project.clientTasks) ? project.clientTasks : [];
   const progress = project.progressPercent ?? 0;
   const now = new Date();
   const weekAhead = new Date(now.getTime() + 7 * 86400000);
@@ -553,64 +659,65 @@ export default function ProjectDetailPage() {
 
   const daysToLaunch = project.endDate ? daysBetween(now, new Date(project.endDate)) : null;
 
-  const checklist = (
-    clientTasks.length
-      ? clientTasks.map(
-          (t: { id: string; title: string; status?: string; updatedAt?: string }) => ({
-            id: t.id,
-            title: t.title,
-            done: t.status === "DONE",
-            date: t.updatedAt,
-            kind: "client" as const,
-          }),
-        )
-      : issues.slice(0, 6).map(
-          (i: { id: string; title: string; status?: string; dueDate?: string }) => ({
-            id: i.id,
-            title: i.title,
-            done: i.status === "DONE",
-            date: i.dueDate,
-            kind: "issue" as const,
-          }),
-        )
-  ) as {
-    id: string;
-    title: string;
-    done: boolean;
-    date?: string;
-    kind: "client" | "issue";
-  }[];
+  const onboardingChecklist = [
+    { id: "client", title: "Link a client", done: Boolean(client), date: "" },
+    {
+      id: "link",
+      title: "Create client share link",
+      done: Boolean(project.portalEnabled && project.portalToken),
+      date: "",
+    },
+    {
+      id: "docs",
+      title: "Upload project documents",
+      done: documents.length > 0,
+      date: documents[0]?.createdAt ? formatShortDate(documents[0].createdAt) : "",
+    },
+    {
+      id: "ms",
+      title: "Add first milestone",
+      done: milestones.length > 0,
+      date: milestones[0]?.createdAt
+        ? formatShortDate(milestones[0].createdAt)
+        : milestones[0]?.dueDate
+          ? `due ${formatShortDate(milestones[0].dueDate)}`
+          : "",
+    },
+  ];
+  const checklistDone = onboardingChecklist.filter((i) => i.done).length;
+  const checklistPct = Math.round((checklistDone / onboardingChecklist.length) * 100);
+  const subtitleParts = [
+    milestones.length ? `Phase ${phase} of ${milestones.length}` : "",
+    project.description ||
+      (client?.name ? `Delivery workspace for ${client.name}.` : ""),
+    waitingIssues.length
+      ? `${waitingIssues.length} item${waitingIssues.length === 1 ? "" : "s"} waiting on your team.`
+      : "",
+  ].filter(Boolean);
 
-  const setupChecklist =
-    checklist.length === 0
-      ? [
-          { id: "client", title: "Link a client", done: Boolean(client), date: undefined },
-          {
-            id: "link",
-            title: "Create client share link",
-            done: Boolean(project.portalEnabled && project.portalToken),
-            date: undefined,
-          },
-          {
-            id: "docs",
-            title: "Upload project documents",
-            done: documents.length > 0,
-            date: undefined,
-          },
-          {
-            id: "ms",
-            title: "Add first milestone",
-            done: milestones.length > 0,
-            date: undefined,
-          },
-        ]
-      : [];
-
-  const shownChecklist = checklist.length ? checklist : setupChecklist;
-  const checklistDone = shownChecklist.filter((i) => i.done).length;
-  const checklistPct = shownChecklist.length
-    ? Math.round((checklistDone / shownChecklist.length) * 100)
-    : 0;
+  const runOnboardingAction = (itemId: string) => {
+    if (itemId === "client") {
+      setLinkClientId(project.clientId || project.client?.id || "");
+      setClientOpen(true);
+      return;
+    }
+    if (itemId === "link") {
+      if (project.portalEnabled && project.portalToken && shareUrl) {
+        navigator.clipboard.writeText(shareUrl);
+        toast.success("Client link copied");
+        return;
+      }
+      enablePortal.mutate();
+      return;
+    }
+    if (itemId === "docs") {
+      checklistFileRef.current?.click();
+      return;
+    }
+    if (itemId === "ms") {
+      setMilestoneOpen(true);
+    }
+  };
 
   const briefDoc = documents[0] as
     | { id: string; name: string; originalName?: string; storageUrl?: string | null }
@@ -618,24 +725,33 @@ export default function ProjectDetailPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-3xl font-bold tracking-tight">{project.name}</h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-[1.75rem] font-bold leading-tight tracking-tight sm:text-3xl">
+              {project.name}
+            </h1>
             {project.status && (
-              <Badge variant="secondary" className="rounded-full font-normal">
+              <Badge
+                variant="secondary"
+                className="rounded-full px-2.5 py-0.5 text-xs font-normal"
+              >
                 {prettyProjectStatus(project.status)}
               </Badge>
             )}
           </div>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            {project.description ||
-              (client?.name
-                ? `Delivery workspace for ${client.name}.`
-                : "Project workspace for progress, files, and milestones.")}
+            {subtitleParts.join(" — ") ||
+              "Project workspace for progress, files, and milestones."}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {canManage && (
+            <Button variant="outline" onClick={() => setManageOpen(true)}>
+              <Pencil className="h-4 w-4" />
+              Edit
+            </Button>
+          )}
           <Button
             variant="outline"
             onClick={async () => {
@@ -661,9 +777,31 @@ export default function ProjectDetailPage() {
           <Button asChild>
             <Link href={`/projects/${id}/board`}>Open board</Link>
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => setManageOpen(true)} aria-label="Project settings">
-            <Settings className="h-4 w-4" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="More project actions">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setManageOpen(true)}>
+                <Settings className="h-4 w-4" />
+                Settings
+              </DropdownMenuItem>
+              {canManage && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete project
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -690,63 +828,60 @@ export default function ProjectDetailPage() {
             hint: project.endDate ? `Target ${formatShortDate(project.endDate)}` : "No end date",
           },
         ].map((stat) => (
-          <Card key={stat.label}>
-            <CardContent className="p-5">
+          <Card key={stat.label} className="rounded-2xl shadow-none">
+            <CardContent className="p-5 sm:p-6">
               <p className="text-sm text-muted-foreground">{stat.label}</p>
-              <p className="mt-2 text-3xl font-bold tracking-tight">{stat.value}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{stat.hint}</p>
+              <p className="mt-2 text-[2rem] font-semibold leading-none tracking-tight">
+                {stat.value}
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">{stat.hint}</p>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="min-w-0 space-y-8">
-          <Card>
+          <Card className="rounded-2xl shadow-none">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
               <CardTitle className="text-base font-semibold">Onboarding checklist</CardTitle>
               <span className="text-sm text-muted-foreground">{checklistPct}%</span>
             </CardHeader>
             <CardContent>
-              <Progress value={checklistPct} className="mb-4 h-2.5" />
+              <Progress value={checklistPct} className="mb-2 h-2.5" />
+              <input
+                ref={checklistFileRef}
+                type="file"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  if (f.size > 100 * 1024 * 1024) {
+                    toast.error(`${f.name} is over 100 MB`);
+                    e.target.value = "";
+                    return;
+                  }
+                  uploadDoc.mutate(f);
+                }}
+              />
               <ul>
-                {shownChecklist.map((item) => (
-                  <li
-                    key={item.id}
-                    className="flex items-center gap-3 border-b border-border/60 py-2.5 last:border-0"
-                  >
-                    <Checkbox
-                      checked={item.done}
-                      disabled={
-                        !("kind" in item) ||
-                        toggleClientTask.isPending
-                      }
-                      onCheckedChange={(checked) => {
-                        if (!("kind" in item)) return;
-                        if (item.kind === "client") {
-                          toggleClientTask.mutate({
-                            taskId: item.id,
-                            status: checked === true ? "DONE" : "TODO",
-                          });
-                          return;
-                        }
-                        void handleTaskMove(
-                          item.id,
-                          "",
-                          checked === true ? "DONE" : "TODO",
-                        );
-                      }}
-                    />
-                    <span className={cn("flex-1 text-sm", item.done && "text-foreground")}>
-                      {item.title}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {item.date
-                        ? item.done
-                          ? formatShortDate(item.date)
-                          : `due ${formatShortDate(item.date)}`
-                        : ""}
-                    </span>
+                {onboardingChecklist.map((item) => (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => runOnboardingAction(item.id)}
+                      className="flex w-full items-center gap-3 border-b border-border/50 py-3 text-left last:border-0 hover:bg-muted/20"
+                    >
+                      <Checkbox
+                        checked={item.done}
+                        className="pointer-events-none h-4 w-4"
+                        tabIndex={-1}
+                      />
+                      <span className="flex-1 text-sm">{item.title}</span>
+                      {item.date ? (
+                        <span className="text-xs text-muted-foreground">{item.date}</span>
+                      ) : null}
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -755,21 +890,33 @@ export default function ProjectDetailPage() {
 
           <Tabs defaultValue="board">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <TabsList className="h-10 rounded-full bg-muted p-1">
-                <TabsTrigger value="board" className="rounded-full px-4">
+              <TabsList className="h-11 rounded-full bg-muted/80 p-1">
+                <TabsTrigger
+                  value="board"
+                  className="rounded-full px-4 data-[state=active]:shadow-sm"
+                >
                   Board
                 </TabsTrigger>
-                <TabsTrigger value="list" className="rounded-full px-4">
+                <TabsTrigger
+                  value="list"
+                  className="rounded-full px-4 data-[state=active]:shadow-sm"
+                >
                   List
                 </TabsTrigger>
-                <TabsTrigger value="files" className="rounded-full px-4">
+                <TabsTrigger
+                  value="files"
+                  className="rounded-full px-4 data-[state=active]:shadow-sm"
+                >
                   Files
                 </TabsTrigger>
-                <TabsTrigger value="timeline" className="rounded-full px-4">
+                <TabsTrigger
+                  value="timeline"
+                  className="rounded-full px-4 data-[state=active]:shadow-sm"
+                >
                   Timeline
                 </TabsTrigger>
               </TabsList>
-              <p className="text-xs text-muted-foreground">
+              <p className="hidden text-xs text-muted-foreground sm:block">
                 Drag cards between columns to re-prioritize.
               </p>
             </div>
@@ -782,7 +929,7 @@ export default function ProjectDetailPage() {
               {issues.length === 0 ? (
                 <p className="py-10 text-center text-sm text-muted-foreground">No work items yet.</p>
               ) : (
-                <Card>
+                <Card className="rounded-2xl shadow-none">
                   <CardContent className="p-0">
                     <Table>
                       <TableHeader>
@@ -815,7 +962,9 @@ export default function ProjectDetailPage() {
                                 )}
                               </TableCell>
                               <TableCell>
-                                <Badge variant="outline">{prettyIssueStatus(issue.status)}</Badge>
+                                <Badge variant="outline" className="rounded-full font-normal">
+                                  {prettyIssueStatus(issue.status)}
+                                </Badge>
                               </TableCell>
                               <TableCell className="hidden text-muted-foreground sm:table-cell">
                                 {formatShortDate(issue.dueDate) || "—"}
@@ -868,7 +1017,7 @@ export default function ProjectDetailPage() {
               {documents.length === 0 ? (
                 <p className="py-10 text-center text-sm text-muted-foreground">No project documents yet.</p>
               ) : (
-                <Card>
+                <Card className="rounded-2xl shadow-none">
                   <CardContent className="p-0">
                     <Table>
                       <TableHeader>
@@ -941,43 +1090,52 @@ export default function ProjectDetailPage() {
             <TabsContent value="timeline" className="mt-6">
               {milestones.length === 0 ? (
                 <p className="py-10 text-center text-sm text-muted-foreground">
-                  No milestones yet — create them on the project board.
+                  No milestones yet — add one from the onboarding checklist.
                 </p>
               ) : (
-                <ul className="space-y-4">
-                  {milestones.map(
-                    (m: {
-                      id: string;
-                      name: string;
-                      status?: string;
-                      dueDate?: string;
-                      _count?: { issues?: number };
-                    }) => (
-                      <li key={m.id} className="flex items-start gap-3">
-                        <span
-                          className={cn("mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full", milestoneDot(m.status))}
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="font-medium">{m.name}</p>
-                          <p className="text-xs text-muted-foreground">{milestoneLabel(m.status)}</p>
-                        </div>
-                        <span className="text-xs text-muted-foreground">
-                          {m.dueDate ? formatShortDate(m.dueDate) : "—"}
-                        </span>
-                      </li>
-                    ),
-                  )}
-                </ul>
+                <Card className="rounded-2xl shadow-none">
+                  <CardContent className="p-5 sm:p-6">
+                    <ul className="space-y-4">
+                      {milestones.map(
+                        (m: {
+                          id: string;
+                          name: string;
+                          status?: string;
+                          dueDate?: string;
+                          _count?: { issues?: number };
+                        }) => (
+                          <li key={m.id} className="flex items-start gap-3">
+                            <span
+                              className={cn(
+                                "mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full",
+                                milestoneDot(m.status),
+                              )}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium">{m.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {milestoneLabel(m.status)}
+                              </p>
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {m.dueDate ? formatShortDate(m.dueDate) : "—"}
+                            </span>
+                          </li>
+                        ),
+                      )}
+                    </ul>
+                  </CardContent>
+                </Card>
               )}
             </TabsContent>
           </Tabs>
         </div>
 
-        <aside className="space-y-6">
+        <aside className="space-y-5">
           {!snoozed && waiting && (
-            <Card>
+            <Card className="rounded-2xl shadow-none">
               <CardContent className="p-5">
-                <div className="flex items-start gap-2">
+                <div className="flex items-start gap-2.5">
                   <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#E5FF00]" />
                   <div>
                     <p className="text-sm font-semibold">Waiting on you</p>
@@ -999,75 +1157,165 @@ export default function ProjectDetailPage() {
             </Card>
           )}
 
-          <div>
-            <h2 className="mb-4 text-base font-semibold">Milestones</h2>
-            {milestones.length === 0 ? (
-              <p className="text-sm text-muted-foreground">None yet.</p>
-            ) : (
-              <ul className="space-y-4">
-                {milestones.map(
-                  (m: { id: string; name: string; status?: string; dueDate?: string }) => (
-                    <li key={m.id} className="flex items-start gap-3">
-                      <span
-                        className={cn("mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full", milestoneDot(m.status))}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">{m.name}</p>
-                        <p className="text-xs text-muted-foreground">{milestoneLabel(m.status)}</p>
-                      </div>
-                      <span className="text-xs text-muted-foreground">
-                        {m.dueDate ? formatShortDate(m.dueDate) : "—"}
-                      </span>
-                    </li>
-                  ),
-                )}
-              </ul>
-            )}
-          </div>
-
-          <div>
-            <h2 className="mb-4 text-base font-semibold">Recent activity</h2>
-            {activity.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No recent activity.</p>
-            ) : (
-              <ul className="space-y-4">
-                {activity.map(
-                  (row: {
-                    id?: string;
-                    message?: string;
-                    createdAt?: string;
-                    user?: { firstName?: string; lastName?: string };
-                  }) => {
-                    const name = personName(row.user) || "Someone";
-                    return (
-                      <li key={row.id || row.createdAt} className="flex gap-3">
-                        <Avatar className="h-7 w-7">
-                          <AvatarFallback className="bg-muted text-[10px]">
-                            {getInitials(name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0">
-                          <p className="text-sm leading-snug">
-                            <span className="font-medium">{name}</span>{" "}
-                            <span className="text-muted-foreground">{row.message}</span>
-                          </p>
-                          {row.createdAt && (
-                            <p className="mt-0.5 text-xs text-muted-foreground">
-                              {formatRelativeTime(row.createdAt)}
-                            </p>
-                          )}
+          <Card className="rounded-2xl shadow-none">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">Milestones</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {milestones.length === 0 ? (
+                <p className="text-sm text-muted-foreground">None yet.</p>
+              ) : (
+                <ul className="space-y-4">
+                  {milestones.map(
+                    (m: { id: string; name: string; status?: string; dueDate?: string }) => (
+                      <li key={m.id} className="flex items-start gap-3">
+                        <span
+                          className={cn("mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full", milestoneDot(m.status))}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium">{m.name}</p>
+                          <p className="text-xs text-muted-foreground">{milestoneLabel(m.status)}</p>
                         </div>
+                        <span className="text-xs text-muted-foreground">
+                          {m.dueDate ? formatShortDate(m.dueDate) : "—"}
+                        </span>
                       </li>
-                    );
-                  },
-                )}
-              </ul>
-            )}
-          </div>
+                    ),
+                  )}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-2xl shadow-none">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">Recent activity</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {activity.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No recent activity.</p>
+              ) : (
+                <ul className="space-y-4">
+                  {activity.map(
+                    (row: {
+                      id?: string;
+                      message?: string;
+                      createdAt?: string;
+                      user?: { firstName?: string; lastName?: string };
+                    }) => {
+                      const name = personName(row.user) || "Someone";
+                      return (
+                        <li key={row.id || row.createdAt} className="flex gap-3">
+                          <Avatar className="h-7 w-7">
+                            <AvatarFallback className="bg-muted text-[10px]">
+                              {getInitials(name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <p className="text-sm leading-snug">
+                              <span className="font-medium">{name}</span>{" "}
+                              <span className="text-muted-foreground">{row.message}</span>
+                            </p>
+                            {row.createdAt && (
+                              <p className="mt-0.5 text-xs text-muted-foreground">
+                                {formatRelativeTime(row.createdAt)}
+                              </p>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    },
+                  )}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
         </aside>
       </div>
 
-      <Sheet open={manageOpen} onOpenChange={setManageOpen}>
+      <Dialog open={clientOpen} onOpenChange={setClientOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Link a client</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label>Client</Label>
+            <Select value={linkClientId || undefined} onValueChange={setLinkClientId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a client" />
+              </SelectTrigger>
+              <SelectContent>
+                {clients.length === 0 ? (
+                  <SelectItem value="__empty" disabled>
+                    No clients found
+                  </SelectItem>
+                ) : (
+                  clients.map((c: { id: string; name: string }) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setClientOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!linkClientId || linkClient.isPending}
+              onClick={() => linkClient.mutate(linkClientId)}
+            >
+              {linkClient.isPending ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={milestoneOpen} onOpenChange={setMilestoneOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add first milestone</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-2">
+              <Label>Name</Label>
+              <Input
+                value={msName}
+                onChange={(e) => setMsName(e.target.value)}
+                placeholder="e.g. Discovery"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Due date</Label>
+              <Input type="date" value={msDue} onChange={(e) => setMsDue(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMilestoneOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!msName.trim() || createMilestone.isPending}
+              onClick={() => createMilestone.mutate()}
+            >
+              {createMilestone.isPending ? "Adding…" : "Add milestone"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Sheet
+        open={manageOpen}
+        onOpenChange={(open) => {
+          setManageOpen(open);
+          if (!open && typeof window !== "undefined") {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get("edit") === "1") router.replace(`/projects/${id}`);
+          }
+        }}
+      >
         <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
           <SheetHeader>
             <SheetTitle>Project settings</SheetTitle>
@@ -1172,6 +1420,28 @@ export default function ProjectDetailPage() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Client</Label>
+                <Select
+                  value={settings.clientId}
+                  onValueChange={(v) => {
+                    setSettings((s) => ({ ...s, clientId: v }));
+                    setSettingsDirty(true);
+                  }}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="No client" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No client</SelectItem>
+                    {clients.map((c: { id: string; name: string }) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Description</Label>
@@ -1422,9 +1692,45 @@ export default function ProjectDetailPage() {
                 </>
               )}
             </section>
+
+            {canManage && (
+              <section className="space-y-3 border-t pt-6">
+                <h3 className="text-sm font-semibold text-destructive">Danger zone</h3>
+                <p className="text-xs text-muted-foreground">
+                  Permanently delete this project and its tasks, milestones, and board.
+                </p>
+                <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete project
+                </Button>
+              </section>
+            )}
           </div>
         </SheetContent>
       </Sheet>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete project?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete{" "}
+              <span className="font-medium text-foreground">{project.name}</span> and its tasks,
+              milestones, and board. Documents and invoices stay, but are unlinked.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteProject.isPending}
+              onClick={() => deleteProject.mutate()}
+            >
+              {deleteProject.isPending ? "Deleting…" : "Delete project"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -49,9 +49,9 @@ function statusBadgeVariant(
 function columnDot(id: string, title: string) {
   const s = `${id} ${title}`.toLowerCase();
   if (s.includes("progress") || s.includes("doing")) return "bg-[#E5FF00]";
-  if (s.includes("review") || s.includes("test")) return "bg-sky-300";
+  if (s.includes("review") || s.includes("test")) return "border border-foreground/25 bg-transparent";
   if (s.includes("done") || s.includes("complete")) return "bg-foreground";
-  return "bg-zinc-300";
+  return "border border-foreground/25 bg-transparent";
 }
 
 function HubCard({ task }: { task: KanbanTask }) {
@@ -72,16 +72,19 @@ function HubCard({ task }: { task: KanbanTask }) {
     >
       <Link
         href={`/issues/${task.id}`}
-        className="block rounded-xl border bg-card p-3 shadow-sm transition-colors hover:bg-muted/40"
+        className="block rounded-2xl border bg-card p-4 shadow-sm transition-colors hover:bg-muted/30"
         onClick={(e) => e.stopPropagation()}
       >
         <p className="text-sm font-semibold leading-snug">{task.title}</p>
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <Badge variant={statusBadgeVariant(task.status)} className="text-[10px] font-medium">
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+          <Badge
+            variant={statusBadgeVariant(task.status)}
+            className="rounded-full px-2 py-0 text-[10px] font-medium"
+          >
             {prettyStatus(task.status)}
           </Badge>
         </div>
-        <div className="mt-3 flex items-center justify-between gap-2">
+        <div className="mt-3.5 flex items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground">
             {formatShortDate(task.dueDate) || "—"}
           </span>
@@ -107,16 +110,15 @@ function HubColumn({ column }: { column: KanbanColumn }) {
   return (
     <div className="min-w-0">
       <div className="mb-3 flex items-center gap-2">
-        <span className={cn("h-2 w-2 rounded-full", columnDot(column.id, column.title))} />
-        <h3 className="text-sm font-semibold">{column.title}</h3>
-        <span className="ml-auto text-xs text-muted-foreground">{column.tasks.length}</span>
+        <span className={cn("h-2 w-2 shrink-0 rounded-full", columnDot(column.id, column.title))} />
+        <h3 className="text-sm font-semibold">
+          {column.title}{" "}
+          <span className="font-normal text-muted-foreground">({column.tasks.length})</span>
+        </h3>
       </div>
       <div
         ref={setNodeRef}
-        className={cn(
-          "min-h-[140px] space-y-2.5 rounded-xl p-0.5",
-          isOver && "bg-muted/50",
-        )}
+        className={cn("min-h-[160px] space-y-3 rounded-2xl p-0.5", isOver && "bg-muted/50")}
       >
         <SortableContext
           items={column.tasks.map((t) => t.id)}

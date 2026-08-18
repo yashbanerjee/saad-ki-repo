@@ -202,6 +202,12 @@ export class ProjectsController {
     return this.projectsService.archive(id, user.companyId!);
   }
 
+  @Delete(':id')
+  @Permissions('projects:manage')
+  remove(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.projectsService.remove(id, user.companyId!);
+  }
+
   @Post(':id/members')
   @Permissions('projects:manage')
   addMember(
