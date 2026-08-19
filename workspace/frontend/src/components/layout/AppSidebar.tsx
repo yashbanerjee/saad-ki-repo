@@ -12,7 +12,6 @@ import {
   BarChart3,
   Settings,
   Building2,
-  Bell,
   ChevronLeft,
   ChevronRight,
   Sparkles,
@@ -78,9 +77,7 @@ const secondaryNav: NavItem[] = [
   // Staff-only shortcut; clients use Dashboard → /client-portal
   { title: "Client Portal", href: "/client-portal", icon: Globe, roles: ["admin"] },
   { title: "Admin", href: "/admin", icon: Shield, roles: ["admin"] },
-  { title: "Integrations", href: "/settings/integrations", icon: Settings, roles: ["admin", "manager"] },
   { title: "Trash", href: "/trash", icon: Trash2 },
-  { title: "Notifications", href: "/notifications", icon: Bell },
   { title: "Settings", href: "/settings", icon: Settings },
 ];
 
@@ -148,7 +145,7 @@ export function AppSidebar() {
   const visibleCrm = isClient ? [] : filterByRole(crmNav);
   const visibleSecondary = filterByRole(secondaryNav).filter((item) => {
     if (!isClient) return true;
-    return ["Trash", "Notifications", "Settings"].includes(item.title);
+    return ["Trash", "Settings"].includes(item.title);
   });
 
   return (
