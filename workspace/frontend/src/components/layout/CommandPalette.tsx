@@ -7,7 +7,6 @@ import {
   FolderKanban,
   Bug,
   Users,
-  FileText,
   Settings,
   Plus,
   Search,
@@ -65,15 +64,17 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             </CommandItem>
           )}
           {!isClient && (
+            <CommandItem onSelect={() => runCommand(() => router.push("/clients"))}>
+              <Users className="mr-2 h-4 w-4" />
+              Clients
+            </CommandItem>
+          )}
+          {!isClient && (
             <CommandItem onSelect={() => runCommand(() => router.push("/team"))}>
               <Users className="mr-2 h-4 w-4" />
               Team
             </CommandItem>
           )}
-          <CommandItem onSelect={() => runCommand(() => router.push("/documents"))}>
-            <FileText className="mr-2 h-4 w-4" />
-            Documents
-          </CommandItem>
           <CommandItem onSelect={() => runCommand(() => router.push("/trash"))}>
             <Trash2 className="mr-2 h-4 w-4" />
             Trash

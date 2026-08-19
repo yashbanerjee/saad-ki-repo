@@ -8,8 +8,6 @@ import {
   FolderKanban,
   Bug,
   Users,
-  FileText,
-  ClipboardList,
   Shield,
   BarChart3,
   Settings,
@@ -18,7 +16,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
-  FileSignature,
   Globe,
   Plus,
   ChevronsUpDown,
@@ -60,12 +57,9 @@ const mainNav: NavItem[] = [
   { title: "Projects", href: "/projects", icon: FolderKanban },
   // Issues list is client-facing; staff use project boards instead
   { title: "Issues", href: "/issues", icon: Bug, roles: ["client"] },
-  { title: "Onboarding", href: "/onboarding", icon: ClipboardList, roles: ["admin", "manager"] },
-  { title: "NDA", href: "/nda", icon: FileSignature, roles: ["admin", "manager"] },
-  { title: "Documents", href: "/documents", icon: FileText },
   { title: "Invoices", href: "/invoices", icon: Receipt, roles: ["admin", "manager", "member", "client"] },
+  { title: "Clients", href: "/clients", icon: Users, roles: ["admin", "manager", "member"] },
   { title: "Team", href: "/team", icon: Users, roles: ["admin", "manager"] },
-  { title: "Reports", href: "/reports", icon: BarChart3, roles: ["admin", "manager"] },
 ];
 
 const crmNav: NavItem[] = [
@@ -75,9 +69,9 @@ const crmNav: NavItem[] = [
   { title: "Deals", href: "/deals", icon: Handshake, roles: ["admin", "manager", "member"] },
   { title: "Contacts", href: "/contacts", icon: Contact, roles: ["admin", "manager", "member"] },
   { title: "Organizations", href: "/organizations", icon: Building2, roles: ["admin", "manager", "member"] },
-  { title: "Clients", href: "/clients", icon: Users, roles: ["admin", "manager", "member"] },
   { title: "Tasks", href: "/crm/tasks", icon: CheckSquare, roles: ["admin", "manager", "member"] },
   { title: "Notes", href: "/crm/notes", icon: StickyNote, roles: ["admin", "manager", "member"] },
+  { title: "Reports", href: "/reports", icon: BarChart3, roles: ["admin", "manager"] },
 ];
 
 const secondaryNav: NavItem[] = [
@@ -147,7 +141,7 @@ export function AppSidebar() {
   ).filter((item) => {
     // Clients: focused nav + Issues for board/task access
     if (!isClient) return true;
-    return ["Dashboard", "Projects", "Issues", "Documents", "Invoices"].includes(item.title);
+    return ["Dashboard", "Projects", "Issues", "Invoices"].includes(item.title);
   });
 
   // Clients must never see CRM or Client Portal

@@ -7,11 +7,9 @@ import {
   LayoutDashboard,
   FolderKanban,
   Bug,
-  FileText,
   Receipt,
   Users,
   Settings,
-  Building2,
   Trash2,
 } from "lucide-react";
 import { VedhaMark } from "@/components/brand/VedhaMark";
@@ -114,12 +112,6 @@ const mobileLinks = [
   },
   { href: "/issues", label: "Issues", icon: Bug, roles: ["client"] as const },
   {
-    href: "/documents",
-    label: "Documents",
-    icon: FileText,
-    roles: ["admin", "manager", "member", "client"] as const,
-  },
-  {
     href: "/invoices",
     label: "Invoices",
     icon: Receipt,
@@ -128,7 +120,7 @@ const mobileLinks = [
   {
     href: "/clients",
     label: "Clients",
-    icon: Building2,
+    icon: Users,
     roles: ["admin", "manager", "member"] as const,
   },
   { href: "/team", label: "Team", icon: Users, roles: ["admin", "manager"] as const },
