@@ -196,7 +196,7 @@ export default function ClientsPage() {
     },
   });
 
-  const assignMutation = useMutation({
+  const assignMutation = useMutation<any, Error, void>({
     mutationFn: () => {
       if (!assignClient) throw new Error("No client");
       if (assignMode === "assign") {

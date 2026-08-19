@@ -52,6 +52,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { clientsApi, invoicesApi, projectsApi } from "@/lib/api";
 import { isClientUser, useAuthStore } from "@/lib/auth-store";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
