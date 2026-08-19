@@ -1,6 +1,6 @@
 import { IsString, IsOptional, IsEmail, IsEnum, IsBoolean, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ClientType, SignatureType } from '@prisma/client';
+import { ClientType, CrmActivityType, SignatureType } from '@prisma/client';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 
 export class ListClientsQueryDto extends PaginationDto {
@@ -212,6 +212,16 @@ export class UpdateClientSetupDto {
   @IsOptional()
   @IsString()
   ndaTemplateId?: string | null;
+}
+
+export class CreateClientActivityDto {
+  @ApiProperty({ enum: CrmActivityType, default: CrmActivityType.NOTE })
+  @IsEnum(CrmActivityType)
+  type: CrmActivityType;
+
+  @ApiProperty()
+  @IsString()
+  body: string;
 }
 
 export class SignSetupNdaDto {

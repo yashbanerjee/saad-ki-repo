@@ -36,8 +36,9 @@ export class DocumentsController {
     @CurrentUser() user: AuthenticatedUser,
     @Query('folderId') folderId?: string,
     @Query('projectId') projectId?: string,
+    @Query('clientId') clientId?: string,
   ) {
-    return this.documentsService.findAll(user, folderId, projectId);
+    return this.documentsService.findAll(user, folderId, projectId, clientId);
   }
 
   @Get('folders')

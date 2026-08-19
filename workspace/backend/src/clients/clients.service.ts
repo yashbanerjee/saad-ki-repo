@@ -10,6 +10,7 @@ import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   AssignOnboardingFormDto,
+  CreateClientActivityDto,
   CreateClientDto,
   CreateClientLoginDto,
   CreateClientOnboardingFormDto,
@@ -110,9 +111,37 @@ export class ClientsService {
       where: { id, companyId },
       include: {
         organization: true,
-        convertedFromLead: true,
-        projects: true,
+        convertedFromLead: { select: { id: true, title: true } },
+        user: {
+          select: { id: true, email: true, firstName: true, lastName: true, status: true },
+        },
+        projects: {
+          orderBy: { createdAt: 'desc' },
+          include: { _count: { select: { issues: true, milestones: true } } },
+        },
         deals: { orderBy: { createdAt: 'desc' }, take: 20 },
+        invoices: {
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          include: {
+            project: { select: { id: true, name: true } },
+            createdBy: { select: { id: true, firstName: true, lastName: true } },
+          },
+        },
+        documents: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            uploadedBy: { select: { id: true, firstName: true, lastName: true } },
+            folder: { select: { id: true, name: true } },
+          },
+        },
+        crmActivities: {
+          orderBy: { createdAt: 'desc' },
+          take: 100,
+          include: {
+            createdBy: { select: { id: true, firstName: true, lastName: true } },
+          },
+        },
         formAssignments: {
           orderBy: { createdAt: 'desc' },
           include: {
@@ -127,11 +156,64 @@ export class ClientsService {
             },
           },
         },
-        _count: { select: { documents: true, formSubmissions: true, deals: true } },
+        ndaSignatures: {
+          where: { status: 'SIGNED' },
+          take: 5,
+          orderBy: { signedAt: 'desc' },
+        },
+        _count: {
+          select: {
+            documents: true,
+            formSubmissions: true,
+            deals: true,
+            projects: true,
+            invoices: true,
+          },
+        },
       },
     });
     if (!client) throw new NotFoundException('Client not found');
-    return client;
+
+    const formsTotal = client.formAssignments.length;
+    const formsDone = client.formAssignments.filter((a) => a.status === 'COMPLETED').length;
+    const accountDone = !!client.userId;
+    const ndaDone = !!client.ndaSignedAt || client.ndaSignatures.length > 0;
+    const formsComplete = formsTotal === 0 || formsDone === formsTotal;
+    const setupComplete = accountDone && formsComplete && (!client.requireNda || ndaDone);
+
+    return {
+      ...client,
+      setupProgress: {
+        accountDone,
+        formsDone,
+        formsTotal,
+        formsComplete,
+        ndaDone,
+        requireNda: client.requireNda,
+        setupComplete,
+      },
+    };
+  }
+
+  async addActivity(
+    id: string,
+    companyId: string,
+    userId: string,
+    dto: CreateClientActivityDto,
+  ) {
+    await this.findOne(id, companyId);
+    return this.prisma.crmActivity.create({
+      data: {
+        companyId,
+        clientId: id,
+        createdById: userId,
+        type: dto.type,
+        body: dto.body,
+      },
+      include: {
+        createdBy: { select: { id: true, firstName: true, lastName: true } },
+      },
+    });
   }
 
   async listOnboardingForms(clientId: string, companyId: string) {

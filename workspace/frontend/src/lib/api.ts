@@ -313,6 +313,9 @@ export const clientsApi = {
   get: (id: string) => api.get(`/clients/${id}`),
   create: (data: Record<string, unknown>) => api.post("/clients", data),
   update: (id: string, data: Record<string, unknown>) => api.patch(`/clients/${id}`, data),
+  remove: (id: string) => api.delete(`/clients/${id}`),
+  addActivity: (id: string, data: { type: string; body: string }) =>
+    api.post(`/clients/${id}/activities`, data),
   listOnboardingForms: (clientId: string) =>
     api.get(`/clients/${clientId}/onboarding-forms`),
   createLogin: (
@@ -564,7 +567,7 @@ export const ndaApi = {
 
 // Documents API
 export const documentsApi = {
-  list: (params?: { folderId?: string; projectId?: string }) =>
+  list: (params?: { folderId?: string; projectId?: string; clientId?: string }) =>
     api.get("/documents", { params }),
   folders: (params?: { parentId?: string }) =>
     api.get("/documents/folders", { params }),

@@ -13,6 +13,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ClientsService } from './clients.service';
 import {
   AssignOnboardingFormDto,
+  CreateClientActivityDto,
   CreateClientDto,
   CreateClientLoginDto,
   CreateClientOnboardingFormDto,
@@ -120,6 +121,16 @@ export class ClientsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.clientsService.unassignOnboardingForm(id, user.companyId!, assignmentId);
+  }
+
+  @Post(':id/activities')
+  @Permissions('clients:manage')
+  addActivity(
+    @Param('id', ParseCuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateClientActivityDto,
+  ) {
+    return this.clientsService.addActivity(id, user.companyId!, user.id, dto);
   }
 
   @Patch(':id')

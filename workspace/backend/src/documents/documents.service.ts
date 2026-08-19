@@ -100,6 +100,7 @@ export class DocumentsService {
     user: AuthenticatedUser,
     folderId?: string,
     projectId?: string,
+    clientId?: string,
   ) {
     const companyId = user.companyId!;
     const isClient = this.isClientUser(user);
@@ -131,6 +132,7 @@ export class DocumentsService {
         ...accessFilter,
         ...(folderId ? { folderId } : {}),
         ...(projectId ? { projectId } : {}),
+        ...(clientId ? { clientId } : {}),
       },
       include: {
         uploadedBy: { select: { id: true, firstName: true, lastName: true } },
