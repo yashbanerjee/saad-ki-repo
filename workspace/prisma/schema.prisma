@@ -366,6 +366,7 @@ model Company {
   supportTickets    SupportTicket[]
   leaves            Leave[]
   invitations       Invitation[]
+  trashItems        TrashItem[]
 
   @@index([slug])
   @@index([status])
@@ -456,6 +457,7 @@ model User {
   crmWhatsAppMessages  CrmWhatsAppMessage[]  @relation("CrmWhatsAppAuthor")
   crmAttachments       CrmAttachment[]       @relation("CrmAttachmentUploader")
   createdInvoices      Invoice[]             @relation("InvoiceCreator")
+  trashItems           TrashItem[]           @relation("TrashDeletedBy")
 
   @@index([companyId])
   @@index([email])
@@ -687,6 +689,7 @@ model Organization {
   metadata  Json     @default("{}")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  deletedAt DateTime?
 
   company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   clients   Client[]
@@ -715,6 +718,7 @@ model Contact {
   metadata       Json     @default("{}")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
 
   company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
@@ -769,6 +773,7 @@ model Client {
   metadata       Json       @default("{}")
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
+  deletedAt      DateTime?
 
   company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   organization    Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
@@ -825,6 +830,7 @@ model Lead {
   metadata          Json       @default("{}")
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
+  deletedAt         DateTime?
 
   company         Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
@@ -869,6 +875,7 @@ model Deal {
   metadata          Json       @default("{}")
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
+  deletedAt         DateTime?
 
   company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   lead         Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
@@ -935,6 +942,7 @@ model CrmTask {
   metadata     Json            @default("{}")
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
+  deletedAt    DateTime?
 
   company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   lead       Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
@@ -963,6 +971,7 @@ model CrmNote {
   metadata       Json     @default("{}")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
 
   company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   lead         Lead?         @relation(fields: [leadId], references: [id], onDelete: Cascade)
@@ -1116,6 +1125,7 @@ model OnboardingForm {
   publishedAt DateTime?
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
+  deletedAt   DateTime?
 
   company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   createdBy   User             @relation("FormCreator", fields: [createdById], references: [id])
@@ -1258,6 +1268,7 @@ model Document {
   isClientVisible Boolean   @default(false)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
+  deletedAt    DateTime?
 
   company    Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
   client     Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
@@ -1270,6 +1281,7 @@ model Document {
   @@index([companyId])
   @@index([projectId])
   @@index([clientId])
+  @@index([deletedAt])
   @@map("documents")
 }
 
@@ -1359,6 +1371,7 @@ model Project {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   archivedAt    DateTime?
+  deletedAt     DateTime?
 
   company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   client      Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
@@ -1380,6 +1393,7 @@ model Project {
   @@index([companyId])
   @@index([status])
   @@index([portalToken])
+  @@index([deletedAt])
   @@map("projects")
 }
 
@@ -1423,6 +1437,7 @@ model Milestone {
   sortOrder   Int       @default(0)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
 
   project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   issues      Issue[]
@@ -1446,6 +1461,7 @@ model ClientTask {
   sortOrder      Int       @default(0)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
 
   project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   milestone Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
@@ -1506,6 +1522,7 @@ model Sprint {
   endDate   DateTime?
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
+  deletedAt DateTime?
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   issues  Issue[]
@@ -1559,6 +1576,7 @@ model Issue {
   updatedAt       DateTime       @updatedAt
   resolvedAt      DateTime?
   closedAt        DateTime?
+  deletedAt       DateTime?
 
   project     Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   assignee    User?           @relation("IssueAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
@@ -1587,6 +1605,7 @@ model Issue {
   @@index([type])
   @@index([sprintId])
   @@index([priority])
+  @@index([deletedAt])
   @@map("issues")
 }
 
@@ -1635,6 +1654,7 @@ model Comment {
   parentId  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  deletedAt DateTime?
 
   issue   Issue     @relation(fields: [issueId], references: [id], onDelete: Cascade)
   author  User      @relation(fields: [authorId], references: [id])
@@ -1655,6 +1675,7 @@ model Attachment {
   storageKey   String
   storageUrl   String?
   createdAt    DateTime @default(now())
+  deletedAt    DateTime?
 
   issue      Issue? @relation(fields: [issueId], references: [id], onDelete: Cascade)
   uploadedBy User   @relation(fields: [uploadedById], references: [id])
@@ -1824,6 +1845,26 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+model TrashItem {
+  id          String    @id @default(cuid())
+  companyId   String
+  entityType  String
+  entityId    String
+  title       String
+  href        String?
+  deletedById String?
+  deletedAt   DateTime  @default(now())
+  restoredAt  DateTime?
+  purgedAt    DateTime?
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  deletedBy User?   @relation("TrashDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+
+  @@index([companyId, deletedAt])
+  @@index([entityType, entityId])
+  @@map("trash_items")
+}
+
 // ─────────────────────────────────────────────
 // INVOICES, SUPPORT, EMAIL
 // ─────────────────────────────────────────────
@@ -1854,6 +1895,7 @@ model Invoice {
   pdfStorageUrl  String?
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
+  deletedAt      DateTime?
 
   company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
   client    Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)

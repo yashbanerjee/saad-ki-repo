@@ -54,6 +54,6 @@ export class ContactsController {
   @Delete(':id')
   @Permissions('contacts:manage')
   remove(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.contactsService.remove(id, user.companyId!);
+    return this.contactsService.remove(id, user.companyId!, user.id);
   }
 }

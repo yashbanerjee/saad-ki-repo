@@ -30,6 +30,7 @@ import {
   CheckSquare,
   StickyNote,
   Receipt,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { VedhaMark } from "@/components/brand/VedhaMark";
@@ -84,6 +85,7 @@ const secondaryNav: NavItem[] = [
   { title: "Client Portal", href: "/client-portal", icon: Globe, roles: ["admin"] },
   { title: "Admin", href: "/admin", icon: Shield, roles: ["admin"] },
   { title: "Integrations", href: "/settings/integrations", icon: Settings, roles: ["admin", "manager"] },
+  { title: "Trash", href: "/trash", icon: Trash2 },
   { title: "Notifications", href: "/notifications", icon: Bell },
   { title: "Settings", href: "/settings", icon: Settings },
 ];
@@ -152,7 +154,7 @@ export function AppSidebar() {
   const visibleCrm = isClient ? [] : filterByRole(crmNav);
   const visibleSecondary = filterByRole(secondaryNav).filter((item) => {
     if (!isClient) return true;
-    return item.title !== "Client Portal" && item.href !== "/client-portal";
+    return ["Trash", "Notifications", "Settings"].includes(item.title);
   });
 
   return (

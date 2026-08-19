@@ -12,6 +12,7 @@ import {
   Users,
   Settings,
   Building2,
+  Trash2,
 } from "lucide-react";
 import { VedhaMark } from "@/components/brand/VedhaMark";
 import { AppSidebar } from "./AppSidebar";
@@ -131,6 +132,12 @@ const mobileLinks = [
     roles: ["admin", "manager", "member"] as const,
   },
   { href: "/team", label: "Team", icon: Users, roles: ["admin", "manager"] as const },
+  {
+    href: "/trash",
+    label: "Trash",
+    icon: Trash2,
+    roles: ["admin", "manager", "member", "client"] as const,
+  },
   {
     href: "/settings",
     label: "Settings",

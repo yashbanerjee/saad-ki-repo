@@ -3,10 +3,14 @@ import { CrmActivityType, CrmTaskStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { paginate, paginatedResponse } from '../common/dto/pagination.dto';
 import { CreateCrmTaskDto, ListCrmTasksQueryDto, UpdateCrmTaskDto } from './dto/crm-task.dto';
+import { TrashService } from '../trash/trash.service';
 
 @Injectable()
 export class CrmTasksService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private trash: TrashService,
+  ) {}
 
   async findAll(companyId: string, query: ListCrmTasksQueryDto) {
     const page = query.page ?? 1;
@@ -100,9 +104,16 @@ export class CrmTasksService {
     });
   }
 
-  async remove(id: string, companyId: string) {
-    await this.findOne(id, companyId);
-    await this.prisma.crmTask.delete({ where: { id } });
-    return { message: 'Task deleted' };
+  async remove(id: string, companyId: string, userId?: string) {
+    const task = await this.findOne(id, companyId);
+    await this.trash.moveToTrash({
+      companyId,
+      userId,
+      entityType: 'crm_task',
+      entityId: id,
+      title: task.title,
+      href: '/crm/tasks',
+    });
+    return { message: 'Moved to trash' };
   }
 }

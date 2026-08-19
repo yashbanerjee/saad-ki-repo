@@ -9,6 +9,7 @@ import { StorageService } from '../storage/storage.service';
 import { CreateFolderDto } from './dto/document.dto';
 import { DocumentType } from '@prisma/client';
 import { AuthenticatedUser } from '../common/decorators';
+import { TrashService } from '../trash/trash.service';
 import { renderNdaPlaceholders } from '../nda/nda-placeholders';
 import { memoryStorage } from 'multer';
 
@@ -22,6 +23,7 @@ export class DocumentsService {
   constructor(
     private prisma: PrismaService,
     private storage: StorageService,
+    private trash: TrashService,
   ) {}
 
   private isClientUser(user: AuthenticatedUser) {
@@ -493,13 +495,15 @@ export class DocumentsService {
       }
     }
 
-    try {
-      await this.storage.delete(doc.storageKey);
-    } catch {
-      /* ignore storage delete failures */
-    }
-    await this.prisma.document.delete({ where: { id } });
-    return { message: 'Document deleted' };
+    await this.trash.moveToTrash({
+      companyId: user.companyId!,
+      userId: user.id,
+      entityType: 'document',
+      entityId: id,
+      title: doc.originalName || doc.name,
+      href: '/documents',
+    });
+    return { message: 'Moved to trash' };
   }
 
   /** Ensure client role has documents:manage in DB (for existing tenants). */

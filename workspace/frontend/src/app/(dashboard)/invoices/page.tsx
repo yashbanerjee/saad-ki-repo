@@ -46,6 +46,7 @@ import { clientsApi, invoicesApi, projectsApi } from "@/lib/api";
 import { isClientUser, useAuthStore } from "@/lib/auth-store";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
+import { useConfirm, trashConfirm } from "@/providers/confirm-provider";
 
 const statusVariant: Record<
   string,
@@ -64,6 +65,7 @@ export default function InvoicesPage() {
   const isClient = isClientUser(user);
   const canManage =
     !isClient && (user?.role === "admin" || user?.role === "manager");
+  const confirm = useConfirm();
 
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -204,7 +206,7 @@ export default function InvoicesPage() {
     mutationFn: (id: string) => invoicesApi.remove(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
-      toast.success("Invoice deleted");
+      toast.success("Moved to trash");
     },
     onError: () => toast.error("Failed to delete invoice"),
   });
@@ -398,7 +400,12 @@ export default function InvoicesPage() {
                             <Button
                               size="icon"
                               variant="ghost"
-                              onClick={() => deleteMutation.mutate(inv.id)}
+                              onClick={async () => {
+                                const ok = await confirm(
+                                  trashConfirm("invoice", `${inv.number} · ${inv.title}`),
+                                );
+                                if (ok) deleteMutation.mutate(inv.id);
+                              }}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>

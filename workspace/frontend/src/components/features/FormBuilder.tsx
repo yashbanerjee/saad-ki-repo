@@ -17,6 +17,7 @@ import {
   Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/providers/confirm-provider";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -136,6 +137,7 @@ function UploadPreview({
 }
 
 export function FormBuilder({ initialFields = [], onSave }: FormBuilderProps) {
+  const confirm = useConfirm();
   const [fields, setFields] = useState<FormField[]>(initialFields);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -272,9 +274,15 @@ export function FormBuilder({ initialFields = [], onSave }: FormBuilderProps) {
                   variant="ghost"
                   size="icon"
                   className="absolute right-2 top-2 h-7 w-7 opacity-0 group-hover:opacity-100"
-                  onClick={(e) => {
+                  onClick={async (e) => {
                     e.stopPropagation();
-                    removeField(field.id);
+                    const ok = await confirm({
+                      title: "Remove this field?",
+                      description: "It will be removed from the form when you save.",
+                      confirmLabel: "Remove",
+                      destructive: true,
+                    });
+                    if (ok) removeField(field.id);
                   }}
                 >
                   <Trash2 className="h-3 w-3 text-destructive" />

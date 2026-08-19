@@ -58,6 +58,6 @@ export class OrganizationsController {
   @Delete(':id')
   @Permissions('organizations:manage')
   remove(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.organizationsService.remove(id, user.companyId!);
+    return this.organizationsService.remove(id, user.companyId!, user.id);
   }
 }

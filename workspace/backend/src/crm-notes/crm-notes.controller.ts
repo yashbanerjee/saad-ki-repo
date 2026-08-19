@@ -48,6 +48,6 @@ export class CrmNotesController {
   @Delete(':id')
   @Permissions('leads:manage')
   remove(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.crmNotesService.remove(id, user.companyId!);
+    return this.crmNotesService.remove(id, user.companyId!, user.id);
   }
 }

@@ -69,6 +69,6 @@ export class SprintsController {
   @Delete(':id')
   @Permissions('sprints:manage')
   remove(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.sprintsService.remove(id, user.companyId!);
+    return this.sprintsService.remove(id, user.companyId!, user.id);
   }
 }

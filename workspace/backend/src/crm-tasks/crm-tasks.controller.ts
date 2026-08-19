@@ -54,6 +54,6 @@ export class CrmTasksController {
   @Delete(':id')
   @Permissions('crm_tasks:manage')
   remove(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.crmTasksService.remove(id, user.companyId!);
+    return this.crmTasksService.remove(id, user.companyId!, user.id);
   }
 }

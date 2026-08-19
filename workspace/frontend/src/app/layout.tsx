@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Manrope } from "next/font/google";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { QueryProvider } from "@/providers/query-provider";
+import { ConfirmProvider } from "@/providers/confirm-provider";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -46,15 +47,17 @@ export default function RootLayout({
       <body className={`${inter.variable} ${manrope.variable} font-sans antialiased bg-background text-foreground`}>
         <ThemeProvider>
           <QueryProvider>
-            {children}
-            <Toaster
-              position="top-right"
-              toastOptions={{
-                classNames: {
-                  toast: "border bg-background text-foreground shadow-lg",
-                },
-              }}
-            />
+            <ConfirmProvider>
+              {children}
+              <Toaster
+                position="top-right"
+                toastOptions={{
+                  classNames: {
+                    toast: "border bg-background text-foreground shadow-lg",
+                  },
+                }}
+              />
+            </ConfirmProvider>
           </QueryProvider>
         </ThemeProvider>
       </body>

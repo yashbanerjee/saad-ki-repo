@@ -1,0 +1,41 @@
+export const TRASH_ENTITY_TYPES = [
+  'project',
+  'issue',
+  'document',
+  'client',
+  'invoice',
+  'lead',
+  'deal',
+  'contact',
+  'organization',
+  'milestone',
+  'client_task',
+  'sprint',
+  'onboarding_form',
+  'crm_task',
+  'crm_note',
+  'attachment',
+  'comment',
+] as const;
+
+export type TrashEntityType = (typeof TRASH_ENTITY_TYPES)[number];
+
+export const TRASH_LABELS: Record<TrashEntityType, string> = {
+  project: 'Project',
+  issue: 'Task',
+  document: 'Document',
+  client: 'Client',
+  invoice: 'Invoice',
+  lead: 'Lead',
+  deal: 'Deal',
+  contact: 'Contact',
+  organization: 'Organization',
+  milestone: 'Milestone',
+  client_task: 'Client task',
+  sprint: 'Sprint',
+  onboarding_form: 'Onboarding form',
+  crm_task: 'CRM task',
+  crm_note: 'Note',
+  attachment: 'Attachment',
+  comment: 'Comment',
+};

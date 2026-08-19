@@ -31,12 +31,14 @@ import {
 } from '../issues/creator-kind';
 import { isPrivilegedProjectUser } from '../common/project-access';
 import { AuthenticatedUser } from '../common/decorators';
+import { TrashService } from '../trash/trash.service';
 
 @Injectable()
 export class ProjectsService {
   constructor(
     private prisma: PrismaService,
     private storage: StorageService,
+    private trash: TrashService,
   ) {}
 
   private computeProgress(tasks: { status: string }[]) {
@@ -77,8 +79,8 @@ export class ProjectsService {
       where: { clientId: client.id, status: { not: 'ARCHIVED' } },
       orderBy: { updatedAt: 'desc' },
       include: {
-        clientTasks: { select: { status: true } },
-        milestones: { select: { status: true } },
+        clientTasks: { where: { deletedAt: null }, select: { status: true } },
+        milestones: { where: { deletedAt: null }, select: { status: true } },
       },
     });
 
@@ -128,8 +130,8 @@ export class ProjectsService {
         take,
         include: {
           client: { select: { id: true, name: true, email: true } },
-          _count: { select: { members: true, issues: true, clientTasks: true } },
-          clientTasks: { select: { status: true } },
+          _count: { select: { members: true, issues: { where: { deletedAt: null } }, clientTasks: { where: { deletedAt: null } } } },
+          clientTasks: { where: { deletedAt: null }, select: { status: true } },
         },
         orderBy: { updatedAt: 'desc' },
       }),
@@ -246,17 +248,19 @@ export class ProjectsService {
           orderBy: { joinedAt: 'asc' },
         },
         milestones: {
+          where: { deletedAt: null },
           orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
           include: {
-            _count: { select: { issues: true, clientTasks: true } },
+            _count: { select: { issues: { where: { deletedAt: null } }, clientTasks: { where: { deletedAt: null } } } },
           },
         },
         clientTasks: {
+          where: { deletedAt: null },
           orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
           include: { milestone: { select: { id: true, name: true } } },
         },
         issues: {
-          where: { status: { not: 'CANCELLED' } },
+          where: { status: { not: 'CANCELLED' }, deletedAt: null },
           orderBy: [{ order: 'asc' }, { updatedAt: 'desc' }],
           take: 200,
           select: {
@@ -277,6 +281,7 @@ export class ProjectsService {
           },
         },
         documents: {
+          where: { deletedAt: null },
           orderBy: { createdAt: 'desc' },
           take: 100,
           select: {
@@ -296,11 +301,11 @@ export class ProjectsService {
         },
         _count: {
           select: {
-            issues: true,
-            sprints: true,
-            clientTasks: true,
-            milestones: true,
-            documents: true,
+            issues: { where: { deletedAt: null } },
+            sprints: { where: { deletedAt: null } },
+            clientTasks: { where: { deletedAt: null } },
+            milestones: { where: { deletedAt: null } },
+            documents: { where: { deletedAt: null } },
           },
         },
       },
@@ -431,19 +436,17 @@ export class ProjectsService {
     });
   }
 
-  async remove(id: string, companyId: string) {
-    await this.findOne(id, companyId);
-    await this.prisma.$transaction(async (tx) => {
-      await tx.issue.updateMany({ where: { projectId: id }, data: { parentId: null } });
-      await tx.invoice.updateMany({
-        where: { projectId: id },
-        data: { projectId: null, milestoneId: null },
-      });
-      await tx.document.updateMany({ where: { projectId: id }, data: { projectId: null } });
-      await tx.activityLog.updateMany({ where: { projectId: id }, data: { projectId: null } });
-      await tx.project.delete({ where: { id } });
+  async remove(id: string, companyId: string, user?: AuthenticatedUser) {
+    const project = await this.findOne(id, companyId);
+    await this.trash.moveToTrash({
+      companyId,
+      userId: user?.id,
+      entityType: 'project',
+      entityId: id,
+      title: project.name,
+      href: `/projects/${id}`,
     });
-    return { deleted: true };
+    return { message: 'Moved to trash' };
   }
 
   async addMember(id: string, companyId: string, dto: AddProjectMemberDto) {
@@ -549,6 +552,7 @@ export class ProjectsService {
         settings: true,
         client: { select: { id: true, name: true, companyName: true } },
         milestones: {
+          where: { deletedAt: null },
           orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
           select: {
             id: true,
@@ -560,6 +564,7 @@ export class ProjectsService {
           },
         },
         clientTasks: {
+          where: { deletedAt: null },
           orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
           select: {
             id: true,
@@ -573,7 +578,7 @@ export class ProjectsService {
           },
         },
         issues: {
-          where: { status: { not: 'CANCELLED' } },
+          where: { status: { not: 'CANCELLED' }, deletedAt: null },
           orderBy: [{ order: 'asc' }, { updatedAt: 'desc' }],
           take: 200,
           select: {
@@ -602,7 +607,7 @@ export class ProjectsService {
           },
         },
         documents: {
-          where: { isClientVisible: true },
+          where: { isClientVisible: true, deletedAt: null },
           orderBy: { createdAt: 'desc' },
           take: 50,
           select: {
@@ -877,14 +882,21 @@ export class ProjectsService {
     });
   }
 
-  async deleteMilestone(projectId: string, milestoneId: string, companyId: string) {
+  async deleteMilestone(projectId: string, milestoneId: string, companyId: string, userId?: string) {
     await this.findOne(projectId, companyId);
     const existing = await this.prisma.milestone.findFirst({
       where: { id: milestoneId, projectId },
     });
     if (!existing) throw new NotFoundException('Milestone not found');
-    await this.prisma.milestone.delete({ where: { id: milestoneId } });
-    return { message: 'Milestone deleted' };
+    await this.trash.moveToTrash({
+      companyId,
+      userId,
+      entityType: 'milestone',
+      entityId: milestoneId,
+      title: existing.name,
+      href: `/projects/${projectId}`,
+    });
+    return { message: 'Moved to trash' };
   }
 
   // ── Client tasks ────────────────────────────────────────
@@ -953,14 +965,21 @@ export class ProjectsService {
     });
   }
 
-  async deleteClientTask(projectId: string, taskId: string, companyId: string) {
+  async deleteClientTask(projectId: string, taskId: string, companyId: string, userId?: string) {
     await this.findOne(projectId, companyId);
     const existing = await this.prisma.clientTask.findFirst({
       where: { id: taskId, projectId },
     });
     if (!existing) throw new NotFoundException('Client task not found');
-    await this.prisma.clientTask.delete({ where: { id: taskId } });
-    return { message: 'Client task deleted' };
+    await this.trash.moveToTrash({
+      companyId,
+      userId,
+      entityType: 'client_task',
+      entityId: taskId,
+      title: existing.title,
+      href: `/projects/${projectId}`,
+    });
+    return { message: 'Moved to trash' };
   }
 
   // ── Public portal mutations (token-gated, no login) ─────
@@ -1245,6 +1264,7 @@ export class ProjectsService {
         parent: { select: { id: true, key: true, title: true, type: true } },
         labels: { include: { label: { select: { name: true, color: true } } } },
         comments: {
+          where: { deletedAt: null },
           orderBy: { createdAt: 'asc' },
           include: {
             author: {
@@ -1258,6 +1278,7 @@ export class ProjectsService {
           },
         },
         attachments: {
+          where: { deletedAt: null },
           orderBy: { createdAt: 'desc' },
           select: {
             id: true,
@@ -1495,7 +1516,7 @@ export class ProjectsService {
   }
 
   async portalDeleteTask(token: string, taskId: string) {
-    const { projectId } = await this.resolvePortalProject(token);
+    const { projectId, companyId, reporterId } = await this.resolvePortalProject(token);
     const issue = await this.prisma.issue.findFirst({
       where: { id: taskId, projectId },
       select: {
@@ -1503,22 +1524,32 @@ export class ProjectsService {
         title: true,
         description: true,
         metadata: true,
-        attachments: { select: { storageKey: true } },
       },
     });
     if (!issue) throw new NotFoundException('Task not found on this project');
     if (!this.isClientIssue(issue.metadata)) {
       throw new ForbiddenException('You can only delete tasks you created');
     }
-    for (const file of issue.attachments) {
-      await this.storage.delete(file.storageKey);
-    }
     const mirroredTask = await this.findPortalClientTaskMirror(projectId, issue);
     if (mirroredTask) {
-      await this.prisma.clientTask.delete({ where: { id: mirroredTask.id } });
+      await this.trash.moveToTrash({
+        companyId,
+        userId: reporterId,
+        entityType: 'client_task',
+        entityId: mirroredTask.id,
+        title: mirroredTask.title || issue.title,
+        href: `/projects/${projectId}`,
+      });
     }
-    await this.prisma.issue.delete({ where: { id: taskId } });
-    return { message: 'Task deleted' };
+    await this.trash.moveToTrash({
+      companyId,
+      userId: reporterId,
+      entityType: 'issue',
+      entityId: taskId,
+      title: issue.title,
+      href: `/issues/${taskId}`,
+    });
+    return { message: 'Moved to trash' };
   }
 
   async portalUpdateComment(token: string, taskId: string, commentId: string, body: string) {
@@ -1567,7 +1598,15 @@ export class ProjectsService {
       where: { id: commentId, issueId: taskId },
     });
     if (!comment) throw new NotFoundException('Comment not found');
-    await this.prisma.comment.delete({ where: { id: commentId } });
+    const { companyId, reporterId } = await this.resolvePortalProject(token);
+    await this.trash.moveToTrash({
+      companyId,
+      userId: reporterId,
+      entityType: 'comment',
+      entityId: commentId,
+      title: comment.body.slice(0, 80) || 'Comment',
+      href: `/issues/${taskId}`,
+    });
     await this.prisma.issue.update({
       where: { id: taskId },
       data: {
@@ -1577,7 +1616,7 @@ export class ProjectsService {
         } as never,
       },
     });
-    return { message: 'Comment deleted' };
+    return { message: 'Moved to trash' };
   }
 
   async portalUpdateAttachment(
@@ -1628,8 +1667,15 @@ export class ProjectsService {
       where: { id: attachmentId, issueId: taskId },
     });
     if (!attachment) throw new NotFoundException('File not found');
-    await this.storage.delete(attachment.storageKey);
-    await this.prisma.attachment.delete({ where: { id: attachmentId } });
+    const { companyId, reporterId } = await this.resolvePortalProject(token);
+    await this.trash.moveToTrash({
+      companyId,
+      userId: reporterId,
+      entityType: 'attachment',
+      entityId: attachmentId,
+      title: attachment.name,
+      href: `/issues/${taskId}`,
+    });
     if (portalAttachmentIds.includes(attachmentId)) {
       await this.prisma.issue.update({
         where: { id: taskId },
@@ -1670,9 +1716,16 @@ export class ProjectsService {
     if (!this.isClientDocument(doc)) {
       throw new ForbiddenException('You can only delete files you uploaded');
     }
-    await this.storage.delete(doc.storageKey);
-    await this.prisma.document.delete({ where: { id: documentId } });
-    return { message: 'Document deleted' };
+    const { companyId, reporterId } = await this.resolvePortalProject(token);
+    await this.trash.moveToTrash({
+      companyId,
+      userId: reporterId,
+      entityType: 'document',
+      entityId: documentId,
+      title: doc.originalName || doc.name,
+      href: `/documents`,
+    });
+    return { message: 'Moved to trash' };
   }
 
   async portalUploadDocument(token: string, file: Express.Multer.File, name?: string) {

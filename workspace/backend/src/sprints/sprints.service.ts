@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSprintDto, UpdateSprintDto } from './dto/sprint.dto';
+import { TrashService } from '../trash/trash.service';
 
 @Injectable()
 export class SprintsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private trash: TrashService,
+  ) {}
 
   async findByProject(projectId: string, companyId: string) {
     const project = await this.prisma.project.findFirst({
@@ -86,9 +90,16 @@ export class SprintsService {
     });
   }
 
-  async remove(id: string, companyId: string) {
-    await this.findOne(id, companyId);
-    await this.prisma.sprint.delete({ where: { id } });
-    return { message: 'Sprint deleted' };
+  async remove(id: string, companyId: string, userId?: string) {
+    const sprint = await this.findOne(id, companyId);
+    await this.trash.moveToTrash({
+      companyId,
+      userId,
+      entityType: 'sprint',
+      entityId: id,
+      title: sprint.name,
+      href: `/projects/${sprint.projectId}`,
+    });
+    return { message: 'Moved to trash' };
   }
 }

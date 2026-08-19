@@ -7,10 +7,14 @@ import {
   ListOrganizationsQueryDto,
   UpdateOrganizationDto,
 } from './dto/organization.dto';
+import { TrashService } from '../trash/trash.service';
 
 @Injectable()
 export class OrganizationsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private trash: TrashService,
+  ) {}
 
   async findAll(companyId: string, query: ListOrganizationsQueryDto) {
     const page = query.page ?? 1;
@@ -66,9 +70,16 @@ export class OrganizationsService {
     return this.prisma.organization.update({ where: { id }, data: dto });
   }
 
-  async remove(id: string, companyId: string) {
-    await this.findOne(id, companyId);
-    await this.prisma.organization.delete({ where: { id } });
-    return { message: 'Organization deleted' };
+  async remove(id: string, companyId: string, userId?: string) {
+    const org = await this.findOne(id, companyId);
+    await this.trash.moveToTrash({
+      companyId,
+      userId,
+      entityType: 'organization',
+      entityId: id,
+      title: org.name,
+      href: `/organizations/${id}`,
+    });
+    return { message: 'Moved to trash' };
   }
 }

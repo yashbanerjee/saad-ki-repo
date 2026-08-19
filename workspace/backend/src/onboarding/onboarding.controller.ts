@@ -144,7 +144,7 @@ export class OnboardingController {
   @UseGuards(PermissionsGuard)
   @Permissions('onboarding:manage')
   remove(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.onboardingService.remove(id, user.companyId!);
+    return this.onboardingService.remove(id, user.companyId!, user.id);
   }
 
   @Public()

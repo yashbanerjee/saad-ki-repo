@@ -42,12 +42,14 @@ import {
 import { clientsApi, dealsApi } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
+import { useConfirm, trashConfirm } from "@/providers/confirm-provider";
 
 export default function DealDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const router = useRouter();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [lostOpen, setLostOpen] = useState(false);
   const [lostReason, setLostReason] = useState<string>(DEAL_LOST_REASONS[0]);
   const [lostNotes, setLostNotes] = useState("");
@@ -110,7 +112,7 @@ export default function DealDetailPage() {
     mutationFn: () => dealsApi.remove(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["deals"] });
-      toast.success("Deal deleted");
+      toast.success("Moved to trash");
       router.push("/deals");
     },
     onError: () => toast.error("Failed to delete deal"),
@@ -210,8 +212,9 @@ export default function DealDetailPage() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => {
-              if (confirm("Delete this deal?")) deleteMutation.mutate();
+            onClick={async () => {
+              const ok = await confirm(trashConfirm("deal", deal.title));
+              if (ok) deleteMutation.mutate();
             }}
           >
             <Trash2 className="h-4 w-4" />

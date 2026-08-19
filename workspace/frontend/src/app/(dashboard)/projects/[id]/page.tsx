@@ -92,6 +92,7 @@ import { activityApi, clientsApi, documentsApi, projectsApi, usersApi } from "@/
 import { cn, formatRelativeTime, getInitials } from "@/lib/utils";
 import { hasRole, useAuthStore } from "@/lib/auth-store";
 import { toast } from "sonner";
+import { useConfirm, trashConfirm } from "@/providers/confirm-provider";
 
 const TAG_SUGGESTIONS = [
   "Vedha",
@@ -214,6 +215,7 @@ export default function ProjectDetailPage() {
   const user = useAuthStore((s) => s.user);
   const canManage = hasRole(user, ["admin", "manager"]);
   const canManageMembers = canManage;
+  const confirm = useConfirm();
 
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
@@ -373,7 +375,7 @@ export default function ProjectDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       queryClient.invalidateQueries({ queryKey: ["project-tags"] });
-      toast.success("Project deleted");
+      toast.success("Moved to trash");
       router.push("/projects");
     },
     onError: (err: unknown) => {
@@ -506,7 +508,7 @@ export default function ProjectDetailPage() {
     mutationFn: (docId: string) => documentsApi.remove(docId),
     onSuccess: () => {
       invalidate();
-      toast.success("Document deleted");
+      toast.success("Moved to trash");
     },
     onError: () => toast.error("Could not delete"),
   });
@@ -1069,8 +1071,11 @@ export default function ProjectDetailPage() {
                                     size="icon"
                                     variant="ghost"
                                     className="h-8 w-8"
-                                    onClick={() => {
-                                      if (confirm("Delete this document?")) deleteDoc.mutate(doc.id);
+                                    onClick={async () => {
+                                      const ok = await confirm(
+                                        trashConfirm("document", doc.originalName || doc.name),
+                                      );
+                                      if (ok) deleteDoc.mutate(doc.id);
                                     }}
                                   >
                                     <Trash2 className="h-4 w-4" />
@@ -1563,10 +1568,15 @@ export default function ProjectDetailPage() {
                               size="icon"
                               variant="ghost"
                               className="h-8 w-8"
-                              onClick={() => {
-                                if (window.confirm(`Remove ${name} from this project?`)) {
-                                  removeMember.mutate(uid);
-                                }
+                              onClick={async () => {
+                                const ok = await confirm({
+                                  title: `Remove ${name}?`,
+                                  description:
+                                    "They will lose access to this project. Their account is not deleted.",
+                                  confirmLabel: "Remove",
+                                  destructive: true,
+                                });
+                                if (ok) removeMember.mutate(uid);
                               }}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -1697,7 +1707,7 @@ export default function ProjectDetailPage() {
               <section className="space-y-3 border-t pt-6">
                 <h3 className="text-sm font-semibold text-destructive">Danger zone</h3>
                 <p className="text-xs text-muted-foreground">
-                  Permanently delete this project and its tasks, milestones, and board.
+                  Move this project and its tasks to Trash. You can restore them later.
                 </p>
                 <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)}>
                   <Trash2 className="h-3.5 w-3.5" />
@@ -1712,11 +1722,10 @@ export default function ProjectDetailPage() {
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete project?</AlertDialogTitle>
+            <AlertDialogTitle>Move project to trash?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete{" "}
-              <span className="font-medium text-foreground">{project.name}</span> and its tasks,
-              milestones, and board. Documents and invoices stay, but are unlinked.
+              <span className="font-medium text-foreground">{project.name}</span> and its
+              tasks, milestones, and board will be moved to Trash. You can restore them later.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1726,7 +1735,7 @@ export default function ProjectDetailPage() {
               disabled={deleteProject.isPending}
               onClick={() => deleteProject.mutate()}
             >
-              {deleteProject.isPending ? "Deleting…" : "Delete project"}
+              {deleteProject.isPending ? "Moving…" : "Move to trash"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

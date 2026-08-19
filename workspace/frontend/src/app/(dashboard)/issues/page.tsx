@@ -28,6 +28,7 @@ import {
 import { clientsApi, issuesApi } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/utils";
 import { toast } from "sonner";
+import { useConfirm, trashConfirm } from "@/providers/confirm-provider";
 
 const typeIcons = { BUG: Bug, TASK: Filter, STORY: Plus, FEATURE_REQUEST: Plus };
 const priorityVariant: Record<string, "destructive" | "warning" | "secondary"> = {
@@ -47,6 +48,7 @@ function personName(p?: { firstName?: string; lastName?: string } | string | nul
 
 export default function IssuesPage() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -84,7 +86,7 @@ export default function IssuesPage() {
     mutationFn: (issueId: string) => issuesApi.delete(issueId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["issues"] });
-      toast.success("Task deleted");
+      toast.success("Moved to trash");
     },
     onError: (err: { response?: { data?: { message?: string } } }) => {
       toast.error(err?.response?.data?.message || "Could not delete task");
@@ -296,14 +298,12 @@ export default function IssuesPage() {
                               className="h-8 w-8 text-muted-foreground hover:text-destructive"
                               disabled={deleteIssue.isPending}
                               aria-label={`Delete ${issue.key || issue.title}`}
-                              onClick={() => {
-                                if (
-                                  window.confirm(
-                                    `Delete ${issue.key || issue.title}? This cannot be undone.`,
-                                  )
-                                ) {
-                                  deleteIssue.mutate(issue.id);
-                                }
+                              onClick={async (e) => {
+                                e.preventDefault();
+                                const ok = await confirm(
+                                  trashConfirm("task", issue.key || issue.title),
+                                );
+                                if (ok) deleteIssue.mutate(issue.id);
                               }}
                             >
                               <Trash2 className="h-4 w-4" />

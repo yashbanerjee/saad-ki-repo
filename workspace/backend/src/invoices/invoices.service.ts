@@ -15,12 +15,14 @@ import {
   InvoiceLineItemDto,
 } from './dto/invoice.dto';
 import { paginate, paginatedResponse } from '../common/dto/pagination.dto';
+import { TrashService } from '../trash/trash.service';
 
 @Injectable()
 export class InvoicesService {
   constructor(
     private prisma: PrismaService,
     private storage: StorageService,
+    private trash: TrashService,
   ) {}
 
   private isClient(user: AuthenticatedUser) {
@@ -569,14 +571,14 @@ export class InvoicesService {
   async remove(id: string, user: AuthenticatedUser) {
     if (this.isClient(user)) throw new ForbiddenException('Access denied');
     const existing = await this.findOne(id, user);
-    if (existing.pdfStorageKey) {
-      try {
-        await this.storage.delete(String(existing.pdfStorageKey));
-      } catch {
-        /* ignore */
-      }
-    }
-    await this.prisma.invoice.delete({ where: { id } });
-    return { message: 'Invoice deleted' };
+    await this.trash.moveToTrash({
+      companyId: user.companyId!,
+      userId: user.id,
+      entityType: 'invoice',
+      entityId: id,
+      title: existing.title || existing.number || 'Invoice',
+      href: '/invoices',
+    });
+    return { message: 'Moved to trash' };
   }
 }

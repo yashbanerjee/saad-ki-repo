@@ -135,6 +135,6 @@ export class ClientsController {
   @Delete(':id')
   @Permissions('clients:manage')
   remove(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.clientsService.remove(id, user.companyId!);
+    return this.clientsService.remove(id, user.companyId!, user.id);
   }
 }

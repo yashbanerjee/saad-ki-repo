@@ -257,7 +257,7 @@ export default function ProjectsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       queryClient.invalidateQueries({ queryKey: ["project-tags"] });
-      toast.success("Project deleted");
+      toast.success("Moved to trash");
       setDeleteTarget(null);
     },
     onError: (err: unknown) => {
@@ -636,11 +636,10 @@ export default function ProjectsPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete project?</AlertDialogTitle>
+            <AlertDialogTitle>Move project to trash?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete{" "}
               <span className="font-medium text-foreground">{deleteTarget?.name}</span> and its
-              tasks, milestones, and board. Documents and invoices stay, but are unlinked.
+              tasks, milestones, and board will be moved to Trash. You can restore them later.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -652,7 +651,7 @@ export default function ProjectsPage() {
                 if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
               }}
             >
-              {deleteMutation.isPending ? "Deleting…" : "Delete project"}
+              {deleteMutation.isPending ? "Moving…" : "Move to trash"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

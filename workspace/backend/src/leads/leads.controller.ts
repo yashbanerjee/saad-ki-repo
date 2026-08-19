@@ -109,7 +109,7 @@ export class LeadsController {
   @Delete(':id')
   @Permissions('leads:manage')
   remove(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.leadsService.remove(id, user.companyId!);
+    return this.leadsService.remove(id, user.companyId!, user.id);
   }
 
   @Post(':id/activities')

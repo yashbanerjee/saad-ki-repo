@@ -3,10 +3,14 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { paginate, paginatedResponse } from '../common/dto/pagination.dto';
 import { CreateContactDto, ListContactsQueryDto, UpdateContactDto } from './dto/contact.dto';
+import { TrashService } from '../trash/trash.service';
 
 @Injectable()
 export class ContactsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private trash: TrashService,
+  ) {}
 
   async findAll(companyId: string, query: ListContactsQueryDto) {
     const page = query.page ?? 1;
@@ -90,9 +94,18 @@ export class ContactsService {
     });
   }
 
-  async remove(id: string, companyId: string) {
-    await this.findOne(id, companyId);
-    await this.prisma.contact.delete({ where: { id } });
-    return { message: 'Contact deleted' };
+  async remove(id: string, companyId: string, userId?: string) {
+    const contact = await this.findOne(id, companyId);
+    const title =
+      `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || contact.email || 'Contact';
+    await this.trash.moveToTrash({
+      companyId,
+      userId,
+      entityType: 'contact',
+      entityId: id,
+      title,
+      href: `/contacts/${id}`,
+    });
+    return { message: 'Moved to trash' };
   }
 }

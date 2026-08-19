@@ -42,6 +42,7 @@ import {
 import { issuesApi, projectsApi } from "@/lib/api";
 import { hasRole, useAuthStore } from "@/lib/auth-store";
 import { toast } from "sonner";
+import { useConfirm, trashConfirm } from "@/providers/confirm-provider";
 
 const MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
 const MAX_ATTACHMENTS = 10;
@@ -81,6 +82,7 @@ export default function ProjectBoardPage() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const user = useAuthStore((s) => s.user);
   const canManageColumns = hasRole(user, ["admin", "manager"]);
+  const confirm = useConfirm();
   const createFileRef = useRef<HTMLInputElement>(null);
 
   const [milestoneFilter, setMilestoneFilter] = useState<string>("all");
@@ -248,7 +250,7 @@ export default function ProjectBoardPage() {
     mutationFn: (taskId: string) => issuesApi.delete(taskId),
     onSuccess: () => {
       invalidate();
-      toast.success("Task deleted");
+      toast.success("Moved to trash");
     },
     onError: (err: { response?: { data?: { message?: string } } }) => {
       toast.error(err?.response?.data?.message || "Could not delete task");
@@ -311,11 +313,15 @@ export default function ProjectBoardPage() {
       return;
     }
     const taskCount = col.tasks.length;
-    const ok = window.confirm(
-      taskCount > 0
-        ? `Delete "${col.title}"? ${taskCount} task(s) will move to another column.`
-        : `Delete column "${col.title}"?`,
-    );
+    const ok = await confirm({
+      title: `Delete column "${col.title}"?`,
+      description:
+        taskCount > 0
+          ? `${taskCount} task(s) will move to another column. This does not delete the tasks.`
+          : "This column will be removed from the board.",
+      confirmLabel: "Delete column",
+      destructive: true,
+    });
     if (!ok) return;
 
     const moveTo =
@@ -440,10 +446,9 @@ export default function ProjectBoardPage() {
           onRenameColumn={handleRenameColumn}
           onAddColumn={handleAddColumn}
           onDeleteColumn={handleDeleteColumn}
-          onTaskDelete={(task) => {
-            if (window.confirm(`Delete ${task.key || task.title}? This cannot be undone.`)) {
-              deleteTask.mutate(task.id);
-            }
+          onTaskDelete={async (task) => {
+            const ok = await confirm(trashConfirm("task", task.key || task.title));
+            if (ok) deleteTask.mutate(task.id);
           }}
         />
       )}

@@ -39,6 +39,7 @@ import {
   isPrivilegedProjectUser,
 } from '../common/project-access';
 import { AuthenticatedUser } from '../common/decorators';
+import { TrashService } from '../trash/trash.service';
 
 function mapPriority(p: string): 'low' | 'medium' | 'high' {
   if (['LOWEST', 'LOW'].includes(p)) return 'low';
@@ -69,6 +70,7 @@ export class IssuesService {
     private prisma: PrismaService,
     private activity: ActivityService,
     private storage: StorageService,
+    private trash: TrashService,
   ) {}
 
   async findAll(
@@ -227,12 +229,14 @@ export class IssuesService {
         },
         sprint: true,
         comments: {
+          where: { deletedAt: null },
           include: {
             author: { select: { id: true, firstName: true, lastName: true, avatar: true } },
           },
           orderBy: { createdAt: 'asc' },
         },
         attachments: {
+          where: { deletedAt: null },
           include: {
             uploadedBy: { select: { id: true, firstName: true, lastName: true } },
           },
@@ -242,7 +246,10 @@ export class IssuesService {
         watchers: {
           include: { user: { select: { id: true, firstName: true, lastName: true } } },
         },
-        children: { select: { id: true, key: true, title: true, status: true, type: true } },
+        children: {
+          where: { deletedAt: null },
+          select: { id: true, key: true, title: true, status: true, type: true },
+        },
         milestone: { select: { id: true, name: true, status: true } },
         timeEntries: {
           include: {
@@ -744,8 +751,19 @@ export class IssuesService {
     if (!issue) throw new NotFoundException('Issue not found');
     await this.assertProjectAccess(issue.projectId, companyId, user);
     assertCanDeleteIssue(user, issue.reporterId);
-    await this.prisma.issue.delete({ where: { id } });
-    return { message: 'Issue deleted' };
+    const full = await this.prisma.issue.findFirst({
+      where: { id },
+      select: { title: true, key: true },
+    });
+    await this.trash.moveToTrash({
+      companyId,
+      userId: user.id,
+      entityType: 'issue',
+      entityId: id,
+      title: full?.title || full?.key || 'Task',
+      href: `/issues/${id}`,
+    });
+    return { message: 'Moved to trash' };
   }
 
   async addComment(id: string, companyId: string, authorId: string, dto: CreateCommentDto) {
@@ -799,14 +817,14 @@ export class IssuesService {
       where: { id: attachmentId, issueId },
     });
     if (!attachment) throw new NotFoundException('Attachment not found');
-
-    try {
-      await this.storage.delete(attachment.storageKey);
-    } catch {
-      /* ignore */
-    }
-    await this.prisma.attachment.delete({ where: { id: attachmentId } });
-    return { message: 'Attachment deleted' };
+    await this.trash.moveToTrash({
+      companyId,
+      entityType: 'attachment',
+      entityId: attachmentId,
+      title: attachment.name,
+      href: `/issues/${issueId}`,
+    });
+    return { message: 'Moved to trash' };
   }
 
   async addWatcher(id: string, companyId: string, userId: string) {

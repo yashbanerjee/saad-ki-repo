@@ -49,6 +49,7 @@ import { useAuthStore, hasRole } from "@/lib/auth-store";
 import { formatDate, cn } from "@/lib/utils";
 import { NdaDocumentPreview } from "@/components/features/NdaDocumentPreview";
 import { toast } from "sonner";
+import { useConfirm, trashConfirm } from "@/providers/confirm-provider";
 
 type DocItem = {
   id: string;
@@ -75,6 +76,7 @@ function formatBytes(size?: number) {
 export default function DocumentsPage() {
   const user = useAuthStore((s) => s.user);
   const isClient = hasRole(user, ["client"]);
+  const confirm = useConfirm();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -133,7 +135,7 @@ export default function DocumentsPage() {
     mutationFn: (id: string) => documentsApi.remove(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["documents"] });
-      toast.success("Document deleted");
+      toast.success("Moved to trash");
     },
     onError: (err: unknown) => {
       const message =
@@ -369,9 +371,12 @@ export default function DocumentsPage() {
                             {!isNda && (
                               <DropdownMenuItem
                                 className="text-destructive"
-                                onClick={() => deleteMutation.mutate(doc.id)}
+                                onClick={async () => {
+                                  const ok = await confirm(trashConfirm("document", doc.name));
+                                  if (ok) deleteMutation.mutate(doc.id);
+                                }}
                               >
-                                <Trash2 className="h-4 w-4 mr-2" /> Delete
+                                <Trash2 className="h-4 w-4 mr-2" /> Move to trash
                               </DropdownMenuItem>
                             )}
                           </DropdownMenuContent>

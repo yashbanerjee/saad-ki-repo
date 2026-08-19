@@ -13,6 +13,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { TrashService } from '../trash/trash.service';
 import { paginate, paginatedResponse } from '../common/dto/pagination.dto';
 import {
   ConvertLeadDto,
@@ -38,7 +39,10 @@ const SOURCE_ALIASES: Record<string, LeadSource> = {
 
 @Injectable()
 export class LeadsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private trash: TrashService,
+  ) {}
 
   async findAll(companyId: string, query: ListLeadsQueryDto) {
     const page = query.page ?? 1;
@@ -377,10 +381,17 @@ export class LeadsService {
     return lead;
   }
 
-  async remove(id: string, companyId: string) {
-    await this.findOne(id, companyId);
-    await this.prisma.lead.update({ where: { id }, data: { archived: true } });
-    return { message: 'Lead archived' };
+  async remove(id: string, companyId: string, userId?: string) {
+    const lead = await this.findOne(id, companyId);
+    await this.trash.moveToTrash({
+      companyId,
+      userId,
+      entityType: 'lead',
+      entityId: id,
+      title: lead.title || lead.email || 'Lead',
+      href: `/leads/${id}`,
+    });
+    return { message: 'Moved to trash' };
   }
 
   async addActivity(

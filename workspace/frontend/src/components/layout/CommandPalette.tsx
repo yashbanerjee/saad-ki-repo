@@ -11,6 +11,7 @@ import {
   Settings,
   Plus,
   Search,
+  Trash2,
 } from "lucide-react";
 import {
   CommandDialog,
@@ -72,6 +73,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           <CommandItem onSelect={() => runCommand(() => router.push("/documents"))}>
             <FileText className="mr-2 h-4 w-4" />
             Documents
+          </CommandItem>
+          <CommandItem onSelect={() => runCommand(() => router.push("/trash"))}>
+            <Trash2 className="mr-2 h-4 w-4" />
+            Trash
           </CommandItem>
           <CommandItem onSelect={() => runCommand(() => router.push("/settings"))}>
             <Settings className="mr-2 h-4 w-4" />

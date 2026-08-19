@@ -205,7 +205,7 @@ export class ProjectsController {
   @Delete(':id')
   @Permissions('projects:manage')
   remove(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.projectsService.remove(id, user.companyId!);
+    return this.projectsService.remove(id, user.companyId!, user);
   }
 
   @Post(':id/members')
@@ -294,7 +294,7 @@ export class ProjectsController {
     @Param('milestoneId', ParseCuidPipe) milestoneId: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.projectsService.deleteMilestone(id, milestoneId, user.companyId!);
+    return this.projectsService.deleteMilestone(id, milestoneId, user.companyId!, user.id);
   }
 
   // Client tasks
@@ -335,6 +335,6 @@ export class ProjectsController {
     @Param('taskId', ParseCuidPipe) taskId: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.projectsService.deleteClientTask(id, taskId, user.companyId!);
+    return this.projectsService.deleteClientTask(id, taskId, user.companyId!, user.id);
   }
 }

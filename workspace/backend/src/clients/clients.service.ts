@@ -24,10 +24,14 @@ import {
   ROLE_PERMISSIONS,
 } from '../common/constants/permissions.constants';
 import { renderNdaPlaceholders } from '../nda/nda-placeholders';
+import { TrashService } from '../trash/trash.service';
 
 @Injectable()
 export class ClientsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private trash: TrashService,
+  ) {}
 
   async findAll(companyId: string, query: ListClientsQueryDto) {
     const page = query.page ?? 1;
@@ -326,10 +330,17 @@ export class ClientsService {
     });
   }
 
-  async remove(id: string, companyId: string) {
-    await this.findOne(id, companyId);
-    await this.prisma.client.update({ where: { id }, data: { status: 'inactive' } });
-    return { message: 'Client deactivated' };
+  async remove(id: string, companyId: string, userId?: string) {
+    const client = await this.findOne(id, companyId);
+    await this.trash.moveToTrash({
+      companyId,
+      userId,
+      entityType: 'client',
+      entityId: id,
+      title: client.name,
+      href: `/clients/${id}`,
+    });
+    return { message: 'Moved to trash' };
   }
 
   private normalizePhone(phone: string): string {

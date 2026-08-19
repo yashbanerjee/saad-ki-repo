@@ -53,6 +53,8 @@ export const PERMISSION_DEFINITIONS = [
   { name: 'View Dashboard', slug: 'dashboard:read', module: 'dashboard' },
   { name: 'View Audit Logs', slug: 'audit:read', module: 'audit' },
   { name: 'Global Search', slug: 'search:read', module: 'search' },
+  { name: 'View Trash', slug: 'trash:read', module: 'trash' },
+  { name: 'Manage Trash', slug: 'trash:manage', module: 'trash' },
 ] as const;
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -66,20 +68,24 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'crm_tasks:read', 'crm_tasks:manage',
     'teams:read', 'workflows:read', 'dashboard:read', 'search:read',
     'documents:manage', 'documents:read', 'invoices:manage', 'invoices:read', 'reports:read',
+    'trash:read', 'trash:manage',
   ],
   team_lead: [
     'users:read', 'projects:read', 'issues:create', 'issues:manage', 'issues:read',
     'sprints:read', 'teams:read', 'dashboard:read', 'search:read', 'documents:read',
     'leads:read', 'clients:read', 'deals:read', 'contacts:read', 'organizations:read', 'crm_tasks:read',
     'invoices:read', 'invoices:manage',
+    'trash:read',
   ],
   developer: [
     'projects:read', 'issues:create', 'issues:read',
     'sprints:read', 'search:read', 'documents:read',
+    'trash:read',
   ],
   qa: [
     'projects:read', 'issues:create', 'issues:read', 'sprints:read',
     'search:read', 'documents:read',
+    'trash:read',
   ],
   client: [
     'projects:read',
@@ -89,6 +95,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'documents:manage',
     'invoices:read',
     'nda:read',
+    'trash:read',
   ],
   viewer: [
     'projects:read', 'issues:read', 'dashboard:read', 'search:read',

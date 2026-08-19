@@ -3,10 +3,14 @@ import { DealStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { paginate, paginatedResponse } from '../common/dto/pagination.dto';
 import { CreateDealDto, ListDealsQueryDto, UpdateDealDto } from './dto/deal.dto';
+import { TrashService } from '../trash/trash.service';
 
 @Injectable()
 export class DealsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private trash: TrashService,
+  ) {}
 
   async findAll(companyId: string, query: ListDealsQueryDto) {
     const page = query.page ?? 1;
@@ -114,10 +118,17 @@ export class DealsService {
     });
   }
 
-  async remove(id: string, companyId: string) {
-    await this.findOne(id, companyId);
-    await this.prisma.deal.delete({ where: { id } });
-    return { message: 'Deal deleted' };
+  async remove(id: string, companyId: string, userId?: string) {
+    const deal = await this.findOne(id, companyId);
+    await this.trash.moveToTrash({
+      companyId,
+      userId,
+      entityType: 'deal',
+      entityId: id,
+      title: deal.title,
+      href: `/deals/${id}`,
+    });
+    return { message: 'Moved to trash' };
   }
 
   async pipelineSummary(companyId: string) {

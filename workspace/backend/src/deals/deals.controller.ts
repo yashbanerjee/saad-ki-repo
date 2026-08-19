@@ -60,6 +60,6 @@ export class DealsController {
   @Delete(':id')
   @Permissions('deals:manage')
   remove(@Param('id', ParseCuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.dealsService.remove(id, user.companyId!);
+    return this.dealsService.remove(id, user.companyId!, user.id);
   }
 }

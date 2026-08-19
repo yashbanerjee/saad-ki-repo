@@ -14,10 +14,14 @@ import {
   SaveFormFieldsDto,
   SubmitFormDto,
 } from './dto/onboarding.dto';
+import { TrashService } from '../trash/trash.service';
 
 @Injectable()
 export class OnboardingService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private trash: TrashService,
+  ) {}
 
   private slugify(text: string): string {
     const base = text
@@ -319,12 +323,16 @@ export class OnboardingService {
     });
   }
 
-  async remove(id: string, companyId: string) {
-    await this.findOne(id, companyId);
-    await this.prisma.onboardingForm.update({
-      where: { id },
-      data: { status: 'ARCHIVED' },
+  async remove(id: string, companyId: string, userId?: string) {
+    const form = await this.findOne(id, companyId);
+    await this.trash.moveToTrash({
+      companyId,
+      userId,
+      entityType: 'onboarding_form',
+      entityId: id,
+      title: form.title,
+      href: '/onboarding',
     });
-    return { message: 'Form archived' };
+    return { message: 'Moved to trash' };
   }
 }

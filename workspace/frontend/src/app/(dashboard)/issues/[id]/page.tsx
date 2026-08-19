@@ -36,6 +36,7 @@ import { issuesApi, projectsApi } from "@/lib/api";
 import { cn, formatDate, formatRelativeTime, getInitials } from "@/lib/utils";
 import { hasRole, useAuthStore } from "@/lib/auth-store";
 import { toast } from "sonner";
+import { useConfirm, trashConfirm } from "@/providers/confirm-provider";
 
 const FALLBACK_STATUSES = [
   { value: "TODO", label: "Todo" },
@@ -76,6 +77,7 @@ export default function IssueDetailPage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const isPrivileged = hasRole(user, ["admin", "manager"]);
+  const confirm = useConfirm();
 
   const { data, isLoading } = useQuery({
     queryKey: ["issue", id],
@@ -124,7 +126,7 @@ export default function IssueDetailPage() {
   const deleteIssueMutation = useMutation({
     mutationFn: () => issuesApi.delete(id),
     onSuccess: () => {
-      toast.success("Task deleted");
+      toast.success("Moved to trash");
       if (projectId) {
         queryClient.invalidateQueries({ queryKey: ["project-board", projectId] });
         router.push(`/projects/${projectId}/board`);
@@ -188,7 +190,7 @@ export default function IssueDetailPage() {
     mutationFn: (attachmentId: string) => issuesApi.deleteAttachment(id, attachmentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["issue", id] });
-      toast.success("Attachment removed");
+      toast.success("Moved to trash");
     },
     onError: () => toast.error("Failed to delete attachment"),
   });
@@ -352,18 +354,13 @@ export default function IssueDetailPage() {
             variant="outline"
             className="shrink-0 text-destructive hover:text-destructive"
             disabled={deleteIssueMutation.isPending}
-            onClick={() => {
-              if (
-                window.confirm(
-                  `Delete ${issue.key || issue.title}? This cannot be undone.`,
-                )
-              ) {
-                deleteIssueMutation.mutate();
-              }
+            onClick={async () => {
+              const ok = await confirm(trashConfirm("task", issue.key || issue.title));
+              if (ok) deleteIssueMutation.mutate();
             }}
           >
             <Trash2 className="h-4 w-4 mr-1" />
-            {deleteIssueMutation.isPending ? "Deleting…" : "Delete"}
+            {deleteIssueMutation.isPending ? "Moving…" : "Move to trash"}
           </Button>
         )}
       </div>
@@ -462,7 +459,10 @@ export default function IssueDetailPage() {
                         size="icon"
                         variant="ghost"
                         className="shrink-0 text-muted-foreground"
-                        onClick={() => deleteMutation.mutate(a.id)}
+                        onClick={async () => {
+                          const ok = await confirm(trashConfirm("attachment", a.name));
+                          if (ok) deleteMutation.mutate(a.id);
+                        }}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -546,7 +546,15 @@ export default function IssueDetailPage() {
                           size="icon"
                           variant="ghost"
                           className="h-8 w-8 shrink-0"
-                          onClick={() => deleteTime.mutate(e.id)}
+                          onClick={async () => {
+                            const ok = await confirm({
+                              title: "Delete time entry?",
+                              description: "This time log will be removed permanently.",
+                              confirmLabel: "Delete",
+                              destructive: true,
+                            });
+                            if (ok) deleteTime.mutate(e.id);
+                          }}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>

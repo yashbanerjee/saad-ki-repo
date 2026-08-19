@@ -60,6 +60,7 @@ import {
 import { portalApi } from "@/lib/api";
 import { formatDate, formatRelativeTime, cn, getInitials } from "@/lib/utils";
 import { toast } from "sonner";
+import { useConfirm, trashConfirm } from "@/providers/confirm-provider";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { VedhaMark } from "@/components/brand/VedhaMark";
 
@@ -151,6 +152,7 @@ export default function PublicPortalPage() {
   const params = useParams();
   const token = params.token as string;
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const taskFileRef = useRef<HTMLInputElement>(null);
   const attachFileRef = useRef<HTMLInputElement>(null);
   const projectDocRef = useRef<HTMLInputElement>(null);
@@ -560,7 +562,7 @@ export default function PublicPortalPage() {
     onSuccess: (_data, taskId) => {
       if (viewTaskId === taskId) setViewTaskId(null);
       invalidate();
-      toast.success("Task deleted");
+      toast.success("Moved to trash");
     },
     onError: (err: { response?: { data?: { message?: string } } }) => {
       toast.error(err?.response?.data?.message || "Could not delete task");
@@ -591,7 +593,7 @@ export default function PublicPortalPage() {
       portalApi.deleteComment(token, viewTaskId!, commentId),
     onSuccess: () => {
       invalidateTask();
-      toast.success("Comment deleted");
+      toast.success("Moved to trash");
     },
     onError: (err: { response?: { data?: { message?: string } } }) => {
       toast.error(err?.response?.data?.message || "Could not delete comment");
@@ -634,7 +636,7 @@ export default function PublicPortalPage() {
       portalApi.deleteTaskAttachment(token, viewTaskId!, attachmentId),
     onSuccess: () => {
       invalidateTask();
-      toast.success("File deleted");
+      toast.success("Moved to trash");
     },
     onError: (err: { response?: { data?: { message?: string } } }) => {
       toast.error(err?.response?.data?.message || "Could not delete file");
@@ -671,7 +673,7 @@ export default function PublicPortalPage() {
       portalApi.deleteDocument(token, documentId),
     onSuccess: () => {
       invalidate();
-      toast.success("Document deleted");
+      toast.success("Moved to trash");
     },
     onError: (err: { response?: { data?: { message?: string } } }) => {
       toast.error(err?.response?.data?.message || "Could not delete document");
@@ -846,14 +848,9 @@ export default function PublicPortalPage() {
             canCreate={false}
             readOnly
             onTaskClick={(task) => openTaskView(task.id)}
-            onTaskDelete={(task) => {
-              if (
-                window.confirm(
-                  `Delete ${task.key || task.title}? This cannot be undone.`,
-                )
-              ) {
-                deleteTaskMutation.mutate(task.id);
-              }
+            onTaskDelete={async (task) => {
+              const ok = await confirm(trashConfirm("task", task.key || task.title));
+              if (ok) deleteTaskMutation.mutate(task.id);
             }}
           />
         </div>
@@ -1093,14 +1090,9 @@ export default function PublicPortalPage() {
                                     variant="ghost"
                                     className="h-8 w-8 text-destructive"
                                     disabled={deleteDocumentMutation.isPending}
-                                    onClick={() => {
-                                      if (
-                                        window.confirm(
-                                          `Delete ${label}? This cannot be undone.`,
-                                        )
-                                      ) {
-                                        deleteDocumentMutation.mutate(doc.id);
-                                      }
+                                    onClick={async () => {
+                                      const ok = await confirm(trashConfirm("document", label));
+                                      if (ok) deleteDocumentMutation.mutate(doc.id);
                                     }}
                                     aria-label={`Delete ${label}`}
                                   >
@@ -1664,14 +1656,9 @@ export default function PublicPortalPage() {
                       variant="ghost"
                       className="text-destructive"
                       disabled={deleteTaskMutation.isPending}
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            "Delete this task? This cannot be undone.",
-                          )
-                        ) {
-                          deleteTaskMutation.mutate(viewTaskId!);
-                        }
+                      onClick={async () => {
+                        const ok = await confirm(trashConfirm("task", viewTask?.key || viewTask?.title));
+                        if (ok) deleteTaskMutation.mutate(viewTaskId!);
                       }}
                     >
                       <Trash2 className="h-3.5 w-3.5 mr-1" />
@@ -1882,15 +1869,12 @@ export default function PublicPortalPage() {
                                         disabled={
                                           deleteAttachmentMutation.isPending
                                         }
-                                        onClick={() => {
-                                          if (
-                                            window.confirm(
-                                              `Delete ${file.name}?`,
-                                            )
-                                          ) {
-                                            deleteAttachmentMutation.mutate(
-                                              file.id,
-                                            );
+                                        onClick={async () => {
+                                          const ok = await confirm(
+                                            trashConfirm("attachment", file.name),
+                                          );
+                                          if (ok) {
+                                            deleteAttachmentMutation.mutate(file.id);
                                           }
                                         }}
                                       >
@@ -1966,12 +1950,11 @@ export default function PublicPortalPage() {
                                           disabled={
                                             deleteCommentMutation.isPending
                                           }
-                                          onClick={() => {
-                                            if (
-                                              window.confirm(
-                                                "Delete this comment?",
-                                              )
-                                            ) {
+                                          onClick={async () => {
+                                            const ok = await confirm(
+                                              trashConfirm("comment"),
+                                            );
+                                            if (ok) {
                                               deleteCommentMutation.mutate(c.id);
                                             }
                                           }}

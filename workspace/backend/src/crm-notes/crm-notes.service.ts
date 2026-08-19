@@ -3,10 +3,14 @@ import { CrmActivityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { paginate, paginatedResponse } from '../common/dto/pagination.dto';
 import { CreateCrmNoteDto, ListCrmNotesQueryDto, UpdateCrmNoteDto } from './dto/crm-note.dto';
+import { TrashService } from '../trash/trash.service';
 
 @Injectable()
 export class CrmNotesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private trash: TrashService,
+  ) {}
 
   async findAll(companyId: string, query: ListCrmNotesQueryDto) {
     const page = query.page ?? 1;
@@ -81,9 +85,16 @@ export class CrmNotesService {
     return this.prisma.crmNote.update({ where: { id }, data: dto });
   }
 
-  async remove(id: string, companyId: string) {
-    await this.findOne(id, companyId);
-    await this.prisma.crmNote.delete({ where: { id } });
-    return { message: 'Note deleted' };
+  async remove(id: string, companyId: string, userId?: string) {
+    const note = await this.findOne(id, companyId);
+    await this.trash.moveToTrash({
+      companyId,
+      userId,
+      entityType: 'crm_note',
+      entityId: id,
+      title: note.title || note.body?.slice(0, 80) || 'Note',
+      href: '/crm/notes',
+    });
+    return { message: 'Moved to trash' };
   }
 }

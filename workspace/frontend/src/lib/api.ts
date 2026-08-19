@@ -809,4 +809,10 @@ export const activityApi = {
     api.get("/activity", { params }),
 };
 
+export const trashApi = {
+  list: () => api.get("/trash"),
+  restore: (id: string) => api.post(`/trash/${id}/restore`),
+  purge: (id: string) => api.delete(`/trash/${id}`),
+};
+
 export default api;

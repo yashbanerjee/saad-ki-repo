@@ -49,6 +49,8 @@ const PERMISSION_DEFINITIONS = [
   { name: 'View Dashboard', slug: 'dashboard:read', module: 'dashboard' },
   { name: 'View Audit Logs', slug: 'audit:read', module: 'audit' },
   { name: 'Global Search', slug: 'search:read', module: 'search' },
+  { name: 'View Trash', slug: 'trash:read', module: 'trash' },
+  { name: 'Manage Trash', slug: 'trash:manage', module: 'trash' },
 ];
 
 const SYSTEM_ROLES = [
@@ -170,11 +172,12 @@ async function main() {
                 'documents:manage',
                 'invoices:read',
                 'nda:read',
+                'trash:read',
               ]
             : slug === 'developer'
-              ? ['projects:read', 'issues:create', 'issues:manage', 'issues:read', 'sprints:read', 'search:read', 'documents:read']
+              ? ['projects:read', 'issues:create', 'issues:manage', 'issues:read', 'sprints:read', 'search:read', 'documents:read', 'trash:read']
               : slug === 'qa'
-                ? ['projects:read', 'issues:read', 'issues:manage', 'sprints:read', 'search:read', 'documents:read']
+                ? ['projects:read', 'issues:read', 'issues:manage', 'sprints:read', 'search:read', 'documents:read', 'trash:read']
                 : slug === 'team_lead'
                   ? [
                       'users:read',
@@ -193,6 +196,7 @@ async function main() {
                       'contacts:read',
                       'organizations:read',
                       'crm_tasks:read',
+                      'trash:read',
                     ]
                   : [
                       'users:read',
@@ -225,6 +229,8 @@ async function main() {
                       'invoices:manage',
                       'invoices:read',
                       'reports:read',
+                      'trash:read',
+                      'trash:manage',
                     ];
 
     const toAssign = allPermissions.filter((p) => slugs.includes(p.slug));
@@ -244,6 +250,7 @@ async function main() {
     'documents:manage',
     'invoices:read',
     'nda:read',
+    'trash:read',
   ];
   const clientPerms = allPermissions.filter((p) => clientPermSlugs.includes(p.slug));
   const allClientRoles = await prisma.role.findMany({ where: { slug: 'client' } });
