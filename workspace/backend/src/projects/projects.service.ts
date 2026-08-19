@@ -47,6 +47,43 @@ export class ProjectsService {
     return Math.round((done / tasks.length) * 1000) / 10;
   }
 
+  private progressFromBoard(
+    settings: unknown,
+    issues: Array<{ status: string; metadata?: unknown }>,
+    clientTasks: { status: string }[],
+    milestones: { status: string }[],
+  ) {
+    const boardColumns = parseBoardColumns(settings);
+    const doneColumnIds = new Set(
+      boardColumns
+        .filter(
+          (c) =>
+            c.id === IssueStatus.DONE ||
+            c.id === 'DONE' ||
+            /^done$/i.test(c.title.trim()),
+        )
+        .map((c) => c.id),
+    );
+    if (!doneColumnIds.size) doneColumnIds.add(IssueStatus.DONE);
+
+    const isIssueDone = (issue: { status: string; metadata?: unknown }) => {
+      if (issue.status === IssueStatus.DONE) return true;
+      const col = resolveIssueBoardColumnId(issue, boardColumns);
+      return doneColumnIds.has(col);
+    };
+
+    if (issues.length) {
+      return Math.round((issues.filter(isIssueDone).length / issues.length) * 100);
+    }
+    if (clientTasks.length) {
+      return Math.round(this.computeProgress(clientTasks));
+    }
+    if (milestones.length) {
+      return Math.round(this.computeProgress(milestones));
+    }
+    return 0;
+  }
+
   private progressPayload(
     milestones: { status: string }[],
     tasks: { status: string }[],
@@ -132,15 +169,20 @@ export class ProjectsService {
           client: { select: { id: true, name: true, email: true } },
           _count: { select: { members: true, issues: { where: { deletedAt: null } }, clientTasks: { where: { deletedAt: null } } } },
           clientTasks: { where: { deletedAt: null }, select: { status: true } },
+          milestones: { where: { deletedAt: null }, select: { status: true } },
+          issues: {
+            where: { deletedAt: null, status: { not: 'CANCELLED' } },
+            select: { status: true, metadata: true },
+          },
         },
         orderBy: { updatedAt: 'desc' },
       }),
       this.prisma.project.count({ where }),
     ]);
 
-    const mapped = data.map(({ clientTasks, ...p }) => ({
+    const mapped = data.map(({ clientTasks, milestones, issues, ...p }) => ({
       ...p,
-      progressPercent: this.computeProgress(clientTasks),
+      progressPercent: this.progressFromBoard(p.settings, issues, clientTasks, milestones),
     }));
 
     return paginatedResponse(mapped, total, page, limit);
@@ -274,6 +316,7 @@ export class ProjectsService {
             estimatedHours: true,
             loggedHours: true,
             dueDate: true,
+            metadata: true,
             assigneeId: true,
             assignee: {
               select: { id: true, firstName: true, lastName: true },
@@ -313,12 +356,12 @@ export class ProjectsService {
     if (!project) throw new NotFoundException('Project not found');
 
     const progress = this.progressPayload(project.milestones, project.clientTasks);
-    // Prefer issue-based progress when board tasks exist
-    let progressPercent = progress.progressPercent;
-    if (project.issues.length) {
-      const done = project.issues.filter((i) => i.status === 'DONE').length;
-      progressPercent = Math.round((done / project.issues.length) * 100);
-    }
+    const progressPercent = this.progressFromBoard(
+      project.settings,
+      project.issues,
+      project.clientTasks,
+      project.milestones,
+    );
     return { ...project, ...progress, progressPercent };
   }
 

@@ -34,7 +34,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -234,16 +233,13 @@ export default function ProjectDetailPage() {
   const [addMemberRole, setAddMemberRole] = useState("developer");
   const [manageOpen, setManageOpen] = useState(false);
   const [snoozed, setSnoozed] = useState(false);
-  const [clientOpen, setClientOpen] = useState(false);
-  const [linkClientId, setLinkClientId] = useState("");
   const [milestoneOpen, setMilestoneOpen] = useState(false);
   const [msName, setMsName] = useState("");
   const [msDue, setMsDue] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const checklistFileRef = useRef<HTMLInputElement>(null);
 
   const { data: clientsData } = useQuery({
-    queryKey: ["clients", "project-onboarding"],
+    queryKey: ["clients", "project-settings"],
     queryFn: () => clientsApi.list({ limit: 100 }),
     retry: false,
   });
@@ -513,22 +509,6 @@ export default function ProjectDetailPage() {
     onError: () => toast.error("Could not delete"),
   });
 
-  const linkClient = useMutation({
-    mutationFn: (clientId: string) => projectsApi.update(id, { clientId }),
-    onSuccess: (_, clientId) => {
-      setClientOpen(false);
-      setSettings((s) => ({ ...s, clientId }));
-      invalidate();
-      toast.success("Client linked");
-    },
-    onError: (err: unknown) => {
-      const message =
-        (err as { response?: { data?: { message?: string } } })?.response?.data
-          ?.message || "Could not link client";
-      toast.error(Array.isArray(message) ? message.join(", ") : message);
-    },
-  });
-
   const createMilestone = useMutation({
     mutationFn: () =>
       projectsApi.createMilestone(id, {
@@ -661,33 +641,6 @@ export default function ProjectDetailPage() {
 
   const daysToLaunch = project.endDate ? daysBetween(now, new Date(project.endDate)) : null;
 
-  const onboardingChecklist = [
-    { id: "client", title: "Link a client", done: Boolean(client), date: "" },
-    {
-      id: "link",
-      title: "Create client share link",
-      done: Boolean(project.portalEnabled && project.portalToken),
-      date: "",
-    },
-    {
-      id: "docs",
-      title: "Upload project documents",
-      done: documents.length > 0,
-      date: documents[0]?.createdAt ? formatShortDate(documents[0].createdAt) : "",
-    },
-    {
-      id: "ms",
-      title: "Add first milestone",
-      done: milestones.length > 0,
-      date: milestones[0]?.createdAt
-        ? formatShortDate(milestones[0].createdAt)
-        : milestones[0]?.dueDate
-          ? `due ${formatShortDate(milestones[0].dueDate)}`
-          : "",
-    },
-  ];
-  const checklistDone = onboardingChecklist.filter((i) => i.done).length;
-  const checklistPct = Math.round((checklistDone / onboardingChecklist.length) * 100);
   const subtitleParts = [
     milestones.length ? `Phase ${phase} of ${milestones.length}` : "",
     project.description ||
@@ -697,36 +650,12 @@ export default function ProjectDetailPage() {
       : "",
   ].filter(Boolean);
 
-  const runOnboardingAction = (itemId: string) => {
-    if (itemId === "client") {
-      setLinkClientId(project.clientId || project.client?.id || "");
-      setClientOpen(true);
-      return;
-    }
-    if (itemId === "link") {
-      if (project.portalEnabled && project.portalToken && shareUrl) {
-        navigator.clipboard.writeText(shareUrl);
-        toast.success("Client link copied");
-        return;
-      }
-      enablePortal.mutate();
-      return;
-    }
-    if (itemId === "docs") {
-      checklistFileRef.current?.click();
-      return;
-    }
-    if (itemId === "ms") {
-      setMilestoneOpen(true);
-    }
-  };
-
   const briefDoc = documents[0] as
     | { id: string; name: string; originalName?: string; storageUrl?: string | null }
     | undefined;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-3">
@@ -773,7 +702,7 @@ export default function ProjectDetailPage() {
               setManageOpen(true);
             }}
           >
-            <Download className="h-4 w-4" />
+            {briefDoc ? <Download className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
             {briefDoc ? "Download brief" : "Copy client link"}
           </Button>
           <Button asChild>
@@ -842,54 +771,8 @@ export default function ProjectDetailPage() {
         ))}
       </div>
 
-      <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="min-w-0 space-y-8">
-          <Card className="rounded-2xl shadow-none">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-              <CardTitle className="text-base font-semibold">Onboarding checklist</CardTitle>
-              <span className="text-sm text-muted-foreground">{checklistPct}%</span>
-            </CardHeader>
-            <CardContent>
-              <Progress value={checklistPct} className="mb-2 h-2.5" />
-              <input
-                ref={checklistFileRef}
-                type="file"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  if (f.size > 100 * 1024 * 1024) {
-                    toast.error(`${f.name} is over 100 MB`);
-                    e.target.value = "";
-                    return;
-                  }
-                  uploadDoc.mutate(f);
-                }}
-              />
-              <ul>
-                {onboardingChecklist.map((item) => (
-                  <li key={item.id}>
-                    <button
-                      type="button"
-                      onClick={() => runOnboardingAction(item.id)}
-                      className="flex w-full items-center gap-3 border-b border-border/50 py-3 text-left last:border-0 hover:bg-muted/20"
-                    >
-                      <Checkbox
-                        checked={item.done}
-                        className="pointer-events-none h-4 w-4"
-                        tabIndex={-1}
-                      />
-                      <span className="flex-1 text-sm">{item.title}</span>
-                      {item.date ? (
-                        <span className="text-xs text-muted-foreground">{item.date}</span>
-                      ) : null}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="min-w-0">
           <Tabs defaultValue="board">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <TabsList className="h-11 rounded-full bg-muted/80 p-1">
@@ -923,11 +806,11 @@ export default function ProjectDetailPage() {
               </p>
             </div>
 
-            <TabsContent value="board" className="mt-6">
+            <TabsContent value="board" className="mt-5">
               <ProjectHubBoard columns={boardColumns} onTaskMove={handleTaskMove} />
             </TabsContent>
 
-            <TabsContent value="list" className="mt-6">
+            <TabsContent value="list" className="mt-5">
               {issues.length === 0 ? (
                 <p className="py-10 text-center text-sm text-muted-foreground">No work items yet.</p>
               ) : (
@@ -981,7 +864,7 @@ export default function ProjectDetailPage() {
               )}
             </TabsContent>
 
-            <TabsContent value="files" className="mt-6">
+            <TabsContent value="files" className="mt-5">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <label className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Checkbox
@@ -1092,11 +975,14 @@ export default function ProjectDetailPage() {
               )}
             </TabsContent>
 
-            <TabsContent value="timeline" className="mt-6">
+            <TabsContent value="timeline" className="mt-5">
               {milestones.length === 0 ? (
-                <p className="py-10 text-center text-sm text-muted-foreground">
-                  No milestones yet — add one from the onboarding checklist.
-                </p>
+                <div className="flex flex-col items-center gap-3 py-10 text-center">
+                  <p className="text-sm text-muted-foreground">No milestones yet.</p>
+                  <Button size="sm" variant="outline" onClick={() => setMilestoneOpen(true)}>
+                    Add milestone
+                  </Button>
+                </div>
               ) : (
                 <Card className="rounded-2xl shadow-none">
                   <CardContent className="p-5 sm:p-6">
@@ -1163,8 +1049,16 @@ export default function ProjectDetailPage() {
           )}
 
           <Card className="rounded-2xl shadow-none">
-            <CardHeader className="pb-3">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
               <CardTitle className="text-base font-semibold">Milestones</CardTitle>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 px-2 text-xs"
+                onClick={() => setMilestoneOpen(true)}
+              >
+                Add
+              </Button>
             </CardHeader>
             <CardContent>
               {milestones.length === 0 ? (
@@ -1238,50 +1132,10 @@ export default function ProjectDetailPage() {
         </aside>
       </div>
 
-      <Dialog open={clientOpen} onOpenChange={setClientOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Link a client</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-2 py-2">
-            <Label>Client</Label>
-            <Select value={linkClientId || undefined} onValueChange={setLinkClientId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a client" />
-              </SelectTrigger>
-              <SelectContent>
-                {clients.length === 0 ? (
-                  <SelectItem value="__empty" disabled>
-                    No clients found
-                  </SelectItem>
-                ) : (
-                  clients.map((c: { id: string; name: string }) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setClientOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={!linkClientId || linkClient.isPending}
-              onClick={() => linkClient.mutate(linkClientId)}
-            >
-              {linkClient.isPending ? "Saving…" : "Save"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={milestoneOpen} onOpenChange={setMilestoneOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add first milestone</DialogTitle>
+            <DialogTitle>Add milestone</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-2">
