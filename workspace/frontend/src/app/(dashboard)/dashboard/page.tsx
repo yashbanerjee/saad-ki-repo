@@ -14,7 +14,6 @@ import {
   Clock,
   Calendar,
   FileText,
-  ClipboardList,
   ArrowUpRight,
 } from "lucide-react";
 import {
@@ -216,12 +215,6 @@ export default function DashboardPage() {
             <Button asChild>
               <Link href="/projects">
                 New project <ArrowUpRight className="h-4 w-4" />
-              </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href="/onboarding">
-                <ClipboardList className="h-4 w-4" />
-                Client onboarding
               </Link>
             </Button>
           </div>
@@ -540,7 +533,7 @@ export default function DashboardPage() {
       <motion.div variants={item} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { href: "/documents", icon: FileText, label: "Documents" },
-          { href: "/onboarding", icon: ClipboardList, label: "Client onboarding" },
+          { href: "/clients", icon: FolderKanban, label: "Clients" },
           { href: "/issues", icon: Bug, label: "Issues" },
           { href: "/nda", icon: FileText, label: "NDA templates" },
         ].map((q) => (

@@ -1,5 +1,7 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Post, Query, UploadedFile, UseGuards, UseInterceptors, BadRequestException } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiTags, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import { memoryStorage } from 'multer';
 import { CrmCommsService } from './crm-comms.service';
 import {
   CreateCrmAttachmentDto,
@@ -10,6 +12,11 @@ import {
 } from './dto/crm-comms.dto';
 import { CurrentUser, AuthenticatedUser, Permissions } from '../common/decorators';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
+
+const crmUploadOptions = {
+  storage: memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 },
+};
 
 @ApiTags('crm-comms')
 @ApiBearerAuth()
@@ -67,5 +74,38 @@ export class CrmCommsController {
     @Body() dto: CreateCrmAttachmentDto,
   ) {
     return this.crmCommsService.createAttachment(user.companyId!, user.id, dto);
+  }
+
+  @Post('attachments/upload')
+  @Permissions('leads:manage')
+  @UseInterceptors(FileInterceptor('file', crmUploadOptions))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+        fileName: { type: 'string' },
+        leadId: { type: 'string' },
+        dealId: { type: 'string' },
+        contactId: { type: 'string' },
+      },
+    },
+  })
+  uploadAttachment(
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('leadId') leadId?: string,
+    @Body('dealId') dealId?: string,
+    @Body('contactId') contactId?: string,
+    @Body('fileName') fileName?: string,
+  ) {
+    if (!file) throw new BadRequestException('Please choose a file to upload');
+    return this.crmCommsService.uploadAttachment(user.companyId!, user.id, file, {
+      leadId,
+      dealId,
+      contactId,
+      fileName,
+    });
   }
 }

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import {
   CrmActivityType,
   CrmCallStatus,
@@ -7,6 +7,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { paginate, paginatedResponse } from '../common/dto/pagination.dto';
 import {
   CreateCrmAttachmentDto,
@@ -22,6 +23,7 @@ export class CrmCommsService {
   constructor(
     private prisma: PrismaService,
     private integrations: IntegrationsService,
+    private storage: StorageService,
   ) {}
 
   private refWhere(query: ListCommsQueryDto): Prisma.CrmEmailWhereInput {
@@ -281,6 +283,46 @@ export class CrmCommsService {
         contactId: dto.contactId,
         uploadedById: userId,
       },
+    });
+  }
+
+  async uploadAttachment(
+    companyId: string,
+    userId: string,
+    file: Express.Multer.File | undefined,
+    meta: { leadId?: string; dealId?: string; contactId?: string; fileName?: string },
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Please choose a file to upload');
+    }
+    if (!meta.leadId && !meta.dealId && !meta.contactId) {
+      throw new BadRequestException('leadId, dealId, or contactId is required');
+    }
+
+    const key = this.storage.generateKey(
+      `companies/${companyId}/crm`,
+      file.originalname || 'upload.bin',
+    );
+    const { url } = await this.storage.upload(
+      key,
+      file.buffer,
+      file.mimetype || 'application/octet-stream',
+    );
+
+    return this.prisma.crmAttachment.create({
+      data: {
+        companyId,
+        fileName: (meta.fileName || file.originalname || 'Upload').trim(),
+        fileUrl: url,
+        mimeType: file.mimetype || 'application/octet-stream',
+        sizeBytes: file.size,
+        leadId: meta.leadId,
+        dealId: meta.dealId,
+        contactId: meta.contactId,
+        uploadedById: userId,
+        metadata: { storageKey: key },
+      },
+      include: { uploadedBy: { select: { id: true, firstName: true, lastName: true } } },
     });
   }
 }

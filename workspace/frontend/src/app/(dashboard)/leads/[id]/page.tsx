@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -19,6 +19,7 @@ import {
   StickyNote,
   Target,
   Trash2,
+  Upload,
   User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -61,6 +62,7 @@ export default function LeadDetailPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const confirm = useConfirm();
+  const attachInputRef = useRef<HTMLInputElement>(null);
 
   const [comment, setComment] = useState("");
   const [noteTitle, setNoteTitle] = useState("");
@@ -74,8 +76,6 @@ export default function LeadDetailPage() {
   const [callNotes, setCallNotes] = useState("");
   const [waBody, setWaBody] = useState("");
   const [waTo, setWaTo] = useState("");
-  const [attachName, setAttachName] = useState("");
-  const [attachUrl, setAttachUrl] = useState("");
   const [convertOpen, setConvertOpen] = useState(false);
   const [convertType, setConvertType] = useState<"COMPANY" | "INDIVIDUAL">("COMPANY");
   const [createDeal, setCreateDeal] = useState(true);
@@ -232,18 +232,12 @@ export default function LeadDetailPage() {
   });
 
   const attachMutation = useMutation({
-    mutationFn: () =>
-      crmCommsApi.createAttachment({
-        leadId: id,
-        fileName: attachName,
-        fileUrl: attachUrl,
-      }),
+    mutationFn: (file: File) => crmCommsApi.uploadAttachment(file, { leadId: id }),
     onSuccess: () => {
-      setAttachName("");
-      setAttachUrl("");
       refetchAttach();
-      toast.success("Attachment added");
+      toast.success("Document uploaded");
     },
+    onError: () => toast.error("Upload failed"),
   });
 
   const convertMutation = useMutation({
@@ -757,41 +751,52 @@ export default function LeadDetailPage() {
           },
           {
             id: "attachments",
-            label: "Attachments",
+            label: "Documents",
             icon: <Paperclip className="h-3.5 w-3.5" />,
             content: (
               <div className="space-y-4">
-                <div className="space-y-2 rounded-lg border p-3">
-                  <Input
-                    placeholder="File name"
-                    value={attachName}
-                    onChange={(e) => setAttachName(e.target.value)}
-                  />
-                  <Input
-                    placeholder="File URL"
-                    value={attachUrl}
-                    onChange={(e) => setAttachUrl(e.target.value)}
+                <div className="rounded-lg border border-dashed p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">Upload document</p>
+                    <p className="text-xs text-muted-foreground">
+                      Attach files to this lead — contracts, briefs, proposals, etc.
+                    </p>
+                  </div>
+                  <input
+                    ref={attachInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) attachMutation.mutate(file);
+                      e.target.value = "";
+                    }}
                   />
                   <Button
                     size="sm"
-                    disabled={!attachName || !attachUrl || attachMutation.isPending}
-                    onClick={() => attachMutation.mutate()}
+                    disabled={attachMutation.isPending}
+                    onClick={() => attachInputRef.current?.click()}
                   >
-                    Add attachment
+                    <Upload className="h-4 w-4 mr-1" />
+                    {attachMutation.isPending ? "Uploading…" : "Choose file"}
                   </Button>
                 </div>
                 <div className="space-y-2">
-                  {attachments.map((a: { id: string; fileName: string; fileUrl: string }) => (
-                    <a
-                      key={a.id}
-                      href={a.fileUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block rounded-lg border px-3 py-2 text-sm hover:bg-muted/40"
-                    >
-                      {a.fileName}
-                    </a>
-                  ))}
+                  {attachments.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No documents uploaded yet.</p>
+                  ) : (
+                    attachments.map((a: { id: string; fileName: string; fileUrl: string }) => (
+                      <a
+                        key={a.id}
+                        href={a.fileUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block rounded-lg border px-3 py-2 text-sm hover:bg-muted/40"
+                      >
+                        {a.fileName}
+                      </a>
+                    ))
+                  )}
                 </div>
               </div>
             ),

@@ -440,6 +440,18 @@ export const crmCommsApi = {
   listAttachments: (params?: Record<string, unknown>) =>
     api.get("/crm/attachments", { params }),
   createAttachment: (data: Record<string, unknown>) => api.post("/crm/attachments", data),
+  uploadAttachment: (
+    file: File,
+    meta: { leadId?: string; dealId?: string; contactId?: string; fileName?: string },
+  ) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (meta.fileName) formData.append("fileName", meta.fileName);
+    if (meta.leadId) formData.append("leadId", meta.leadId);
+    if (meta.dealId) formData.append("dealId", meta.dealId);
+    if (meta.contactId) formData.append("contactId", meta.contactId);
+    return api.post("/crm/attachments/upload", formData, { timeout: 120000 });
+  },
 };
 
 export const integrationsApi = {
