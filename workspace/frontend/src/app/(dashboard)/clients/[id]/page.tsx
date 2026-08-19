@@ -7,20 +7,20 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Building2,
-  CheckCircle2,
-  ClipboardList,
-  Copy,
+  Calendar,
+  CheckSquare,
   ExternalLink,
   FileText,
   FolderKanban,
-  Link2,
   Mail,
+  MessageCircle,
   Paperclip,
   Pencil,
   Phone,
   Plus,
   Receipt,
   Send,
+  StickyNote,
   Trash2,
   Upload,
   User,
@@ -31,7 +31,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -56,12 +55,7 @@ import {
 } from "@/components/ui/table";
 import { CrmDetailLayout } from "@/components/crm/CrmDetailLayout";
 import { CrmActivityFeed, type CrmActivityItem } from "@/components/crm/CrmActivityFeed";
-import {
-  clientsApi,
-  documentsApi,
-  onboardingApi,
-  projectsApi,
-} from "@/lib/api";
+import { clientsApi, documentsApi, projectsApi } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { useConfirm, trashConfirm } from "@/providers/confirm-provider";
@@ -77,23 +71,12 @@ const invoiceStatusVariant: Record<
   CANCELLED: "warning",
 };
 
-const ACTIVITY_TYPES = [
-  { key: "NOTE", label: "Note" },
-  { key: "COMMENT", label: "Comment" },
-  { key: "TASK", label: "Task" },
-  { key: "CALL", label: "Call" },
-  { key: "MEETING", label: "Meeting" },
-  { key: "EMAIL", label: "Email" },
-];
+type ClientActivity = CrmActivityItem & {
+  metadata?: { title?: string; dueDate?: string };
+};
 
-function publicFormUrl(token: string, clientId: string) {
-  if (typeof window === "undefined") return "";
-  return `${window.location.origin}/onboarding/public/${token}?clientId=${clientId}`;
-}
-
-function setupInviteUrl(token: string) {
-  if (typeof window === "undefined") return "";
-  return `${window.location.origin}/setup/${token}`;
+function activityTitle(a: ClientActivity) {
+  return a.metadata?.title;
 }
 
 export default function ClientDetailPage() {
@@ -107,12 +90,18 @@ export default function ClientDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [activityType, setActivityType] = useState("NOTE");
   const [activityBody, setActivityBody] = useState("");
+  const [comment, setComment] = useState("");
+  const [noteTitle, setNoteTitle] = useState("");
+  const [noteBody, setNoteBody] = useState("");
+  const [callTo, setCallTo] = useState("");
+  const [callNotes, setCallNotes] = useState("");
+  const [eventTitle, setEventTitle] = useState("");
+  const [eventDue, setEventDue] = useState("");
+  const [eventNotes, setEventNotes] = useState("");
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskDue, setTaskDue] = useState("");
   const [projectOpen, setProjectOpen] = useState(false);
   const [projectName, setProjectName] = useState("");
-  const [assignOpen, setAssignOpen] = useState(false);
-  const [assignMode, setAssignMode] = useState<"assign" | "create">("assign");
-  const [assignFormId, setAssignFormId] = useState("");
-  const [createFormTitle, setCreateFormTitle] = useState("");
   const [editForm, setEditForm] = useState({
     name: "",
     email: "",
@@ -135,21 +124,18 @@ export default function ClientDetailPage() {
   });
   const client = data?.data?.data ?? data?.data;
 
-  const { data: formsData } = useQuery({
-    queryKey: ["onboarding-forms"],
-    queryFn: () => onboardingApi.listForms(),
-    retry: false,
-  });
-
-  const catalogForms = useMemo(() => {
-    const raw = formsData?.data?.data ?? formsData?.data ?? [];
-    return Array.isArray(raw) ? raw : [];
-  }, [formsData]);
-
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["clients", id] });
     queryClient.invalidateQueries({ queryKey: ["clients"] });
   };
+
+  const addActivity = (
+    payload: { type: string; body: string; title?: string; dueDate?: string },
+    onDone?: () => void,
+  ) => clientsApi.addActivity(id, payload).then(() => {
+    invalidate();
+    onDone?.();
+  });
 
   const updateMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) => clientsApi.update(id, payload),
@@ -162,13 +148,78 @@ export default function ClientDetailPage() {
   });
 
   const activityMutation = useMutation({
-    mutationFn: () => clientsApi.addActivity(id, { type: activityType, body: activityBody }),
-    onSuccess: () => {
-      setActivityBody("");
-      invalidate();
-      toast.success("Activity logged");
-    },
+    mutationFn: () => addActivity({ type: activityType, body: activityBody }, () => setActivityBody("")),
+    onSuccess: () => toast.success("Activity logged"),
     onError: () => toast.error("Could not log activity"),
+  });
+
+  const commentMutation = useMutation({
+    mutationFn: () => addActivity({ type: "COMMENT", body: comment }, () => setComment("")),
+    onSuccess: () => toast.success("Comment added"),
+    onError: () => toast.error("Could not add comment"),
+  });
+
+  const noteMutation = useMutation({
+    mutationFn: () =>
+      addActivity(
+        { type: "NOTE", title: noteTitle || undefined, body: noteBody },
+        () => {
+          setNoteTitle("");
+          setNoteBody("");
+        },
+      ),
+    onSuccess: () => toast.success("Note saved"),
+    onError: () => toast.error("Could not save note"),
+  });
+
+  const callMutation = useMutation({
+    mutationFn: () =>
+      addActivity(
+        {
+          type: "CALL",
+          body: [callTo ? `To: ${callTo}` : null, callNotes].filter(Boolean).join("\n"),
+        },
+        () => setCallNotes(""),
+      ),
+    onSuccess: () => toast.success("Call logged"),
+    onError: () => toast.error("Could not log call"),
+  });
+
+  const eventMutation = useMutation({
+    mutationFn: () =>
+      addActivity(
+        {
+          type: "MEETING",
+          title: eventTitle || undefined,
+          body: eventNotes || eventTitle,
+          dueDate: eventDue || undefined,
+        },
+        () => {
+          setEventTitle("");
+          setEventDue("");
+          setEventNotes("");
+        },
+      ),
+    onSuccess: () => toast.success("Event added"),
+    onError: () => toast.error("Could not add event"),
+  });
+
+  const taskLogMutation = useMutation({
+    mutationFn: () =>
+      addActivity(
+        {
+          type: "TASK",
+          title: taskTitle,
+          body: taskTitle,
+          dueDate: taskDue || undefined,
+        },
+        () => {
+          setTaskTitle("");
+          setTaskDue("");
+        },
+      ),
+    onSuccess: () => toast.success("Task logged"),
+    onError: () => toast.error("Could not add task"),
   });
 
   const deleteMutation = useMutation({
@@ -201,31 +252,6 @@ export default function ClientDetailPage() {
     onError: () => toast.error("Could not create project"),
   });
 
-  const assignMutation = useMutation<any, Error, void>({
-    mutationFn: () => {
-      if (assignMode === "assign") {
-        return clientsApi.assignOnboardingForm(id, { formId: assignFormId });
-      }
-      return clientsApi.createOnboardingForm(id, {
-        title: createFormTitle || `${client?.name} onboarding`,
-        publish: true,
-      });
-    },
-    onSuccess: (res) => {
-      invalidate();
-      toast.success(assignMode === "assign" ? "Form assigned" : "Form created");
-      setAssignOpen(false);
-      setAssignFormId("");
-      setCreateFormTitle("");
-      const formId =
-        assignMode === "create"
-          ? (res?.data?.form?.id as string | undefined)
-          : undefined;
-      if (formId) router.push(`/onboarding/${formId}/builder`);
-    },
-    onError: () => toast.error("Could not save form"),
-  });
-
   const uploadMutation = useMutation({
     mutationFn: (file: File) => documentsApi.upload(file, { clientId: id, name: file.name }),
     onSuccess: () => {
@@ -244,9 +270,110 @@ export default function ClientDetailPage() {
     onError: () => toast.error("Could not remove document"),
   });
 
+  const crmActivities: ClientActivity[] = client?.crmActivities ?? [];
+
+  const comments = useMemo(
+    () => crmActivities.filter((a) => a.type === "COMMENT"),
+    [crmActivities],
+  );
+
+  const notes = useMemo(
+    () => crmActivities.filter((a) => a.type === "NOTE"),
+    [crmActivities],
+  );
+
+  const calls = useMemo(
+    () => crmActivities.filter((a) => a.type === "CALL"),
+    [crmActivities],
+  );
+
+  const loggedTasks = useMemo(
+    () => crmActivities.filter((a) => a.type === "TASK"),
+    [crmActivities],
+  );
+
+  const milestones = useMemo(() => {
+    const items: Array<{
+      id: string;
+      name: string;
+      dueDate?: string;
+      status: string;
+      projectName: string;
+      projectId: string;
+    }> = [];
+    for (const p of client?.projects ?? []) {
+      for (const m of p.milestones ?? []) {
+        items.push({
+          id: m.id,
+          name: m.name,
+          dueDate: m.dueDate,
+          status: m.status,
+          projectName: p.name,
+          projectId: p.id,
+        });
+      }
+    }
+    return items.sort((a, b) => {
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+    });
+  }, [client]);
+
+  const clientTasks = useMemo(() => {
+    const items: Array<{
+      id: string;
+      title: string;
+      status: string;
+      projectName: string;
+      projectId: string;
+      milestoneName?: string;
+    }> = [];
+    for (const p of client?.projects ?? []) {
+      for (const t of p.clientTasks ?? []) {
+        items.push({
+          id: t.id,
+          title: t.title,
+          status: t.status,
+          projectName: p.name,
+          projectId: p.id,
+          milestoneName: t.milestone?.name,
+        });
+      }
+    }
+    return items;
+  }, [client]);
+
+  const openClientTasks = useMemo(
+    () => clientTasks.filter((t) => t.status !== "DONE"),
+    [clientTasks],
+  );
+
+  const events = useMemo(() => {
+    const meetingEvents = crmActivities
+      .filter((a) => a.type === "MEETING" || a.metadata?.dueDate)
+      .map((a) => ({
+        id: a.id,
+        title: activityTitle(a) || a.body,
+        dueDate: a.metadata?.dueDate || a.createdAt,
+        source: "activity" as const,
+      }));
+    const milestoneEvents = milestones.map((m) => ({
+      id: m.id,
+      title: m.name,
+      dueDate: m.dueDate || m.id,
+      source: "milestone" as const,
+      projectName: m.projectName,
+      status: m.status,
+    }));
+    return [...meetingEvents, ...milestoneEvents].sort(
+      (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
+    );
+  }, [crmActivities, milestones]);
+
   const activityItems: CrmActivityItem[] = useMemo(() => {
     if (!client) return [];
-    const items: CrmActivityItem[] = [...(client.crmActivities ?? [])];
+    const items: CrmActivityItem[] = [...crmActivities];
     for (const inv of client.invoices ?? []) {
       if (inv.paidAt) {
         items.push({
@@ -274,7 +401,7 @@ export default function ClientDetailPage() {
     return items.sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
-  }, [client]);
+  }, [client, crmActivities]);
 
   const openEdit = () => {
     if (!client) return;
@@ -294,37 +421,6 @@ export default function ClientDetailPage() {
     setEditOpen(true);
   };
 
-  const copySetupLink = async () => {
-    if (!client) return;
-    try {
-      let token = client.setupEnabled ? client.setupToken : null;
-      if (!token) {
-        const res = await clientsApi.enableSetup(id);
-        const payload = res.data?.data ?? res.data;
-        token = payload?.setupToken as string;
-        invalidate();
-      }
-      if (!token) throw new Error("No setup token");
-      await navigator.clipboard.writeText(setupInviteUrl(token));
-      toast.success("Setup link copied");
-    } catch {
-      toast.error("Could not copy setup link");
-    }
-  };
-
-  const toggleRequireNda = async (requireNda: boolean) => {
-    try {
-      if (!client?.setupEnabled) {
-        await clientsApi.enableSetup(id);
-      }
-      await clientsApi.updateSetup(id, { requireNda });
-      invalidate();
-      toast.success(requireNda ? "NDA required" : "NDA not required");
-    } catch {
-      toast.error("Could not update setup");
-    }
-  };
-
   if (isLoading || !client) {
     return (
       <div className="space-y-4">
@@ -335,7 +431,6 @@ export default function ClientDetailPage() {
   }
 
   const isPerson = client.type === "INDIVIDUAL";
-  const progress = client.setupProgress;
 
   return (
     <div className="space-y-4">
@@ -355,11 +450,6 @@ export default function ClientDetailPage() {
                   {client.status}
                 </Badge>
                 <Badge variant="secondary">{isPerson ? "Individual" : "Company"}</Badge>
-                {progress?.setupComplete && (
-                  <Badge variant="success" className="gap-1">
-                    <CheckCircle2 className="h-3 w-3" /> Setup complete
-                  </Badge>
-                )}
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -404,20 +494,6 @@ export default function ClientDetailPage() {
                     {client.phone}
                   </div>
                 )}
-                {client.website && (
-                  <a
-                    href={
-                      client.website.startsWith("http")
-                        ? client.website
-                        : `https://${client.website}`
-                    }
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-primary hover:underline block pl-6 truncate"
-                  >
-                    {client.website}
-                  </a>
-                )}
                 {(client.address || client.city || client.country) && (
                   <p className="text-muted-foreground pl-6 whitespace-pre-wrap">
                     {[client.address, client.city, client.country].filter(Boolean).join(", ")}
@@ -436,12 +512,12 @@ export default function ClientDetailPage() {
                 <p className="font-semibold">{client._count?.invoices ?? client.invoices?.length ?? 0}</p>
               </div>
               <div className="rounded-lg border px-2.5 py-2">
-                <p className="text-xs text-muted-foreground">Documents</p>
-                <p className="font-semibold">{client._count?.documents ?? client.documents?.length ?? 0}</p>
+                <p className="text-xs text-muted-foreground">Tasks</p>
+                <p className="font-semibold">{openClientTasks.length}</p>
               </div>
               <div className="rounded-lg border px-2.5 py-2">
-                <p className="text-xs text-muted-foreground">Deals</p>
-                <p className="font-semibold">{client._count?.deals ?? 0}</p>
+                <p className="text-xs text-muted-foreground">Milestones</p>
+                <p className="font-semibold">{milestones.length}</p>
               </div>
             </div>
 
@@ -451,13 +527,6 @@ export default function ClientDetailPage() {
                 <Link href={`/leads/${client.convertedFromLead.id}`} className="text-sm text-primary hover:underline">
                   {client.convertedFromLead.title}
                 </Link>
-              </div>
-            )}
-
-            {client.user && (
-              <div className="pt-2 border-t">
-                <p className="text-xs uppercase text-muted-foreground mb-1">Portal login</p>
-                <p className="text-sm">{client.user.email}</p>
               </div>
             )}
           </>
@@ -470,23 +539,21 @@ export default function ClientDetailPage() {
             content: (
               <div className="space-y-4">
                 <div className="rounded-lg border p-3 space-y-2">
-                  <div className="flex flex-wrap gap-2">
-                    <Select value={activityType} onValueChange={setActivityType}>
-                      <SelectTrigger className="w-36 h-9">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ACTIVITY_TYPES.map((t) => (
-                          <SelectItem key={t.key} value={t.key}>
-                            {t.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <Select value={activityType} onValueChange={setActivityType}>
+                    <SelectTrigger className="w-36 h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NOTE">Note</SelectItem>
+                      <SelectItem value="COMMENT">Comment</SelectItem>
+                      <SelectItem value="TASK">Task</SelectItem>
+                      <SelectItem value="CALL">Call</SelectItem>
+                      <SelectItem value="MEETING">Event</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <div className="flex gap-2">
                     <Textarea
-                      placeholder="Log a note, task, payment follow-up, or update…"
+                      placeholder="Log activity…"
                       value={activityBody}
                       onChange={(e) => setActivityBody(e.target.value)}
                       className="min-h-[72px]"
@@ -506,15 +573,225 @@ export default function ClientDetailPage() {
             ),
           },
           {
+            id: "comments",
+            label: "Comments",
+            icon: <MessageCircle className="h-3.5 w-3.5" />,
+            content: (
+              <div className="space-y-4">
+                <div className="flex gap-2">
+                  <Textarea
+                    placeholder="Write a comment…"
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                  />
+                  <Button
+                    size="icon"
+                    disabled={!comment.trim() || commentMutation.isPending}
+                    onClick={() => commentMutation.mutate()}
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+                <CrmActivityFeed items={comments} />
+              </div>
+            ),
+          },
+          {
+            id: "notes",
+            label: "Notes",
+            icon: <StickyNote className="h-3.5 w-3.5" />,
+            content: (
+              <div className="space-y-4">
+                <div className="space-y-2 rounded-lg border p-3">
+                  <Input
+                    placeholder="Title (optional)"
+                    value={noteTitle}
+                    onChange={(e) => setNoteTitle(e.target.value)}
+                  />
+                  <Textarea
+                    placeholder="Note"
+                    value={noteBody}
+                    onChange={(e) => setNoteBody(e.target.value)}
+                  />
+                  <Button
+                    size="sm"
+                    disabled={!noteBody.trim() || noteMutation.isPending}
+                    onClick={() => noteMutation.mutate()}
+                  >
+                    Save note
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {notes.map((n) => (
+                    <div key={n.id} className="rounded-lg border px-3 py-2 text-sm">
+                      {activityTitle(n) && <p className="font-medium mb-1">{activityTitle(n)}</p>}
+                      <p className="whitespace-pre-wrap">{n.body}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ),
+          },
+          {
+            id: "events",
+            label: "Events",
+            icon: <Calendar className="h-3.5 w-3.5" />,
+            content: (
+              <div className="space-y-4">
+                <div className="space-y-2 rounded-lg border p-3">
+                  <Input
+                    placeholder="Event title"
+                    value={eventTitle}
+                    onChange={(e) => setEventTitle(e.target.value)}
+                  />
+                  <Input
+                    type="datetime-local"
+                    value={eventDue}
+                    onChange={(e) => setEventDue(e.target.value)}
+                  />
+                  <Textarea
+                    placeholder="Notes (optional)"
+                    value={eventNotes}
+                    onChange={(e) => setEventNotes(e.target.value)}
+                  />
+                  <Button
+                    size="sm"
+                    disabled={!eventTitle.trim() || eventMutation.isPending}
+                    onClick={() => eventMutation.mutate()}
+                  >
+                    Add event
+                  </Button>
+                </div>
+                {events.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No upcoming events.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {events.map((e) => (
+                      <div key={e.id} className="rounded-lg border px-3 py-2 text-sm flex justify-between gap-2">
+                        <div>
+                          <p className="font-medium">{e.title}</p>
+                          {"projectName" in e && e.projectName && (
+                            <p className="text-xs text-muted-foreground">{e.projectName}</p>
+                          )}
+                        </div>
+                        <span className="text-muted-foreground shrink-0">
+                          {new Date(e.dueDate).toLocaleString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ),
+          },
+          {
+            id: "tasks",
+            label: "Tasks",
+            icon: <CheckSquare className="h-3.5 w-3.5" />,
+            content: (
+              <div className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  <Input
+                    className="flex-1 min-w-[180px]"
+                    placeholder="Task title"
+                    value={taskTitle}
+                    onChange={(e) => setTaskTitle(e.target.value)}
+                  />
+                  <Input
+                    type="datetime-local"
+                    value={taskDue}
+                    onChange={(e) => setTaskDue(e.target.value)}
+                  />
+                  <Button
+                    disabled={!taskTitle.trim() || taskLogMutation.isPending}
+                    onClick={() => taskLogMutation.mutate()}
+                  >
+                    Log task
+                  </Button>
+                </div>
+
+                {openClientTasks.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs uppercase text-muted-foreground">Current project tasks</p>
+                    {openClientTasks.map((t) => (
+                      <Link
+                        key={t.id}
+                        href={`/projects/${t.projectId}`}
+                        className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-muted/40"
+                      >
+                        <div>
+                          <span>{t.title}</span>
+                          <p className="text-xs text-muted-foreground">
+                            {t.projectName}
+                            {t.milestoneName ? ` · ${t.milestoneName}` : ""}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="text-[10px]">{t.status}</Badge>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+
+                {loggedTasks.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs uppercase text-muted-foreground">Logged tasks</p>
+                    {loggedTasks.map((t) => (
+                      <div key={t.id} className="rounded-lg border px-3 py-2 text-sm flex justify-between gap-2">
+                        <span>{activityTitle(t) || t.body}</span>
+                        {t.metadata?.dueDate && (
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(t.metadata.dueDate).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {openClientTasks.length === 0 && loggedTasks.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No open tasks.</p>
+                )}
+              </div>
+            ),
+          },
+          {
+            id: "milestones",
+            label: "Milestones",
+            icon: <Calendar className="h-3.5 w-3.5" />,
+            content:
+              milestones.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No milestones on client projects yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {milestones.map((m) => (
+                    <Link
+                      key={m.id}
+                      href={`/projects/${m.projectId}`}
+                      className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-sm hover:bg-muted/40"
+                    >
+                      <div>
+                        <p className="font-medium">{m.name}</p>
+                        <p className="text-xs text-muted-foreground">{m.projectName}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <Badge variant="outline" className="text-[10px] mb-1">{m.status}</Badge>
+                        {m.dueDate && (
+                          <p className="text-xs text-muted-foreground">{formatDate(m.dueDate)}</p>
+                        )}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              ),
+          },
+          {
             id: "projects",
             label: "Projects",
             icon: <FolderKanban className="h-3.5 w-3.5" />,
             content: (
               <div className="space-y-4">
                 <div className="flex justify-between items-center gap-2">
-                  <p className="text-sm text-muted-foreground">
-                    Projects linked to this client
-                  </p>
+                  <p className="text-sm text-muted-foreground">Projects for this client</p>
                   <Button size="sm" onClick={() => setProjectOpen(true)}>
                     <Plus className="h-4 w-4 mr-1" /> New project
                   </Button>
@@ -553,17 +830,40 @@ export default function ClientDetailPage() {
             ),
           },
           {
+            id: "calls",
+            label: "Calls",
+            icon: <Phone className="h-3.5 w-3.5" />,
+            content: (
+              <div className="space-y-4">
+                <div className="space-y-2 rounded-lg border p-3">
+                  <Input
+                    placeholder="Phone number"
+                    value={callTo || client.phone || ""}
+                    onChange={(e) => setCallTo(e.target.value)}
+                  />
+                  <Textarea
+                    placeholder="Call notes"
+                    value={callNotes}
+                    onChange={(e) => setCallNotes(e.target.value)}
+                  />
+                  <Button
+                    size="sm"
+                    disabled={callMutation.isPending}
+                    onClick={() => callMutation.mutate()}
+                  >
+                    Log call
+                  </Button>
+                </div>
+                <CrmActivityFeed items={calls} />
+              </div>
+            ),
+          },
+          {
             id: "invoices",
             label: "Invoices",
             icon: <Receipt className="h-3.5 w-3.5" />,
             content: (
               <div className="space-y-4">
-                <div className="flex justify-between items-center gap-2">
-                  <p className="text-sm text-muted-foreground">All invoices for this client</p>
-                  <Button size="sm" variant="outline" asChild>
-                    <Link href={`/invoices?clientId=${id}`}>View in Invoices</Link>
-                  </Button>
-                </div>
                 {(client.invoices ?? []).length === 0 ? (
                   <p className="text-sm text-muted-foreground">No invoices yet.</p>
                 ) : (
@@ -623,29 +923,27 @@ export default function ClientDetailPage() {
                   <div>
                     <p className="text-sm font-medium">Pre-work documents</p>
                     <p className="text-xs text-muted-foreground">
-                      Contracts, briefs, IDs, and other files needed before starting work
+                      Contracts, briefs, and files needed before starting work
                     </p>
                   </div>
-                  <div>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) uploadMutation.mutate(file);
-                        e.target.value = "";
-                      }}
-                    />
-                    <Button
-                      size="sm"
-                      disabled={uploadMutation.isPending}
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <Upload className="h-4 w-4 mr-1" />
-                      {uploadMutation.isPending ? "Uploading…" : "Upload"}
-                    </Button>
-                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) uploadMutation.mutate(file);
+                      e.target.value = "";
+                    }}
+                  />
+                  <Button
+                    size="sm"
+                    disabled={uploadMutation.isPending}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload className="h-4 w-4 mr-1" />
+                    {uploadMutation.isPending ? "Uploading…" : "Upload"}
+                  </Button>
                 </div>
                 {(client.documents ?? []).length === 0 ? (
                   <p className="text-sm text-muted-foreground">No documents uploaded yet.</p>
@@ -655,8 +953,6 @@ export default function ClientDetailPage() {
                       (doc: {
                         id: string;
                         name: string;
-                        mimeType?: string;
-                        size?: number;
                         createdAt: string;
                         uploadedBy?: { firstName?: string; lastName?: string };
                       }) => (
@@ -666,12 +962,7 @@ export default function ClientDetailPage() {
                         >
                           <div className="min-w-0">
                             <p className="font-medium truncate">{doc.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {formatDate(doc.createdAt)}
-                              {doc.uploadedBy
-                                ? ` · ${[doc.uploadedBy.firstName, doc.uploadedBy.lastName].filter(Boolean).join(" ")}`
-                                : ""}
-                            </p>
+                            <p className="text-xs text-muted-foreground">{formatDate(doc.createdAt)}</p>
                           </div>
                           <div className="flex gap-1 shrink-0">
                             <Button
@@ -683,10 +974,6 @@ export default function ClientDetailPage() {
                                   const payload = res.data?.data ?? res.data;
                                   if (payload?.url) {
                                     window.open(payload.url, "_blank", "noopener,noreferrer");
-                                  } else {
-                                    toast.message("Download ready", {
-                                      description: doc.name,
-                                    });
                                   }
                                 } catch {
                                   toast.error("Could not download document");
@@ -701,7 +988,7 @@ export default function ClientDetailPage() {
                               onClick={async () => {
                                 const ok = await confirm({
                                   title: "Delete document?",
-                                  description: `Remove "${doc.name}"? This cannot be undone.`,
+                                  description: `Remove "${doc.name}"?`,
                                   confirmLabel: "Delete",
                                   destructive: true,
                                 });
@@ -713,111 +1000,6 @@ export default function ClientDetailPage() {
                           </div>
                         </div>
                       ),
-                    )}
-                  </div>
-                )}
-              </div>
-            ),
-          },
-          {
-            id: "setup",
-            label: "Setup",
-            icon: <ClipboardList className="h-3.5 w-3.5" />,
-            content: (
-              <div className="space-y-4">
-                <div className="flex flex-wrap gap-2">
-                  <Button size="sm" variant="outline" onClick={copySetupLink}>
-                    <Link2 className="h-4 w-4 mr-1" /> Copy setup link
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setAssignOpen(true)}>
-                    <ClipboardList className="h-4 w-4 mr-1" /> Assign form
-                  </Button>
-                </div>
-
-                <div className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2.5">
-                  <Label htmlFor="require-nda" className="text-sm font-normal">
-                    Require NDA before work
-                  </Label>
-                  <Switch
-                    id="require-nda"
-                    checked={!!client.requireNda}
-                    onCheckedChange={toggleRequireNda}
-                  />
-                </div>
-
-                {progress && (
-                  <div className="flex flex-wrap gap-1.5">
-                    <Badge variant={progress.accountDone ? "success" : "secondary"}>
-                      Account {progress.accountDone ? "✓" : "pending"}
-                    </Badge>
-                    <Badge variant={progress.formsComplete ? "success" : "secondary"}>
-                      Forms {progress.formsDone}/{progress.formsTotal}
-                    </Badge>
-                    {progress.requireNda && (
-                      <Badge variant={progress.ndaDone ? "success" : "secondary"}>
-                        NDA {progress.ndaDone ? "✓" : "pending"}
-                      </Badge>
-                    )}
-                  </div>
-                )}
-
-                {(client.formAssignments ?? []).length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No onboarding forms assigned.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {(client.formAssignments ?? []).map(
-                      (a: {
-                        id: string;
-                        status: string;
-                        form: {
-                          id: string;
-                          title: string;
-                          status: string;
-                          secureToken: string;
-                        };
-                      }) => {
-                        const link = publicFormUrl(a.form.secureToken, id);
-                        return (
-                          <div key={a.id} className="rounded-lg border p-3 space-y-2 text-sm">
-                            <div className="flex items-start justify-between gap-2">
-                              <div>
-                                <p className="font-medium">{a.form.title}</p>
-                                <div className="flex gap-2 mt-1">
-                                  <Badge variant="outline" className="text-[10px]">
-                                    {a.form.status}
-                                  </Badge>
-                                  <Badge variant="secondary" className="text-[10px]">
-                                    {a.status}
-                                  </Badge>
-                                </div>
-                              </div>
-                              <Button size="sm" variant="ghost" asChild>
-                                <Link href={`/onboarding/${a.form.id}/builder`}>Edit</Link>
-                              </Button>
-                            </div>
-                            {a.form.status === "PUBLISHED" && (
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-8 text-xs"
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(link);
-                                    toast.success("Client link copied");
-                                  }}
-                                >
-                                  <Copy className="h-3.5 w-3.5 mr-1" /> Copy link
-                                </Button>
-                                <Button size="sm" variant="ghost" className="h-8 text-xs" asChild>
-                                  <a href={link} target="_blank" rel="noreferrer">
-                                    <ExternalLink className="h-3.5 w-3.5 mr-1" /> Open
-                                  </a>
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      },
                     )}
                   </div>
                 )}
@@ -939,66 +1121,6 @@ export default function ClientDetailPage() {
               onClick={() => projectMutation.mutate()}
             >
               Create
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Onboarding form</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <Select
-              value={assignMode}
-              onValueChange={(v) => setAssignMode(v as "assign" | "create")}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="assign">Assign existing form</SelectItem>
-                <SelectItem value="create">Create form for client</SelectItem>
-              </SelectContent>
-            </Select>
-            {assignMode === "assign" ? (
-              <Select
-                value={assignFormId || "none"}
-                onValueChange={(v) => setAssignFormId(v === "none" ? "" : v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select form" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Select form</SelectItem>
-                  {catalogForms.map((f: { id: string; title: string; status: string }) => (
-                    <SelectItem key={f.id} value={f.id}>
-                      {f.title} ({f.status})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Input
-                placeholder="Form title"
-                value={createFormTitle}
-                onChange={(e) => setCreateFormTitle(e.target.value)}
-              />
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAssignOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={
-                assignMutation.isPending ||
-                (assignMode === "assign" ? !assignFormId : !createFormTitle.trim())
-              }
-              onClick={() => assignMutation.mutate()}
-            >
-              Confirm
             </Button>
           </DialogFooter>
         </DialogContent>

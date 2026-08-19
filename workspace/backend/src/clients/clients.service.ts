@@ -117,7 +117,20 @@ export class ClientsService {
         },
         projects: {
           orderBy: { createdAt: 'desc' },
-          include: { _count: { select: { issues: true, milestones: true } } },
+          include: {
+            milestones: {
+              where: { deletedAt: null },
+              orderBy: [{ dueDate: 'asc' }, { sortOrder: 'asc' }],
+            },
+            clientTasks: {
+              where: { deletedAt: null },
+              orderBy: [{ sortOrder: 'asc' }],
+              include: {
+                milestone: { select: { id: true, name: true } },
+              },
+            },
+            _count: { select: { issues: true, milestones: true } },
+          },
         },
         deals: { orderBy: { createdAt: 'desc' }, take: 20 },
         invoices: {
@@ -209,6 +222,10 @@ export class ClientsService {
         createdById: userId,
         type: dto.type,
         body: dto.body,
+        metadata: {
+          ...(dto.title ? { title: dto.title } : {}),
+          ...(dto.dueDate ? { dueDate: dto.dueDate } : {}),
+        },
       },
       include: {
         createdBy: { select: { id: true, firstName: true, lastName: true } },

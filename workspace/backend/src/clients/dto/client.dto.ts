@@ -222,6 +222,16 @@ export class CreateClientActivityDto {
   @ApiProperty()
   @IsString()
   body: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  dueDate?: string;
 }
 
 export class SignSetupNdaDto {

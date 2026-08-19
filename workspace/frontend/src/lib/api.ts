@@ -314,7 +314,7 @@ export const clientsApi = {
   create: (data: Record<string, unknown>) => api.post("/clients", data),
   update: (id: string, data: Record<string, unknown>) => api.patch(`/clients/${id}`, data),
   remove: (id: string) => api.delete(`/clients/${id}`),
-  addActivity: (id: string, data: { type: string; body: string }) =>
+  addActivity: (id: string, data: { type: string; body: string; title?: string; dueDate?: string }) =>
     api.post(`/clients/${id}/activities`, data),
   listOnboardingForms: (clientId: string) =>
     api.get(`/clients/${clientId}/onboarding-forms`),
