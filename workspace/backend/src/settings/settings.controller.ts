@@ -1,16 +1,33 @@
-import { Body, Controller, Get, Patch, Post } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  Patch,
+  Post,
+  UploadedFile,
+  UseInterceptors,
+  BadRequestException,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
+import { memoryStorage } from 'multer';
 import { SettingsService } from './settings.service';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators';
 import {
   PushTokenDto,
   TestSmtpDto,
   UnregisterPushDto,
+  UpdateOrganizationDto,
   UpdatePasswordDto,
   UpdatePreferencesDto,
   UpdateProfileDto,
   UpdateWorkspaceDto,
 } from './dto/settings.dto';
+
+const brandMulterOptions = {
+  storage: memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+};
 
 @ApiTags('settings')
 @ApiBearerAuth()
@@ -26,6 +43,50 @@ export class SettingsController {
   @Patch('profile')
   updateProfile(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateProfileDto) {
     return this.settings.updateProfile(user, dto);
+  }
+
+  @Patch('organization')
+  updateOrganization(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateOrganizationDto,
+  ) {
+    return this.settings.updateOrganization(user, dto);
+  }
+
+  @Post('organization/logo')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+      required: ['file'],
+    },
+  })
+  @UseInterceptors(FileInterceptor('file', brandMulterOptions))
+  uploadLogo(
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('Please choose a logo image');
+    return this.settings.uploadOrganizationAsset(user, 'logo', file);
+  }
+
+  @Post('organization/favicon')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+      required: ['file'],
+    },
+  })
+  @UseInterceptors(FileInterceptor('file', brandMulterOptions))
+  uploadFavicon(
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('Please choose a favicon image');
+    return this.settings.uploadOrganizationAsset(user, 'favicon', file);
   }
 
   @Patch('preferences')

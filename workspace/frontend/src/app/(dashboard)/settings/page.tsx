@@ -27,7 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { hasRole, isClientUser, useAuthStore } from "@/lib/auth-store";
 import { useSidebarStore } from "@/lib/sidebar-store";
-import { integrationsApi, settingsApi } from "@/lib/api";
+import { settingsApi } from "@/lib/api";
 import { toast } from "sonner";
 
 type NotifPrefs = {
@@ -44,7 +44,7 @@ const DEFAULT_PREFS: NotifPrefs = {
   assignments: true,
   projects: true,
   comments: true,
-  clientActivity: false,
+  clientActivity: true,
   emailReceive: true,
   emailDigest: false,
   push: true,
@@ -59,6 +59,23 @@ type SettingsPayload = {
     pushRegistered?: boolean;
   };
   capabilities?: { canManageMail?: boolean; canManageWorkspace?: boolean };
+  branding?: { name?: string | null; logo?: string | null; favicon?: string | null };
+  organization?: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    website?: string;
+    logo?: string | null;
+    favicon?: string | null;
+    address?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    postalCode?: string;
+    registrationNo?: string;
+    gstNumber?: string;
+    panNumber?: string;
+  } | null;
   workspace?: {
     clientPortalAccess?: boolean;
     require2fa?: boolean;
@@ -90,30 +107,20 @@ type SettingsPayload = {
   } | null;
 };
 
-const INTEGRATION_PROVIDERS = [
-  {
-    key: "emailSmtp",
-    title: "SMTP Email",
-    description: "Outbound mail for invites, invoices, and notifications",
-  },
-  {
-    key: "firebase",
-    title: "Firebase Cloud Messaging",
-    description: "Push notifications on this browser",
-  },
-  {
-    key: "twilio",
-    title: "Twilio Voice",
-    description: "Outbound dialing and call status webhooks",
-    env: "TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER",
-  },
-  {
-    key: "whatsapp",
-    title: "WhatsApp Cloud API",
-    description: "Send and receive WhatsApp on lead and deal threads",
-    env: "WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_VERIFY_TOKEN",
-  },
-] as const;
+const EMPTY_ORG = {
+  name: "",
+  email: "",
+  phone: "",
+  website: "",
+  address: "",
+  city: "",
+  state: "",
+  country: "",
+  postalCode: "",
+  registrationNo: "",
+  gstNumber: "",
+  panNumber: "",
+};
 
 function unwrap<T>(res: { data?: unknown }): T {
   const body = res.data as { data?: unknown } | undefined;
@@ -165,6 +172,7 @@ export default function SettingsPage() {
     auditLogging: true,
     sendNotificationEmails: true,
   });
+  const [org, setOrg] = useState(EMPTY_ORG);
 
   useEffect(() => {
     const next = searchParams.get("tab");
@@ -175,17 +183,7 @@ export default function SettingsPage() {
     queryKey: ["settings"],
     queryFn: async () => unwrap<SettingsPayload>(await settingsApi.get()),
   });
-
-  const { data: integrationData, isLoading: integrationsLoading } = useQuery({
-    queryKey: ["integrations", "status"],
-    queryFn: () => integrationsApi.status(),
-    retry: false,
-    enabled: canManageMail,
-  });
-  const flags = (integrationData?.data?.data ?? integrationData?.data ?? {}) as Record<
-    string,
-    unknown
-  >;
+  const canManageWorkspace = Boolean(settings?.capabilities?.canManageWorkspace || isAdmin);
 
   useEffect(() => {
     if (!settings) return;
@@ -211,6 +209,23 @@ export default function SettingsPage() {
         require2fa: settings.workspace.require2fa ?? false,
         auditLogging: settings.workspace.auditLogging ?? true,
         sendNotificationEmails: settings.workspace.sendNotificationEmails ?? true,
+      });
+    }
+    if (settings.organization) {
+      setOrg({
+        ...EMPTY_ORG,
+        name: settings.organization.name || "",
+        email: settings.organization.email || "",
+        phone: settings.organization.phone || "",
+        website: settings.organization.website || "",
+        address: settings.organization.address || "",
+        city: settings.organization.city || "",
+        state: settings.organization.state || "",
+        country: settings.organization.country || "",
+        postalCode: settings.organization.postalCode || "",
+        registrationNo: settings.organization.registrationNo || "",
+        gstNumber: settings.organization.gstNumber || "",
+        panNumber: settings.organization.panNumber || "",
       });
     }
   }, [settings]);
@@ -266,7 +281,6 @@ export default function SettingsPage() {
       setSmtp((s) => ({ ...s, pass: "" }));
       toast.success("SMTP saved — new mail will use these settings");
       invalidate();
-      queryClient.invalidateQueries({ queryKey: ["integrations", "status"] });
     },
     onError: (err) => toast.error(errorMessage(err, "Could not save SMTP")),
   });
@@ -285,7 +299,6 @@ export default function SettingsPage() {
       setWebJson("");
       toast.success("Firebase saved — push can be sent on this workspace");
       invalidate();
-      queryClient.invalidateQueries({ queryKey: ["integrations", "status"] });
     },
     onError: (err) => toast.error(errorMessage(err, "Could not save Firebase")),
   });
@@ -298,6 +311,39 @@ export default function SettingsPage() {
     },
     onError: (err) => toast.error(errorMessage(err, "Could not save workspace settings")),
   });
+
+  const orgMutation = useMutation({
+    mutationFn: () => settingsApi.updateOrganization(org),
+    onSuccess: (res) => {
+      const payload = unwrap<{ name?: string; logo?: string | null; favicon?: string | null }>(res);
+      updateUser({
+        companyName: payload?.name || org.name,
+        ...(payload?.logo ? { companyLogo: payload.logo } : {}),
+        ...(payload?.favicon ? { companyFavicon: payload.favicon } : {}),
+      });
+      toast.success("Organization details saved");
+      invalidate();
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not save organization")),
+  });
+
+  const uploadBrand = async (kind: "logo" | "favicon", file: File) => {
+    try {
+      const res =
+        kind === "logo"
+          ? await settingsApi.uploadOrganizationLogo(file)
+          : await settingsApi.uploadOrganizationFavicon(file);
+      const payload = unwrap<{ name?: string; logo?: string | null; favicon?: string | null }>(res);
+      updateUser({
+        ...(payload?.logo ? { companyLogo: payload.logo } : {}),
+        ...(payload?.favicon ? { companyFavicon: payload.favicon } : {}),
+      });
+      toast.success(kind === "logo" ? "Logo updated" : "Favicon updated");
+      invalidate();
+    } catch (err) {
+      toast.error(errorMessage(err, `Could not upload ${kind}`));
+    }
+  };
 
   const savePrefs = (next: NotifPrefs) => {
     setPrefs(next);
@@ -344,7 +390,7 @@ export default function SettingsPage() {
           )}
         </TabsList>
 
-        <TabsContent value="profile" className="mt-6">
+        <TabsContent value="profile" className="mt-6 space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>Profile</CardTitle>
@@ -365,13 +411,6 @@ export default function SettingsPage() {
                       <Input value={settings?.profile?.email || user?.email || ""} type="email" disabled />
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Company</Label>
-                    <Input
-                      value={settings?.profile?.companyName || user?.companyName || ""}
-                      disabled
-                    />
-                  </div>
                   <p className="text-xs text-muted-foreground capitalize">Role: {user?.role}</p>
                   <Button
                     onClick={() => profileMutation.mutate()}
@@ -383,6 +422,25 @@ export default function SettingsPage() {
               )}
             </CardContent>
           </Card>
+
+          {canManageWorkspace && (
+            <OrganizationCard
+              org={org}
+              setOrg={setOrg}
+              logo={settings?.organization?.logo || settings?.branding?.logo}
+              favicon={settings?.organization?.favicon || settings?.branding?.favicon}
+              loading={isLoading}
+              saving={orgMutation.isPending}
+              onSave={() => {
+                if (!org.name.trim() || !org.email.trim()) {
+                  toast.error("Organization name and email are required");
+                  return;
+                }
+                orgMutation.mutate();
+              }}
+              onUpload={uploadBrand}
+            />
+          )}
         </TabsContent>
 
         <TabsContent value="notifications" className="mt-6 space-y-4">
@@ -394,15 +452,15 @@ export default function SettingsPage() {
             <CardContent className="space-y-4">
               {[
                 { key: "push" as const, label: "Push notifications", desc: "Browser alerts when you are away" },
-                { key: "assignments" as const, label: "Issue assignments", desc: "When a task is assigned to you" },
+                { key: "assignments" as const, label: "Issue assignments", desc: "When tasks you work on are created, edited, or deleted" },
                 { key: "projects" as const, label: "Project updates", desc: "Milestones, status changes, and board activity" },
-                { key: "comments" as const, label: "Comments & mentions", desc: "When someone mentions you" },
+                { key: "comments" as const, label: "Comments & mentions", desc: "When someone comments on work you follow" },
                 ...(!isClient
                   ? [
                       {
                         key: "clientActivity" as const,
                         label: "Client activity",
-                        desc: "Portal uploads, form submissions, and logins",
+                        desc: "When a client adds, edits, or deletes tasks, comments, or documents",
                       },
                     ]
                   : []),
@@ -772,42 +830,6 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
-
-            <div className="space-y-3">
-              {integrationsLoading
-                ? Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24" />)
-                : INTEGRATION_PROVIDERS.filter((p) => p.key !== "firebase").map((p) => {
-                    const connected =
-                      p.key === "emailSmtp"
-                        ? Boolean(settings?.smtp?.configured || flags.emailSmtp)
-                        : Boolean(flags[p.key]);
-                    return (
-                      <Card key={p.key}>
-                        <CardHeader className="pb-2">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <CardTitle className="text-base">{p.title}</CardTitle>
-                              <CardDescription>{p.description}</CardDescription>
-                            </div>
-                            <Badge variant={connected ? "success" : "secondary"} className="gap-1">
-                              {connected ? (
-                                <CheckCircle2 className="h-3 w-3" />
-                              ) : (
-                                <CircleDashed className="h-3 w-3" />
-                              )}
-                              {connected ? "Connected" : "Not configured"}
-                            </Badge>
-                          </div>
-                        </CardHeader>
-                        {"env" in p && p.env ? (
-                          <CardContent className="text-xs text-muted-foreground font-mono">
-                            {p.env}
-                          </CardContent>
-                        ) : null}
-                      </Card>
-                    );
-                  })}
-            </div>
           </TabsContent>
         )}
 
@@ -858,6 +880,138 @@ export default function SettingsPage() {
           </TabsContent>
         )}
       </Tabs>
+    </div>
+  );
+}
+
+function OrganizationCard({
+  org,
+  setOrg,
+  logo,
+  favicon,
+  loading,
+  saving,
+  onSave,
+  onUpload,
+}: {
+  org: typeof EMPTY_ORG;
+  setOrg: (next: typeof EMPTY_ORG) => void;
+  logo?: string | null;
+  favicon?: string | null;
+  loading: boolean;
+  saving: boolean;
+  onSave: () => void;
+  onUpload: (kind: "logo" | "favicon", file: File) => void;
+}) {
+  const field = (key: keyof typeof EMPTY_ORG, label: string, required = false) => (
+    <div className="space-y-2">
+      <Label>
+        {label}
+        {required ? " *" : ""}
+      </Label>
+      <Input
+        value={org[key]}
+        required={required}
+        type={key === "email" ? "email" : "text"}
+        onChange={(e) => setOrg({ ...org, [key]: e.target.value })}
+      />
+    </div>
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Organization</CardTitle>
+        <CardDescription>
+          Logo, favicon, and company details used across TaskFlow
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {loading ? (
+          <Skeleton className="h-40" />
+        ) : (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <BrandUpload
+                label="Organization logo"
+                hint="PNG, JPG, WebP, or SVG · up to 5 MB. Shown in the sidebar."
+                src={logo}
+                onFile={(file) => onUpload("logo", file)}
+              />
+              <BrandUpload
+                label="Favicon"
+                hint="PNG, SVG, or ICO · up to 1 MB. Browser tab icon."
+                src={favicon}
+                onFile={(file) => onUpload("favicon", file)}
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {field("name", "Organization name", true)}
+              {field("email", "Organization email", true)}
+              {field("phone", "Phone")}
+              {field("website", "Website")}
+            </div>
+            <div className="space-y-2">
+              <Label>Address</Label>
+              <Input
+                value={org.address}
+                onChange={(e) => setOrg({ ...org, address: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {field("city", "City")}
+              {field("state", "State / emirate")}
+              {field("country", "Country")}
+              {field("postalCode", "Postal code")}
+              {field("registrationNo", "Registration no.")}
+              {field("gstNumber", "GST / VAT no.")}
+            </div>
+            <Button onClick={onSave} disabled={saving || !org.name.trim() || !org.email.trim()}>
+              {saving ? "Saving…" : "Save organization"}
+            </Button>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function BrandUpload({
+  label,
+  hint,
+  src,
+  onFile,
+}: {
+  label: string;
+  hint: string;
+  src?: string | null;
+  onFile: (file: File) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <div className="flex items-center gap-3">
+        <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-md border bg-muted">
+          {src ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={src} alt="" className="h-full w-full object-contain" />
+          ) : (
+            <Building2 className="h-6 w-6 text-muted-foreground" />
+          )}
+        </div>
+        <div className="space-y-2">
+          <Input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon,.ico"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) onFile(file);
+              e.target.value = "";
+            }}
+          />
+          <p className="text-xs text-muted-foreground">{hint}</p>
+        </div>
+      </div>
     </div>
   );
 }

@@ -46,5 +46,34 @@ export const LEAD_SOURCES = [
   "OTHER",
 ] as const;
 
+export const LEAD_SOURCE_LABELS: Record<string, string> = {
+  WEBSITE: "Website",
+  REFERRAL: "Referral",
+  COLD_CALL: "Cold call",
+  EMAIL: "Email",
+  SOCIAL: "Social",
+  EVENT: "Event",
+  PARTNER: "Partner",
+  OTHER: "Other",
+};
+
+export const LEAD_STATUS_CHART_COLORS: Record<string, string> = {
+  NEW: "#0f6661",
+  CONTACTED: "#b8844f",
+  QUALIFIED: "#2f5d5a",
+  PROPOSAL: "#c9a66b",
+  WON: "#0f766e",
+  LOST: "#b42318",
+};
+
+export const DEAL_STATUS_CHART_COLORS: Record<string, string> = {
+  OPEN: "#0f6661",
+  QUALIFICATION: "#2f5d5a",
+  PROPOSAL: "#b8844f",
+  NEGOTIATION: "#c9a66b",
+  WON: "#0f766e",
+  LOST: "#b42318",
+};
+
 export type LeadStatusKey = (typeof LEAD_STATUSES)[number]["key"];
 export type DealStatusKey = (typeof DEAL_STATUSES)[number]["key"];

@@ -15,6 +15,7 @@ type SettingsPayload = {
     compactSidebar?: boolean;
     theme?: "light" | "dark" | null;
   };
+  branding?: { name?: string | null; logo?: string | null; favicon?: string | null };
   firebaseWeb?: {
     apiKey: string;
     authDomain?: string;
@@ -36,6 +37,7 @@ function unwrap(res: { data?: unknown }) {
 export function SettingsEffects() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const userId = useAuthStore((s) => s.user?.id);
+  const updateUser = useAuthStore((s) => s.updateUser);
   const setCollapsed = useSidebarStore((s) => s.setCollapsed);
   const { setTheme } = useTheme();
   const applied = useRef<string | null>(null);
@@ -58,6 +60,29 @@ export function SettingsEffects() {
       setTheme(data.preferences.theme);
     }
   }, [data, setCollapsed, setTheme, userId]);
+
+  useEffect(() => {
+    if (!data?.branding) return;
+    const logo = data.branding.logo || undefined;
+    const favicon = data.branding.favicon || undefined;
+    const name = data.branding.name || undefined;
+    updateUser({
+      ...(name ? { companyName: name } : {}),
+      ...(logo ? { companyLogo: logo } : {}),
+      ...(favicon ? { companyFavicon: favicon } : {}),
+    });
+    const href = favicon || logo;
+    if (!href) return;
+    const existing = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+    if (existing) {
+      existing.href = href;
+    } else {
+      const link = document.createElement("link");
+      link.rel = "icon";
+      link.href = href;
+      document.head.appendChild(link);
+    }
+  }, [data?.branding, updateUser]);
 
   useEffect(() => {
     if (!data?.firebaseWeb || !data.preferences?.notifications?.push) return;

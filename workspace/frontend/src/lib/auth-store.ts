@@ -11,6 +11,8 @@ export interface User {
   avatar?: string;
   companyId?: string;
   companyName?: string;
+  companyLogo?: string;
+  companyFavicon?: string;
   /** Linked CRM client record — present for portal users */
   clientId?: string;
 }
@@ -119,7 +121,7 @@ export function normalizeAuthUser(
 
   const company =
     raw.company && typeof raw.company === "object"
-      ? (raw.company as { name?: string })
+      ? (raw.company as { name?: string; logo?: string; favicon?: string })
       : null;
 
   const clientIdRaw = raw.clientId;
@@ -151,6 +153,14 @@ export function normalizeAuthUser(
       (typeof raw.companyName === "string" && raw.companyName) ||
       company?.name ||
       companyNameFallback ||
+      undefined,
+    companyLogo:
+      (typeof raw.companyLogo === "string" && raw.companyLogo) ||
+      company?.logo ||
+      undefined,
+    companyFavicon:
+      (typeof raw.companyFavicon === "string" && raw.companyFavicon) ||
+      company?.favicon ||
       undefined,
     clientId,
   };

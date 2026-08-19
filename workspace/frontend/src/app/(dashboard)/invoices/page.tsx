@@ -11,6 +11,9 @@ import {
   CheckCircle2,
   Trash2,
   ExternalLink,
+  MoreHorizontal,
+  Eye,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -42,7 +45,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { clientsApi, invoicesApi, projectsApi } from "@/lib/api";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { isClientUser, useAuthStore } from "@/lib/auth-store";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
@@ -309,12 +318,13 @@ export default function InvoicesPage() {
           <CardContent className="p-0">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Invoice</TableHead>
-                  <TableHead className="hidden md:table-cell">Client</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="w-[1%] text-right">Actions</TableHead>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="h-11">Invoice</TableHead>
+                  <TableHead className="hidden h-11 md:table-cell">Client</TableHead>
+                  <TableHead className="hidden h-11 lg:table-cell">Due</TableHead>
+                  <TableHead className="h-11">Status</TableHead>
+                  <TableHead className="h-11 text-right">Amount</TableHead>
+                  <TableHead className="h-11 w-36 text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -332,84 +342,150 @@ export default function InvoicesPage() {
                     client?: { name?: string };
                     project?: { name?: string };
                   }) => (
-                    <TableRow key={inv.id}>
-                      <TableCell>
+                    <TableRow key={inv.id} className="h-14">
+                      <TableCell className="py-2.5">
                         <Link
                           href={`/invoices/${inv.id}`}
-                          className="font-medium hover:underline"
+                          className="flex min-w-0 items-baseline gap-2 hover:underline"
                         >
-                          {inv.number} · {inv.title}
+                          <span className="shrink-0 font-mono text-sm font-semibold">
+                            {inv.number}
+                          </span>
+                          <span className="truncate text-sm text-muted-foreground">
+                            {inv.title}
+                          </span>
                         </Link>
-                        <p className="mt-0.5 text-xs text-muted-foreground md:hidden">
+                      </TableCell>
+                      <TableCell className="hidden py-2.5 md:table-cell">
+                        <div className="max-w-[240px] truncate text-sm">
                           {inv.client?.name || "—"}
-                        </p>
-                        {inv.dueDate && (
-                          <p className="text-xs text-muted-foreground">
-                            Due {formatDate(inv.dueDate)}
-                          </p>
-                        )}
+                          {inv.project?.name ? (
+                            <span className="text-muted-foreground">
+                              {" "}
+                              · {inv.project.name}
+                            </span>
+                          ) : null}
+                        </div>
                       </TableCell>
-                      <TableCell className="hidden md:table-cell text-muted-foreground">
-                        {inv.client?.name || "—"}
-                        {inv.project?.name ? ` · ${inv.project.name}` : ""}
+                      <TableCell className="hidden py-2.5 whitespace-nowrap text-sm text-muted-foreground lg:table-cell">
+                        {inv.dueDate ? formatDate(inv.dueDate) : "—"}
                       </TableCell>
-                      <TableCell>
-                        <Badge variant={statusVariant[inv.status] || "secondary"}>
-                          {inv.status}
+                      <TableCell className="py-2.5">
+                        <Badge
+                          variant={statusVariant[inv.status] || "secondary"}
+                          className="capitalize"
+                        >
+                          {inv.status.toLowerCase()}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right font-medium tabular-nums">
+                      <TableCell className="py-2.5 text-right font-medium tabular-nums whitespace-nowrap">
                         {inv.currency} {Number(inv.amount).toLocaleString()}
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex flex-wrap items-center justify-end gap-1">
-                          {inv.pdfStorageUrl && (
-                            <Button size="sm" variant="outline" asChild>
+                      <TableCell className="py-2.5 text-right">
+                        <div className="flex flex-nowrap items-center justify-end gap-0.5">
+                          {inv.pdfStorageUrl ? (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8"
+                              asChild
+                            >
                               <a
                                 href={inv.pdfStorageUrl}
                                 target="_blank"
                                 rel="noreferrer"
+                                title="Open PDF"
                               >
-                                <ExternalLink className="h-3.5 w-3.5" />
-                                PDF
+                                <FileText className="h-4 w-4" />
                               </a>
                             </Button>
-                          )}
-                          <Button size="sm" variant="outline" asChild>
-                            <Link href={`/invoices/${inv.id}`}>Open</Link>
-                          </Button>
-                          {canManage && inv.status === "DRAFT" && (
-                            <Button
-                              size="sm"
-                              onClick={() => sendMutation.mutate(inv.id)}
-                              disabled={sendMutation.isPending}
-                            >
-                              <Send className="h-3.5 w-3.5" /> Send
-                            </Button>
-                          )}
-                          {canManage && inv.status === "SENT" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => paidMutation.mutate(inv.id)}
-                            >
-                              <CheckCircle2 className="h-3.5 w-3.5" /> Paid
-                            </Button>
-                          )}
-                          {canManage && inv.status === "DRAFT" && (
+                          ) : null}
+                          {canManage && inv.status === "DRAFT" ? (
                             <Button
                               size="icon"
                               variant="ghost"
-                              onClick={async () => {
-                                const ok = await confirm(
-                                  trashConfirm("invoice", `${inv.number} · ${inv.title}`),
-                                );
-                                if (ok) deleteMutation.mutate(inv.id);
-                              }}
+                              className="h-8 w-8"
+                              title="Send to client"
+                              onClick={() => sendMutation.mutate(inv.id)}
+                              disabled={sendMutation.isPending}
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Send className="h-4 w-4" />
                             </Button>
-                          )}
+                          ) : null}
+                          {canManage && inv.status === "SENT" ? (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8"
+                              title="Mark as paid"
+                              onClick={() => paidMutation.mutate(inv.id)}
+                            >
+                              <CheckCircle2 className="h-4 w-4" />
+                            </Button>
+                          ) : null}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8"
+                                title="More"
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem asChild>
+                                <Link href={`/invoices/${inv.id}`}>
+                                  <Eye className="h-4 w-4" /> Open
+                                </Link>
+                              </DropdownMenuItem>
+                              {inv.pdfStorageUrl ? (
+                                <DropdownMenuItem asChild>
+                                  <a
+                                    href={inv.pdfStorageUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    <ExternalLink className="h-4 w-4" /> Open PDF
+                                  </a>
+                                </DropdownMenuItem>
+                              ) : null}
+                              {canManage && inv.status === "DRAFT" ? (
+                                <DropdownMenuItem
+                                  onClick={() => sendMutation.mutate(inv.id)}
+                                >
+                                  <Send className="h-4 w-4" /> Send to client
+                                </DropdownMenuItem>
+                              ) : null}
+                              {canManage && inv.status === "SENT" ? (
+                                <DropdownMenuItem
+                                  onClick={() => paidMutation.mutate(inv.id)}
+                                >
+                                  <CheckCircle2 className="h-4 w-4" /> Mark as paid
+                                </DropdownMenuItem>
+                              ) : null}
+                              {canManage && inv.status === "DRAFT" ? (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    className="text-destructive focus:text-destructive"
+                                    onClick={async () => {
+                                      const ok = await confirm(
+                                        trashConfirm(
+                                          "invoice",
+                                          `${inv.number} · ${inv.title}`,
+                                        ),
+                                      );
+                                      if (ok) deleteMutation.mutate(inv.id);
+                                    }}
+                                  >
+                                    <Trash2 className="h-4 w-4" /> Delete
+                                  </DropdownMenuItem>
+                                </>
+                              ) : null}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </TableCell>
                     </TableRow>

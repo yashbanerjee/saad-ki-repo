@@ -134,6 +134,60 @@ export class NotificationsService {
 
     return notification;
   }
+
+  async notifyStakeholders(opts: {
+    companyId: string;
+    actorId?: string | null;
+    projectId?: string | null;
+    extraUserIds?: Array<string | null | undefined>;
+    type: NotificationType;
+    title: string;
+    body?: string;
+    data?: Record<string, unknown>;
+  }) {
+    const ids = new Set<string>();
+    for (const id of opts.extraUserIds ?? []) {
+      if (id) ids.add(id);
+    }
+
+    if (opts.projectId) {
+      const members = await this.prisma.projectMember.findMany({
+        where: { projectId: opts.projectId },
+        select: { userId: true },
+      });
+      for (const member of members) ids.add(member.userId);
+    }
+
+    const admins = await this.prisma.user.findMany({
+      where: {
+        companyId: opts.companyId,
+        roles: {
+          some: {
+            role: {
+              slug: { in: ['company_admin', 'super_admin', 'project_manager'] },
+            },
+          },
+        },
+      },
+      select: { id: true },
+    });
+    for (const admin of admins) ids.add(admin.id);
+
+    if (opts.actorId) ids.delete(opts.actorId);
+
+    await Promise.all(
+      [...ids].map((userId) =>
+        this.create(
+          opts.companyId,
+          userId,
+          opts.type,
+          opts.title,
+          opts.body,
+          opts.data,
+        ),
+      ),
+    );
+  }
 }
 
 function categoryPref(

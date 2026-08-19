@@ -604,16 +604,18 @@ export class IssuesService {
       message: `Created issue ${key}`,
     });
 
-    if (issue.assigneeId && issue.assigneeId !== reporterId) {
-      void this.notifications.create(
-        companyId,
-        issue.assigneeId,
-        NotificationType.ASSIGNMENT,
-        `Assigned ${issue.key}`,
-        `${issue.title} was assigned to you`,
-        { issueId: issue.id, projectId: dto.projectId },
-      );
-    }
+    const who = await this.actorLabel(reporterId);
+    this.notifyIssueChange({
+      companyId,
+      actorId: reporterId,
+      projectId: dto.projectId,
+      issueId: issue.id,
+      assigneeId: issue.assigneeId,
+      reporterId,
+      type: NotificationType.ISSUE,
+      title: `${who} created ${issue.key}`,
+      body: issue.title,
+    });
 
     return issue;
   }
@@ -671,20 +673,22 @@ export class IssuesService {
       message: `Updated issue ${existing.key}`,
     });
 
-    if (
-      dto.assigneeId &&
-      dto.assigneeId !== existing.assigneeId &&
-      dto.assigneeId !== userId
-    ) {
-      void this.notifications.create(
-        companyId,
-        dto.assigneeId,
-        NotificationType.ASSIGNMENT,
-        `Assigned ${existing.key}`,
-        `${existing.title} was assigned to you`,
-        { issueId: id, projectId: existing.projectId },
-      );
-    }
+    const who = await this.actorLabel(userId);
+    const assigned =
+      dto.assigneeId && dto.assigneeId !== existing.assigneeId;
+    this.notifyIssueChange({
+      companyId,
+      actorId: userId,
+      projectId: existing.projectId,
+      issueId: id,
+      assigneeId: issue.assigneeId,
+      reporterId: existing.reporterId,
+      type: assigned ? NotificationType.ASSIGNMENT : NotificationType.ISSUE,
+      title: assigned
+        ? `${who} assigned ${existing.key}`
+        : `${who} updated ${existing.key}`,
+      body: existing.title,
+    });
 
     return issue;
   }
@@ -719,6 +723,19 @@ export class IssuesService {
       action: 'status_changed',
       message: `${existing.key} moved to ${dto.status}`,
       metadata: { from: existing.status, to: dto.status },
+    });
+
+    const who = await this.actorLabel(userId);
+    this.notifyIssueChange({
+      companyId,
+      actorId: userId,
+      projectId: existing.projectId,
+      issueId: id,
+      assigneeId: existing.assigneeId,
+      reporterId: existing.reporterId,
+      type: NotificationType.STATUS_CHANGE,
+      title: `${who} moved ${existing.key}`,
+      body: `Status is now ${dto.status}`,
     });
 
     return issue;
@@ -768,28 +785,56 @@ export class IssuesService {
       metadata: { from: issue.status, to: columnId, columnTitle: col.title },
     });
 
+    const who = await this.actorLabel(user.id);
+    this.notifyIssueChange({
+      companyId,
+      actorId: user.id,
+      projectId,
+      issueId: taskId,
+      assigneeId: issue.assigneeId,
+      reporterId: issue.reporterId,
+      type: NotificationType.STATUS_CHANGE,
+      title: `${who} moved ${issue.key}`,
+      body: `Moved to "${col.title}"`,
+    });
+
     return updated;
   }
 
   async remove(id: string, companyId: string, user: AuthenticatedUser) {
     const issue = await this.prisma.issue.findFirst({
       where: { id, project: { companyId } },
-      select: { id: true, reporterId: true, projectId: true },
+      select: {
+        id: true,
+        reporterId: true,
+        projectId: true,
+        assigneeId: true,
+        title: true,
+        key: true,
+      },
     });
     if (!issue) throw new NotFoundException('Issue not found');
     await this.assertProjectAccess(issue.projectId, companyId, user);
     assertCanDeleteIssue(user, issue.reporterId);
-    const full = await this.prisma.issue.findFirst({
-      where: { id },
-      select: { title: true, key: true },
-    });
     await this.trash.moveToTrash({
       companyId,
       userId: user.id,
       entityType: 'issue',
       entityId: id,
-      title: full?.title || full?.key || 'Task',
+      title: issue.title || issue.key || 'Task',
       href: `/issues/${id}`,
+    });
+    const who = await this.actorLabel(user.id);
+    this.notifyIssueChange({
+      companyId,
+      actorId: user.id,
+      projectId: issue.projectId,
+      issueId: id,
+      assigneeId: issue.assigneeId,
+      reporterId: issue.reporterId,
+      type: NotificationType.ISSUE,
+      title: `${who} deleted ${issue.key}`,
+      body: issue.title,
     });
     return { message: 'Moved to trash' };
   }
@@ -808,16 +853,18 @@ export class IssuesService {
       },
     });
 
-    if (issue.assigneeId && issue.assigneeId !== authorId) {
-      void this.notifications.create(
-        companyId,
-        issue.assigneeId,
-        NotificationType.COMMENT,
-        `Comment on ${issue.key}`,
-        dto.body.slice(0, 180),
-        { issueId: id, commentId: comment.id },
-      );
-    }
+    const who = await this.actorLabel(authorId);
+    this.notifyIssueChange({
+      companyId,
+      actorId: authorId,
+      projectId: issue.projectId,
+      issueId: id,
+      assigneeId: issue.assigneeId,
+      reporterId: issue.reporterId,
+      type: NotificationType.COMMENT,
+      title: `${who} commented on ${issue.key}`,
+      body: dto.body.slice(0, 180),
+    });
 
     return comment;
   }
@@ -828,7 +875,7 @@ export class IssuesService {
     uploadedById: string,
     file: Express.Multer.File,
   ) {
-    await this.findOne(id, companyId);
+    const issue = await this.findOne(id, companyId);
     if (!file?.buffer?.length) {
       throw new BadRequestException('Please choose a file to upload');
     }
@@ -836,7 +883,7 @@ export class IssuesService {
     const key = this.storage.generateKey(`issues/${id}`, file.originalname);
     const { url } = await this.storage.upload(key, file.buffer, file.mimetype);
 
-    return this.prisma.attachment.create({
+    const attachment = await this.prisma.attachment.create({
       data: {
         issueId: id,
         uploadedById,
@@ -850,6 +897,21 @@ export class IssuesService {
         uploadedBy: { select: { id: true, firstName: true, lastName: true } },
       },
     });
+
+    const who = await this.actorLabel(uploadedById);
+    this.notifyIssueChange({
+      companyId,
+      actorId: uploadedById,
+      projectId: issue.projectId,
+      issueId: id,
+      assigneeId: issue.assigneeId,
+      reporterId: issue.reporterId,
+      type: NotificationType.ISSUE,
+      title: `${who} attached a file to ${issue.key}`,
+      body: file.originalname,
+    });
+
+    return attachment;
   }
 
   async deleteAttachment(issueId: string, attachmentId: string, companyId: string) {
@@ -970,5 +1032,47 @@ export class IssuesService {
       });
     }
     return { message: 'Time entry deleted' };
+  }
+
+  private async actorLabel(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { firstName: true, lastName: true },
+    });
+    return `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || 'Someone';
+  }
+
+  private notifyIssueChange(opts: {
+    companyId: string;
+    actorId: string;
+    projectId: string;
+    issueId: string;
+    assigneeId?: string | null;
+    reporterId?: string | null;
+    type: NotificationType;
+    title: string;
+    body?: string;
+  }) {
+    void (async () => {
+      const actor = await this.prisma.user.findUnique({
+        where: { id: opts.actorId },
+        select: {
+          roles: { select: { role: { select: { slug: true } } } },
+        },
+      });
+      const isClient = Boolean(
+        actor?.roles.some((r) => r.role.slug === 'client'),
+      );
+      await this.notifications.notifyStakeholders({
+        companyId: opts.companyId,
+        actorId: opts.actorId,
+        projectId: opts.projectId,
+        extraUserIds: [opts.assigneeId, opts.reporterId],
+        type: isClient ? NotificationType.ONBOARDING : opts.type,
+        title: opts.title,
+        body: opts.body,
+        data: { issueId: opts.issueId, projectId: opts.projectId },
+      });
+    })();
   }
 }

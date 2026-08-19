@@ -447,7 +447,7 @@ export const integrationsApi = {
 export const reportsApi = {
   projects: () => api.get("/reports/projects"),
   issues: (projectId?: string) => api.get("/reports/issues", { params: { projectId } }),
-  crm: () => api.get("/reports/crm"),
+  crm: (days?: number) => api.get("/reports/crm", { params: { days } }),
 };
 
 // Onboarding API
@@ -822,6 +822,18 @@ export const settingsApi = {
   get: () => api.get("/settings"),
   updateProfile: (data: { name?: string; firstName?: string; lastName?: string }) =>
     api.patch("/settings/profile", data),
+  updateOrganization: (data: Record<string, unknown>) =>
+    api.patch("/settings/organization", data),
+  uploadOrganizationLogo: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post("/settings/organization/logo", form, { timeout: 120000 });
+  },
+  uploadOrganizationFavicon: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post("/settings/organization/favicon", form, { timeout: 120000 });
+  },
   updatePreferences: (data: {
     notifications?: Record<string, boolean>;
     compactSidebar?: boolean;

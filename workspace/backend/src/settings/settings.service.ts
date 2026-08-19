@@ -25,11 +25,13 @@ import {
 import {
   FirebaseSettingsDto,
   SmtpSettingsDto,
+  UpdateOrganizationDto,
   UpdatePasswordDto,
   UpdatePreferencesDto,
   UpdateProfileDto,
   UpdateWorkspaceDto,
 } from './dto/settings.dto';
+import { StorageService } from '../storage/storage.service';
 
 @Injectable()
 export class SettingsService {
@@ -37,6 +39,7 @@ export class SettingsService {
     private prisma: PrismaService,
     private mail: MailService,
     private push: PushService,
+    private storage: StorageService,
   ) {}
 
   canManageMail(user: AuthenticatedUser) {
@@ -55,7 +58,28 @@ export class SettingsService {
   async get(user: AuthenticatedUser) {
     const dbUser = await this.prisma.user.findUnique({
       where: { id: user.id },
-      include: { company: { select: { id: true, name: true, settings: true } } },
+      include: {
+        company: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            website: true,
+            logo: true,
+            favicon: true,
+            address: true,
+            city: true,
+            state: true,
+            country: true,
+            postalCode: true,
+            gstNumber: true,
+            panNumber: true,
+            registrationNo: true,
+            settings: true,
+          },
+        },
+      },
     });
     if (!dbUser) throw new UnauthorizedException();
 
@@ -72,6 +96,12 @@ export class SettingsService {
         email: dbUser.email,
         companyName: dbUser.company?.name ?? null,
       },
+      branding: {
+        name: dbUser.company?.name ?? null,
+        logo: dbUser.company?.logo ?? null,
+        favicon: dbUser.company?.favicon ?? null,
+      },
+      organization: manageWorkspace ? this.organizationPayload(dbUser.company) : null,
       preferences: {
         notifications: prefs.notifications,
         compactSidebar: prefs.compactSidebar,
@@ -151,6 +181,125 @@ export class SettingsService {
       lastName: updated.lastName,
       name: `${updated.firstName} ${updated.lastName}`.trim(),
       email: updated.email,
+    };
+  }
+
+  async updateOrganization(user: AuthenticatedUser, dto: UpdateOrganizationDto) {
+    this.assertCompany(user);
+    if (!this.canManageWorkspace(user)) {
+      throw new ForbiddenException('You cannot update organization details');
+    }
+    const name = dto.name.trim();
+    const email = dto.email.trim().toLowerCase();
+    if (!name) throw new BadRequestException('Organization name is required');
+    if (!email) throw new BadRequestException('Organization email is required');
+
+    const company = await this.prisma.company.update({
+      where: { id: user.companyId! },
+      data: {
+        name,
+        email,
+        phone: emptyToNull(dto.phone),
+        website: emptyToNull(dto.website),
+        address: emptyToNull(dto.address),
+        city: emptyToNull(dto.city),
+        state: emptyToNull(dto.state),
+        country: emptyToNull(dto.country),
+        postalCode: emptyToNull(dto.postalCode),
+        registrationNo: emptyToNull(dto.registrationNo),
+        gstNumber: emptyToNull(dto.gstNumber),
+        panNumber: emptyToNull(dto.panNumber),
+      },
+    });
+    return this.organizationPayload(company);
+  }
+
+  async uploadOrganizationAsset(
+    user: AuthenticatedUser,
+    kind: 'logo' | 'favicon',
+    file: Express.Multer.File,
+  ) {
+    this.assertCompany(user);
+    if (!this.canManageWorkspace(user)) {
+      throw new ForbiddenException('You cannot update organization branding');
+    }
+    if (!file?.buffer?.length) {
+      throw new BadRequestException(`Please choose a ${kind} image`);
+    }
+    const mime = (file.mimetype || '').toLowerCase();
+    const allowed =
+      kind === 'favicon'
+        ? ['image/png', 'image/svg+xml', 'image/x-icon', 'image/vnd.microsoft.icon', 'image/webp', 'image/jpeg']
+        : null;
+    if (!mime.startsWith('image/')) {
+      throw new BadRequestException(`${kind === 'logo' ? 'Logo' : 'Favicon'} must be an image`);
+    }
+    if (allowed && !allowed.includes(mime)) {
+      throw new BadRequestException('Favicon must be PNG, SVG, ICO, WebP, or JPG');
+    }
+    const max = kind === 'favicon' ? 1024 * 1024 : 5 * 1024 * 1024;
+    if (file.size > max) {
+      throw new BadRequestException(
+        kind === 'favicon' ? 'Favicon must be 1 MB or smaller' : 'Logo must be 5 MB or smaller',
+      );
+    }
+
+    const key = this.storage.generateKey(
+      `companies/${user.companyId}/branding`,
+      file.originalname || `${kind}.png`,
+    );
+    const { url } = await this.storage.upload(
+      key,
+      file.buffer,
+      file.mimetype || 'image/png',
+    );
+    const stored = url || key;
+    const company = await this.prisma.company.update({
+      where: { id: user.companyId! },
+      data: kind === 'logo' ? { logo: stored } : { favicon: stored },
+    });
+    return this.organizationPayload(company);
+  }
+
+  private organizationPayload(
+    company:
+      | {
+          id: string;
+          name: string;
+          email: string;
+          phone?: string | null;
+          website?: string | null;
+          logo?: string | null;
+          favicon?: string | null;
+          address?: string | null;
+          city?: string | null;
+          state?: string | null;
+          country?: string | null;
+          postalCode?: string | null;
+          gstNumber?: string | null;
+          panNumber?: string | null;
+          registrationNo?: string | null;
+        }
+      | null
+      | undefined,
+  ) {
+    if (!company) return null;
+    return {
+      id: company.id,
+      name: company.name,
+      email: company.email,
+      phone: company.phone ?? '',
+      website: company.website ?? '',
+      logo: company.logo ?? null,
+      favicon: company.favicon ?? null,
+      address: company.address ?? '',
+      city: company.city ?? '',
+      state: company.state ?? '',
+      country: company.country ?? '',
+      postalCode: company.postalCode ?? '',
+      gstNumber: company.gstNumber ?? '',
+      panNumber: company.panNumber ?? '',
+      registrationNo: company.registrationNo ?? '',
     };
   }
 
@@ -379,4 +528,9 @@ export class SettingsService {
   private assertCompany(user: AuthenticatedUser) {
     if (!user.companyId) throw new BadRequestException('No workspace on this account');
   }
+}
+
+function emptyToNull(value?: string) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
 }

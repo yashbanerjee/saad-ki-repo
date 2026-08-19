@@ -7,9 +7,10 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { CreateFolderDto } from './dto/document.dto';
-import { DocumentType } from '@prisma/client';
+import { DocumentType, NotificationType } from '@prisma/client';
 import { AuthenticatedUser } from '../common/decorators';
 import { TrashService } from '../trash/trash.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { renderNdaPlaceholders } from '../nda/nda-placeholders';
 import { memoryStorage } from 'multer';
 
@@ -24,10 +25,20 @@ export class DocumentsService {
     private prisma: PrismaService,
     private storage: StorageService,
     private trash: TrashService,
+    private notifications: NotificationsService,
   ) {}
 
   private isClientUser(user: AuthenticatedUser) {
     return user.roles?.includes('client');
+  }
+
+  private async actorName(user: AuthenticatedUser) {
+    if (this.isClientUser(user)) return 'Client';
+    const row = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      select: { firstName: true, lastName: true },
+    });
+    return `${row?.firstName ?? ''} ${row?.lastName ?? ''}`.trim() || 'A teammate';
   }
 
   private isCompanyAdmin(user: AuthenticatedUser) {
@@ -275,7 +286,7 @@ export class DocumentsService {
         file.mimetype || 'application/octet-stream',
       );
 
-      return this.prisma.document.create({
+      const doc = await this.prisma.document.create({
         data: {
           companyId,
           uploadedById: user.id,
@@ -292,6 +303,17 @@ export class DocumentsService {
           isClientVisible,
         },
       });
+      const who = await this.actorName(user);
+      void this.notifications.notifyStakeholders({
+        companyId,
+        actorId: user.id,
+        projectId: doc.projectId,
+        type: isClient ? NotificationType.ONBOARDING : NotificationType.PROJECT,
+        title: `${who} uploaded ${doc.name}`,
+        body: isClient ? 'Client uploaded a document' : doc.originalName,
+        data: { documentId: doc.id, projectId: doc.projectId },
+      });
+      return doc;
     } catch (err) {
       const message =
         err instanceof Error
@@ -327,7 +349,7 @@ export class DocumentsService {
       throw new ForbiddenException('Insufficient permissions');
     }
 
-    return this.prisma.document.update({
+    const updated = await this.prisma.document.update({
       where: { id },
       data: {
         ...(data.name !== undefined ? { name: data.name.trim() } : {}),
@@ -342,6 +364,15 @@ export class DocumentsService {
           : {}),
       },
     });
+    void this.notifications.notifyStakeholders({
+      companyId: user.companyId!,
+      actorId: user.id,
+      projectId: updated.projectId,
+      type: NotificationType.PROJECT,
+      title: `${await this.actorName(user)} updated ${updated.name}`,
+      data: { documentId: updated.id, projectId: updated.projectId },
+    });
+    return updated;
   }
 
   async findOne(id: string, user: AuthenticatedUser) {
@@ -502,6 +533,16 @@ export class DocumentsService {
       entityId: id,
       title: doc.originalName || doc.name,
       href: '/documents',
+    });
+    void this.notifications.notifyStakeholders({
+      companyId: user.companyId!,
+      actorId: user.id,
+      projectId: doc.projectId,
+      type: this.isClientUser(user)
+        ? NotificationType.ONBOARDING
+        : NotificationType.PROJECT,
+      title: `${await this.actorName(user)} deleted ${doc.name}`,
+      data: { documentId: id, projectId: doc.projectId },
     });
     return { message: 'Moved to trash' };
   }

@@ -5,9 +5,10 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { randomBytes } from 'crypto';
-import { IssueStatus, IssueType, Prisma } from '@prisma/client';
+import { IssueStatus, IssueType, NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   CreateProjectDto,
   UpdateProjectDto,
@@ -40,6 +41,7 @@ export class ProjectsService {
     private prisma: PrismaService,
     private storage: StorageService,
     private trash: TrashService,
+    private notifications: NotificationsService,
   ) {}
 
   private async assertClientPortalAllowed(companyId: string) {
@@ -1101,6 +1103,43 @@ export class ProjectsService {
     );
   }
 
+  private async portalClientUserId(clientId: string | null | undefined) {
+    if (!clientId) return null;
+    const client = await this.prisma.client.findFirst({
+      where: { id: clientId },
+      select: { userId: true },
+    });
+    return client?.userId ?? null;
+  }
+
+  /** Fan-out client portal activity to admins, project members, and assignees. */
+  private notifyClientWork(opts: {
+    companyId: string;
+    projectId: string;
+    actorId?: string | null;
+    extraUserIds?: Array<string | null | undefined>;
+    title: string;
+    body?: string;
+    issueId?: string;
+    documentId?: string;
+  }) {
+    void this.notifications.notifyStakeholders({
+      companyId: opts.companyId,
+      projectId: opts.projectId,
+      actorId: opts.actorId || '',
+      extraUserIds: opts.extraUserIds,
+      type: NotificationType.ONBOARDING,
+      title: opts.title,
+      body: opts.body,
+      data: {
+        projectId: opts.projectId,
+        fromClient: true,
+        ...(opts.issueId ? { issueId: opts.issueId } : {}),
+        ...(opts.documentId ? { documentId: opts.documentId } : {}),
+      },
+    });
+  }
+
   private async resolvePortalProject(token: string) {
     if (!token?.trim()) throw new NotFoundException('Portal not found or disabled');
     const project = await this.prisma.project.findFirst({
@@ -1143,8 +1182,16 @@ export class ProjectsService {
   }
 
   async portalCreateMilestone(token: string, dto: CreateMilestoneDto) {
-    const { projectId, companyId } = await this.resolvePortalProject(token);
-    return this.createMilestone(projectId, companyId, dto);
+    const { projectId, companyId, clientId } = await this.resolvePortalProject(token);
+    const milestone = await this.createMilestone(projectId, companyId, dto);
+    this.notifyClientWork({
+      companyId,
+      projectId,
+      actorId: await this.portalClientUserId(clientId),
+      title: `Client created milestone ${dto.name || ''}`.trim(),
+      body: dto.name,
+    });
+    return milestone;
   }
 
   /** Creates a board task (issue) visible on the public Kanban + optional client task. */
@@ -1159,7 +1206,8 @@ export class ProjectsService {
       milestoneId?: string;
     },
   ) {
-    const { projectId, companyId, reporterId } = await this.resolvePortalProject(token);
+    const { projectId, companyId, reporterId, clientId } =
+      await this.resolvePortalProject(token);
     const title = body.title?.trim();
     if (!title) throw new BadRequestException('Title is required');
 
@@ -1248,6 +1296,16 @@ export class ProjectsService {
       },
     });
 
+    this.notifyClientWork({
+      companyId,
+      projectId,
+      actorId: await this.portalClientUserId(clientId),
+      extraUserIds: [assigneeId],
+      title: `Client created ${key}`,
+      body: title,
+      issueId: issue.id,
+    });
+
     return {
       ...issue,
       metadata: {
@@ -1264,14 +1322,15 @@ export class ProjectsService {
     issueId: string,
     file: Express.Multer.File,
   ) {
-    const { projectId, companyId, reporterId } = await this.resolvePortalProject(token);
+    const { projectId, companyId, reporterId, clientId } =
+      await this.resolvePortalProject(token);
     if (!file?.buffer?.length) {
       throw new BadRequestException('Please choose a file to upload');
     }
 
     const issue = await this.prisma.issue.findFirst({
       where: { id: issueId, projectId },
-      select: { id: true, metadata: true },
+      select: { id: true, key: true, metadata: true },
     });
     if (!issue) throw new NotFoundException('Task not found on this project');
 
@@ -1307,6 +1366,15 @@ export class ProjectsService {
           portalAttachmentIds: [...existingIds, attachment.id],
         } as never,
       },
+    });
+
+    this.notifyClientWork({
+      companyId,
+      projectId,
+      actorId: await this.portalClientUserId(clientId),
+      title: `Client attached a file to ${issue.key}`,
+      body: file.originalname || 'upload.bin',
+      issueId,
     });
 
     return { ...attachment, fromClient: true };
@@ -1466,6 +1534,16 @@ export class ProjectsService {
       // Comment is already saved; activity is best-effort.
     }
 
+    this.notifyClientWork({
+      companyId,
+      projectId,
+      actorId: await this.portalClientUserId(clientId),
+      extraUserIds: [authorId !== reporterId ? authorId : null],
+      title: `Client commented on ${issue.key}`,
+      body: text.slice(0, 180),
+      issueId: taskId,
+    });
+
     return {
       id: comment.id,
       body: comment.body,
@@ -1486,11 +1564,12 @@ export class ProjectsService {
       milestoneId?: string | null;
     },
   ) {
-    const { projectId } = await this.resolvePortalProject(token);
+    const { projectId, companyId, clientId } = await this.resolvePortalProject(token);
     const issue = await this.prisma.issue.findFirst({
       where: { id: taskId, projectId, status: { not: 'CANCELLED' } },
       select: {
         id: true,
+        key: true,
         title: true,
         description: true,
         metadata: true,
@@ -1571,15 +1650,26 @@ export class ProjectsService {
       }
     }
 
+    this.notifyClientWork({
+      companyId,
+      projectId,
+      actorId: await this.portalClientUserId(clientId),
+      title: `Client updated ${issue.key}`,
+      body: updated.title,
+      issueId: taskId,
+    });
+
     return updated;
   }
 
   async portalDeleteTask(token: string, taskId: string) {
-    const { projectId, companyId, reporterId } = await this.resolvePortalProject(token);
+    const { projectId, companyId, reporterId, clientId } =
+      await this.resolvePortalProject(token);
     const issue = await this.prisma.issue.findFirst({
       where: { id: taskId, projectId },
       select: {
         id: true,
+        key: true,
         title: true,
         description: true,
         metadata: true,
@@ -1608,16 +1698,24 @@ export class ProjectsService {
       title: issue.title,
       href: `/issues/${taskId}`,
     });
+    this.notifyClientWork({
+      companyId,
+      projectId,
+      actorId: await this.portalClientUserId(clientId),
+      title: `Client deleted ${issue.key}`,
+      body: issue.title,
+      issueId: taskId,
+    });
     return { message: 'Moved to trash' };
   }
 
   async portalUpdateComment(token: string, taskId: string, commentId: string, body: string) {
     const text = body?.trim();
     if (!text) throw new BadRequestException('Comment is required');
-    const { projectId } = await this.resolvePortalProject(token);
+    const { projectId, companyId, clientId } = await this.resolvePortalProject(token);
     const issue = await this.prisma.issue.findFirst({
       where: { id: taskId, projectId },
-      select: { id: true, metadata: true },
+      select: { id: true, key: true, metadata: true },
     });
     if (!issue) throw new NotFoundException('Task not found on this project');
     const portalCommentIds = this.idList(this.asMeta(issue.metadata), 'portalCommentIds');
@@ -1632,6 +1730,14 @@ export class ProjectsService {
       where: { id: commentId },
       data: { body: text },
     });
+    this.notifyClientWork({
+      companyId,
+      projectId,
+      actorId: await this.portalClientUserId(clientId),
+      title: `Client edited a comment on ${issue.key}`,
+      body: text.slice(0, 180),
+      issueId: taskId,
+    });
     return {
       id: updated.id,
       body: updated.body,
@@ -1642,10 +1748,11 @@ export class ProjectsService {
   }
 
   async portalDeleteComment(token: string, taskId: string, commentId: string) {
-    const { projectId } = await this.resolvePortalProject(token);
+    const { projectId, companyId, reporterId, clientId } =
+      await this.resolvePortalProject(token);
     const issue = await this.prisma.issue.findFirst({
       where: { id: taskId, projectId },
-      select: { id: true, metadata: true },
+      select: { id: true, key: true, metadata: true },
     });
     if (!issue) throw new NotFoundException('Task not found on this project');
     const meta = this.asMeta(issue.metadata);
@@ -1657,7 +1764,6 @@ export class ProjectsService {
       where: { id: commentId, issueId: taskId },
     });
     if (!comment) throw new NotFoundException('Comment not found');
-    const { companyId, reporterId } = await this.resolvePortalProject(token);
     await this.trash.moveToTrash({
       companyId,
       userId: reporterId,
@@ -1675,6 +1781,14 @@ export class ProjectsService {
         } as never,
       },
     });
+    this.notifyClientWork({
+      companyId,
+      projectId,
+      actorId: await this.portalClientUserId(clientId),
+      title: `Client deleted a comment on ${issue.key}`,
+      body: comment.body.slice(0, 180),
+      issueId: taskId,
+    });
     return { message: 'Moved to trash' };
   }
 
@@ -1686,10 +1800,10 @@ export class ProjectsService {
   ) {
     const label = name?.trim();
     if (!label) throw new BadRequestException('Name is required');
-    const { projectId } = await this.resolvePortalProject(token);
+    const { projectId, companyId, clientId } = await this.resolvePortalProject(token);
     const issue = await this.prisma.issue.findFirst({
       where: { id: taskId, projectId },
-      select: { id: true, metadata: true },
+      select: { id: true, key: true, metadata: true },
     });
     if (!issue) throw new NotFoundException('Task not found on this project');
     const canManage =
@@ -1702,17 +1816,27 @@ export class ProjectsService {
       where: { id: attachmentId, issueId: taskId },
     });
     if (!attachment) throw new NotFoundException('File not found');
-    return this.prisma.attachment.update({
+    const updated = await this.prisma.attachment.update({
       where: { id: attachmentId },
       data: { name: label },
     });
+    this.notifyClientWork({
+      companyId,
+      projectId,
+      actorId: await this.portalClientUserId(clientId),
+      title: `Client renamed a file on ${issue.key}`,
+      body: label,
+      issueId: taskId,
+    });
+    return updated;
   }
 
   async portalDeleteAttachment(token: string, taskId: string, attachmentId: string) {
-    const { projectId } = await this.resolvePortalProject(token);
+    const { projectId, companyId, reporterId, clientId } =
+      await this.resolvePortalProject(token);
     const issue = await this.prisma.issue.findFirst({
       where: { id: taskId, projectId },
-      select: { id: true, metadata: true },
+      select: { id: true, key: true, metadata: true },
     });
     if (!issue) throw new NotFoundException('Task not found on this project');
     const meta = this.asMeta(issue.metadata);
@@ -1726,7 +1850,6 @@ export class ProjectsService {
       where: { id: attachmentId, issueId: taskId },
     });
     if (!attachment) throw new NotFoundException('File not found');
-    const { companyId, reporterId } = await this.resolvePortalProject(token);
     await this.trash.moveToTrash({
       companyId,
       userId: reporterId,
@@ -1746,13 +1869,21 @@ export class ProjectsService {
         },
       });
     }
+    this.notifyClientWork({
+      companyId,
+      projectId,
+      actorId: await this.portalClientUserId(clientId),
+      title: `Client deleted a file on ${issue.key}`,
+      body: attachment.name,
+      issueId: taskId,
+    });
     return { message: 'File deleted' };
   }
 
   async portalUpdateDocument(token: string, documentId: string, name: string) {
     const label = name?.trim();
     if (!label) throw new BadRequestException('Name is required');
-    const { projectId } = await this.resolvePortalProject(token);
+    const { projectId, companyId, clientId } = await this.resolvePortalProject(token);
     const doc = await this.prisma.document.findFirst({
       where: { id: documentId, projectId },
     });
@@ -1760,14 +1891,23 @@ export class ProjectsService {
     if (!this.isClientDocument(doc)) {
       throw new ForbiddenException('You can only rename files you uploaded');
     }
-    return this.prisma.document.update({
+    const updated = await this.prisma.document.update({
       where: { id: documentId },
       data: { name: label, originalName: label },
     });
+    this.notifyClientWork({
+      companyId,
+      projectId,
+      actorId: await this.portalClientUserId(clientId),
+      title: `Client renamed ${updated.name}`,
+      documentId,
+    });
+    return updated;
   }
 
   async portalDeleteDocument(token: string, documentId: string) {
-    const { projectId } = await this.resolvePortalProject(token);
+    const { projectId, companyId, reporterId, clientId } =
+      await this.resolvePortalProject(token);
     const doc = await this.prisma.document.findFirst({
       where: { id: documentId, projectId },
     });
@@ -1775,7 +1915,6 @@ export class ProjectsService {
     if (!this.isClientDocument(doc)) {
       throw new ForbiddenException('You can only delete files you uploaded');
     }
-    const { companyId, reporterId } = await this.resolvePortalProject(token);
     await this.trash.moveToTrash({
       companyId,
       userId: reporterId,
@@ -1783,6 +1922,13 @@ export class ProjectsService {
       entityId: documentId,
       title: doc.originalName || doc.name,
       href: `/documents`,
+    });
+    this.notifyClientWork({
+      companyId,
+      projectId,
+      actorId: await this.portalClientUserId(clientId),
+      title: `Client deleted ${doc.name}`,
+      documentId,
     });
     return { message: 'Moved to trash' };
   }
@@ -1805,7 +1951,7 @@ export class ProjectsService {
         file.mimetype || 'application/octet-stream',
       );
 
-      return this.prisma.document.create({
+      const doc = await this.prisma.document.create({
         data: {
           companyId,
           projectId,
@@ -1822,6 +1968,15 @@ export class ProjectsService {
           metadata: { portalClient: true } as Prisma.InputJsonValue,
         },
       });
+      this.notifyClientWork({
+        companyId,
+        projectId,
+        actorId: await this.portalClientUserId(clientId),
+        title: `Client uploaded ${doc.name}`,
+        body: doc.originalName,
+        documentId: doc.id,
+      });
+      return doc;
     } catch (err) {
       const message =
         err instanceof Error

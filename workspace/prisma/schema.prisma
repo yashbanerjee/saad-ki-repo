@@ -321,6 +321,7 @@ model Company {
   phone           String?
   website         String?
   logo            String?
+  favicon         String?
   address         String?
   city            String?
   state           String?

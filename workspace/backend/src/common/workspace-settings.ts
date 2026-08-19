@@ -2,7 +2,7 @@ export const DEFAULT_NOTIFICATION_PREFS = {
   assignments: true,
   projects: true,
   comments: true,
-  clientActivity: false,
+  clientActivity: true,
   emailReceive: true,
   emailDigest: false,
   push: true,

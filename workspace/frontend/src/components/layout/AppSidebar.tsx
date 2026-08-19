@@ -8,14 +8,12 @@ import {
   FolderKanban,
   Bug,
   Users,
-  Shield,
   BarChart3,
   Settings,
   Building2,
   ChevronLeft,
   ChevronRight,
   Sparkles,
-  Globe,
   Plus,
   ChevronsUpDown,
   Search,
@@ -74,9 +72,6 @@ const crmNav: NavItem[] = [
 ];
 
 const secondaryNav: NavItem[] = [
-  // Staff-only shortcut; clients use Dashboard → /client-portal
-  { title: "Client Portal", href: "/client-portal", icon: Globe, roles: ["admin"] },
-  { title: "Admin", href: "/admin", icon: Shield, roles: ["admin"] },
   { title: "Trash", href: "/trash", icon: Trash2 },
   { title: "Settings", href: "/settings", icon: Settings },
 ];
@@ -163,7 +158,7 @@ export function AppSidebar() {
           )}
         >
           <Link href={homeHref} className="flex items-center gap-2.5">
-            <VedhaMark className="h-9 w-9" />
+            <VedhaMark className="h-9 w-9" src={user?.companyLogo || user?.companyFavicon} alt={workspace} />
             <AnimatePresence>
               {!collapsed && (
                 <motion.div

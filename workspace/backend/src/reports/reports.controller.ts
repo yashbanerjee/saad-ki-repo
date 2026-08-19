@@ -47,7 +47,12 @@ export class ReportsController {
 
   @Get('crm')
   @Permissions('reports:read')
-  crmSummary(@CurrentUser() user: AuthenticatedUser) {
-    return this.reportsService.crmSummary(user.companyId!);
+  crmSummary(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('days') days?: string,
+  ) {
+    const parsed = days === undefined ? 30 : parseInt(days, 10);
+    const safe = [7, 30, 90, 365, 0].includes(parsed) ? parsed : 30;
+    return this.reportsService.crmSummary(user.companyId!, safe);
   }
 }

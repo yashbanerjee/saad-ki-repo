@@ -52,7 +52,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 className="flex items-center gap-2"
                 onClick={() => setMobileOpen(false)}
               >
-                <VedhaMark className="h-8 w-8" />
+                <VedhaMark className="h-8 w-8" src={user?.companyLogo || user?.companyFavicon} alt={user?.companyName || "TaskFlow"} />
                 <span>
                   <span className="block text-base font-bold">TaskFlow</span>
                   <span className="block text-[10px] font-normal uppercase tracking-widest text-muted-foreground">

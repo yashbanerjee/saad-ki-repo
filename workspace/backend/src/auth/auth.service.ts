@@ -620,7 +620,7 @@ export class AuthService {
       passwordHash?: string;
       twoFactorSecret?: string;
       roles?: { role?: { slug?: string } }[];
-      company?: { name?: string } | null;
+      company?: { name?: string; logo?: string | null; favicon?: string | null } | null;
       linkedClient?: { id: string; name: string } | null;
     };
 
@@ -647,6 +647,8 @@ export class AuthService {
       role,
       roles: roleSlugs,
       companyName: company?.name ?? null,
+      companyLogo: company?.logo ?? null,
+      companyFavicon: company?.favicon ?? null,
       companyId: user.companyId,
       clientId: linkedClient?.id ?? null,
       clientName: linkedClient?.name ?? null,
