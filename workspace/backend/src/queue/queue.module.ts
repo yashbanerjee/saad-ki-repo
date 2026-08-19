@@ -14,7 +14,7 @@ import { QueueService } from './queue.service';
 export class NoopQueueService {
   private readonly log = new Logger('NoopQueueService');
 
-  async enqueueEmail(to: string, subject: string, html: string) {
+  async enqueueEmail(to: string, subject: string, html: string, _companyId?: string) {
     this.log.warn(`Queue disabled — skipped email to ${to}: ${subject}`);
     return null;
   }

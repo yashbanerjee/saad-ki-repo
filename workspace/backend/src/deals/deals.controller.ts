@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { DealsService } from './deals.service';
-import { CreateDealDto, ListDealsQueryDto, UpdateDealDto } from './dto/deal.dto';
+import { CreateDealDto, ListDealsQueryDto, RevertDealDto, UpdateDealDto } from './dto/deal.dto';
 import { CurrentUser, AuthenticatedUser, Permissions } from '../common/decorators';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { ParseCuidPipe } from '../common/pipes/parse-cuid.pipe';
@@ -55,6 +55,16 @@ export class DealsController {
     @Body() dto: UpdateDealDto,
   ) {
     return this.dealsService.update(id, user.companyId!, dto);
+  }
+
+  @Post(':id/revert')
+  @Permissions('deals:manage')
+  revert(
+    @Param('id', ParseCuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: RevertDealDto,
+  ) {
+    return this.dealsService.revertToLead(id, user.companyId!, user.id, dto);
   }
 
   @Delete(':id')

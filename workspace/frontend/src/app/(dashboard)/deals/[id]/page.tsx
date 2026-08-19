@@ -9,6 +9,8 @@ import {
   CalendarClock,
   CheckCircle2,
   Handshake,
+  LayoutGrid,
+  Target,
   Trash2,
   XCircle,
 } from "lucide-react";
@@ -118,6 +120,22 @@ export default function DealDetailPage() {
     onError: () => toast.error("Failed to delete deal"),
   });
 
+  const revertMutation = useMutation({
+    mutationFn: (destination: "board" | "leads") =>
+      dealsApi.revert(id, destination),
+    onSuccess: (_res, destination) => {
+      queryClient.invalidateQueries({ queryKey: ["deals"] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      toast.success(
+        destination === "board"
+          ? "Moved to the lead board"
+          : "Moved back to leads",
+      );
+      router.push(destination === "board" ? "/leads/board" : "/leads");
+    },
+    onError: () => toast.error("Could not move this deal"),
+  });
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -209,6 +227,20 @@ export default function DealDetailPage() {
               </Button>
             </>
           )}
+          <Button
+            variant="outline"
+            onClick={() => revertMutation.mutate("board")}
+            disabled={revertMutation.isPending}
+          >
+            <LayoutGrid className="mr-1 h-4 w-4" /> Move to board
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => revertMutation.mutate("leads")}
+            disabled={revertMutation.isPending}
+          >
+            <Target className="mr-1 h-4 w-4" /> Move to leads
+          </Button>
           <Button
             variant="ghost"
             size="icon"

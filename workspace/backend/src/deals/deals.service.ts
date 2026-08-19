@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { DealStatus, Prisma } from '@prisma/client';
+import { ClientType, CrmActivityType, DealStatus, LeadSource, LeadStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { paginate, paginatedResponse } from '../common/dto/pagination.dto';
-import { CreateDealDto, ListDealsQueryDto, UpdateDealDto } from './dto/deal.dto';
+import { CreateDealDto, ListDealsQueryDto, RevertDealDto, UpdateDealDto } from './dto/deal.dto';
 import { TrashService } from '../trash/trash.service';
 
 @Injectable()
@@ -129,6 +129,90 @@ export class DealsService {
       href: `/deals/${id}`,
     });
     return { message: 'Moved to trash' };
+  }
+
+  async revertToLead(
+    id: string,
+    companyId: string,
+    userId: string,
+    dto: RevertDealDto,
+  ) {
+    const deal = await this.findOne(id, companyId);
+    const onBoard = dto.destination === 'board';
+
+    let leadId = deal.leadId;
+    if (leadId) {
+      const lead = await this.prisma.lead.findFirst({
+        where: { id: leadId, companyId },
+      });
+      if (lead) {
+        const restoreStatus =
+          lead.status === LeadStatus.WON || lead.status === LeadStatus.LOST
+            ? LeadStatus.QUALIFIED
+            : lead.status;
+        await this.prisma.lead.update({
+          where: { id: lead.id },
+          data: {
+            onBoard,
+            archived: false,
+            status: restoreStatus,
+            convertedAt: null,
+          },
+        });
+      } else {
+        leadId = null;
+      }
+    }
+
+    if (!leadId) {
+      const created = await this.prisma.lead.create({
+        data: {
+          companyId,
+          title: deal.title,
+          name: deal.client?.name || deal.title,
+          type: ClientType.COMPANY,
+          source: LeadSource.OTHER,
+          estimatedValue: deal.amount ?? undefined,
+          notes: deal.notes ?? undefined,
+          onBoard,
+          status: LeadStatus.QUALIFIED,
+          ownerId: deal.ownerId ?? userId,
+          organizationId: deal.organizationId ?? undefined,
+        },
+      });
+      leadId = created.id;
+    }
+
+    await this.prisma.crmActivity.create({
+      data: {
+        companyId,
+        leadId,
+        dealId: id,
+        createdById: userId,
+        type: CrmActivityType.STATUS_CHANGE,
+        body:
+          dto.destination === 'board'
+            ? `Moved deal ${deal.title} back to the lead board`
+            : `Moved deal ${deal.title} back to leads`,
+      },
+    });
+
+    await this.trash.moveToTrash({
+      companyId,
+      userId,
+      entityType: 'deal',
+      entityId: id,
+      title: deal.title,
+      href: `/deals/${id}`,
+    });
+
+    return {
+      message:
+        dto.destination === 'board'
+          ? 'Deal moved to the lead board'
+          : 'Deal moved to leads',
+      leadId,
+    };
   }
 
   async pipelineSummary(companyId: string) {

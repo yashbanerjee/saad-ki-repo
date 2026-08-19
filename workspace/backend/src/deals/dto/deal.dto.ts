@@ -2,6 +2,7 @@ import {
   IsString,
   IsOptional,
   IsEnum,
+  IsIn,
   IsNumber,
   IsDateString,
   Min,
@@ -133,4 +134,10 @@ export class UpdateDealDto {
   @IsOptional()
   @IsString()
   lostNotes?: string;
+}
+
+export class RevertDealDto {
+  @ApiProperty({ enum: ['board', 'leads'] })
+  @IsIn(['board', 'leads'])
+  destination: 'board' | 'leads';
 }

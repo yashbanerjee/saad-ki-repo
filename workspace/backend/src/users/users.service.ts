@@ -114,7 +114,7 @@ export class UsersService {
       },
     });
 
-    await this.mail.sendInvitationEmail(dto.email, token, company.name);
+    await this.mail.sendInvitationEmail(dto.email, token, company.name, company.id);
     return invitation;
   }
 

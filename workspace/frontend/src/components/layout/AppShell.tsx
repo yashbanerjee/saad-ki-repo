@@ -19,6 +19,7 @@ import { AppBreadcrumbs } from "./Breadcrumbs";
 import { CommandPalette, useCommandPalette } from "./CommandPalette";
 import { AuthGuard } from "./AuthGuard";
 import { AiAssistant } from "./AiAssistant";
+import { SettingsEffects } from "./SettingsEffects";
 import { useSidebarStore } from "@/lib/sidebar-store";
 import { useAuthStore, hasRole, isClientUser } from "@/lib/auth-store";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -86,6 +87,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <CommandPalette open={open} onOpenChange={setOpen} />
         <AiAssistant />
+        <SettingsEffects />
       </div>
     </AuthGuard>
   );

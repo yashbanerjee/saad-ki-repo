@@ -10,6 +10,8 @@ import { Reflector } from '@nestjs/core';
 import { AuditService } from '../../audit/audit.service';
 import { AuditAction } from '@prisma/client';
 import { AuthenticatedUser } from '../decorators';
+import { PrismaService } from '../../prisma/prisma.service';
+import { parseCompanySettings } from '../workspace-settings';
 
 const AUDIT_ACTION_KEY = 'auditAction';
 const AUDIT_ENTITY_KEY = 'auditEntity';
@@ -28,6 +30,7 @@ export class AuditInterceptor implements NestInterceptor {
   constructor(
     private reflector: Reflector,
     private auditService: AuditService,
+    private prisma: PrismaService,
   ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
@@ -48,6 +51,15 @@ export class AuditInterceptor implements NestInterceptor {
     return next.handle().pipe(
       tap(async (data) => {
         try {
+          if (user?.companyId) {
+            const company = await this.prisma.company.findUnique({
+              where: { id: user.companyId },
+              select: { settings: true },
+            });
+            if (!parseCompanySettings(company?.settings).workspace.auditLogging) {
+              return;
+            }
+          }
           await this.auditService.log({
             companyId: user?.companyId,
             userId: user?.id,

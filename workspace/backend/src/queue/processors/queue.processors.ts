@@ -14,9 +14,9 @@ export class EmailProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<{ to: string; subject: string; html: string }>) {
+  async process(job: Job<{ to: string; subject: string; html: string; companyId?: string }>) {
     this.logger.log(`Processing email job ${job.id} to ${job.data.to}`);
-    await this.mail.sendMail(job.data.to, job.data.subject, job.data.html);
+    await this.mail.sendMail(job.data.to, job.data.subject, job.data.html, job.data.companyId);
   }
 }
 

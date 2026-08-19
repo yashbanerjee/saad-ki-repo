@@ -32,6 +32,7 @@ import {
 import { isPrivilegedProjectUser } from '../common/project-access';
 import { AuthenticatedUser } from '../common/decorators';
 import { TrashService } from '../trash/trash.service';
+import { parseCompanySettings } from '../common/workspace-settings';
 
 @Injectable()
 export class ProjectsService {
@@ -40,6 +41,16 @@ export class ProjectsService {
     private storage: StorageService,
     private trash: TrashService,
   ) {}
+
+  private async assertClientPortalAllowed(companyId: string) {
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: { settings: true },
+    });
+    if (!parseCompanySettings(company?.settings).workspace.clientPortalAccess) {
+      throw new ForbiddenException('Client portal access is disabled for this workspace');
+    }
+  }
 
   private computeProgress(tasks: { status: string }[]) {
     if (!tasks.length) return 0;
@@ -537,6 +548,7 @@ export class ProjectsService {
   // ── Portal ──────────────────────────────────────────────
 
   async enablePortal(id: string, companyId: string) {
+    await this.assertClientPortalAllowed(companyId);
     const project = await this.findOne(id, companyId);
     const token = project.portalToken || randomBytes(24).toString('hex');
     return this.prisma.project.update({
@@ -552,6 +564,7 @@ export class ProjectsService {
   }
 
   async rotatePortal(id: string, companyId: string) {
+    await this.assertClientPortalAllowed(companyId);
     await this.findOne(id, companyId);
     const token = randomBytes(24).toString('hex');
     return this.prisma.project.update({
@@ -585,6 +598,7 @@ export class ProjectsService {
       where: { portalToken: token, portalEnabled: true },
       select: {
         id: true,
+        companyId: true,
         key: true,
         name: true,
         description: true,
@@ -670,6 +684,7 @@ export class ProjectsService {
       },
     });
     if (!project) throw new NotFoundException('Portal not found or disabled');
+    await this.assertClientPortalAllowed(project.companyId);
 
     // Use same project board columns as the signed-in board (custom columns supported)
     const boardColumns = parseBoardColumns(project.settings);
@@ -1103,6 +1118,7 @@ export class ProjectsService {
       },
     });
     if (!project) throw new NotFoundException('Portal not found or disabled');
+    await this.assertClientPortalAllowed(project.companyId);
 
     let reporterId: string | undefined = project.members[0]?.userId;
     if (!reporterId) {
@@ -1821,9 +1837,10 @@ export class ProjectsService {
   async portalDownloadDocument(token: string, documentId: string) {
     const project = await this.prisma.project.findFirst({
       where: { portalToken: token, portalEnabled: true },
-      select: { id: true },
+      select: { id: true, companyId: true },
     });
     if (!project) throw new NotFoundException('Portal not found or disabled');
+    await this.assertClientPortalAllowed(project.companyId);
 
     const doc = await this.prisma.document.findFirst({
       where: { id: documentId, projectId: project.id },

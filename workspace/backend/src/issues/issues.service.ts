@@ -4,7 +4,7 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
-import { IssueStatus, Prisma } from '@prisma/client';
+import { IssueStatus, NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import {
@@ -40,6 +40,7 @@ import {
 } from '../common/project-access';
 import { AuthenticatedUser } from '../common/decorators';
 import { TrashService } from '../trash/trash.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 function mapPriority(p: string): 'low' | 'medium' | 'high' {
   if (['LOWEST', 'LOW'].includes(p)) return 'low';
@@ -71,6 +72,7 @@ export class IssuesService {
     private activity: ActivityService,
     private storage: StorageService,
     private trash: TrashService,
+    private notifications: NotificationsService,
   ) {}
 
   async findAll(
@@ -602,6 +604,17 @@ export class IssuesService {
       message: `Created issue ${key}`,
     });
 
+    if (issue.assigneeId && issue.assigneeId !== reporterId) {
+      void this.notifications.create(
+        companyId,
+        issue.assigneeId,
+        NotificationType.ASSIGNMENT,
+        `Assigned ${issue.key}`,
+        `${issue.title} was assigned to you`,
+        { issueId: issue.id, projectId: dto.projectId },
+      );
+    }
+
     return issue;
   }
 
@@ -657,6 +670,21 @@ export class IssuesService {
       action: 'updated',
       message: `Updated issue ${existing.key}`,
     });
+
+    if (
+      dto.assigneeId &&
+      dto.assigneeId !== existing.assigneeId &&
+      dto.assigneeId !== userId
+    ) {
+      void this.notifications.create(
+        companyId,
+        dto.assigneeId,
+        NotificationType.ASSIGNMENT,
+        `Assigned ${existing.key}`,
+        `${existing.title} was assigned to you`,
+        { issueId: id, projectId: existing.projectId },
+      );
+    }
 
     return issue;
   }
@@ -767,8 +795,8 @@ export class IssuesService {
   }
 
   async addComment(id: string, companyId: string, authorId: string, dto: CreateCommentDto) {
-    await this.findOne(id, companyId);
-    return this.prisma.comment.create({
+    const issue = await this.findOne(id, companyId);
+    const comment = await this.prisma.comment.create({
       data: {
         issueId: id,
         authorId,
@@ -779,6 +807,19 @@ export class IssuesService {
         author: { select: { id: true, firstName: true, lastName: true, avatar: true } },
       },
     });
+
+    if (issue.assigneeId && issue.assigneeId !== authorId) {
+      void this.notifications.create(
+        companyId,
+        issue.assigneeId,
+        NotificationType.COMMENT,
+        `Comment on ${issue.key}`,
+        dto.body.slice(0, 180),
+        { issueId: id, commentId: comment.id },
+      );
+    }
+
+    return comment;
   }
 
   async addAttachment(

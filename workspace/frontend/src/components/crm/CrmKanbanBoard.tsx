@@ -2,8 +2,16 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { MoreVertical } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 export type CrmKanbanColumn = {
@@ -11,6 +19,12 @@ export type CrmKanbanColumn = {
   label: string;
   color?: string;
   footer?: string;
+};
+
+export type CrmKanbanAction = {
+  label: string;
+  onSelect: () => void;
+  destructive?: boolean;
 };
 
 export type CrmKanbanCard = {
@@ -24,6 +38,7 @@ export type CrmKanbanCard = {
   href: string;
   status: string;
   counts?: { emails?: number; notes?: number; tasks?: number; comments?: number };
+  actions?: CrmKanbanAction[];
 };
 
 type Props = {
@@ -67,35 +82,76 @@ export function CrmKanbanBoard({ columns, items, onMove }: Props) {
             </div>
             <div className="space-y-2 flex-1">
               {colItems.map((item) => (
-                <Link
+                <Card
                   key={item.id}
-                  href={item.href}
-                  onClick={(e) => draggingId && e.preventDefault()}
+                  draggable
+                  onDragStart={() => setDraggingId(item.id)}
+                  onDragEnd={() => setDraggingId(null)}
+                  className={cn(
+                    "cursor-grab active:cursor-grabbing border-border/70 shadow-sm hover:shadow-md transition-all mb-2",
+                    draggingId === item.id && "opacity-50 scale-[0.98]",
+                  )}
                 >
-                  <Card
-                    draggable
-                    onDragStart={() => setDraggingId(item.id)}
-                    onDragEnd={() => setDraggingId(null)}
-                    className={cn(
-                      "cursor-grab active:cursor-grabbing border-border/70 shadow-sm hover:shadow-md transition-all mb-2",
-                      draggingId === item.id && "opacity-50 scale-[0.98]",
-                    )}
-                  >
-                    <CardHeader className="p-3 pb-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <CardTitle className="text-sm font-medium leading-snug">
+                  <CardHeader className="p-3 pb-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <Link
+                        href={item.href}
+                        onClick={(e) => draggingId && e.preventDefault()}
+                        className="min-w-0 flex-1"
+                      >
+                        <CardTitle className="text-sm font-medium leading-snug hover:underline">
                           {item.title}
                         </CardTitle>
+                      </Link>
+                      <div className="flex items-start gap-1 shrink-0">
                         {item.badge && (
                           <Badge
                             variant="outline"
-                            className="shrink-0 text-[10px] font-normal"
+                            className="text-[10px] font-normal"
                           >
                             {item.badge}
                           </Badge>
                         )}
+                        {item.actions?.length ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={(e) => e.stopPropagation()}
+                                onPointerDown={(e) => e.stopPropagation()}
+                                draggable={false}
+                              >
+                                <MoreVertical className="h-3.5 w-3.5" />
+                                <span className="sr-only">Card actions</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                              {item.actions.map((action) => (
+                                <DropdownMenuItem
+                                  key={action.label}
+                                  className={
+                                    action.destructive
+                                      ? "text-destructive focus:text-destructive"
+                                      : undefined
+                                  }
+                                  onSelect={action.onSelect}
+                                >
+                                  {action.label}
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : null}
                       </div>
-                    </CardHeader>
+                    </div>
+                  </CardHeader>
+                  <Link
+                    href={item.href}
+                    onClick={(e) => draggingId && e.preventDefault()}
+                  >
                     <CardContent className="p-3 pt-1 space-y-1.5 text-xs text-muted-foreground">
                       {item.subtitle && (
                         <p className="truncate">{item.subtitle}</p>
@@ -128,8 +184,8 @@ export function CrmKanbanBoard({ columns, items, onMove }: Props) {
                         </p>
                       )}
                     </CardContent>
-                  </Card>
-                </Link>
+                  </Link>
+                </Card>
               ))}
             </div>
             {col.footer && (

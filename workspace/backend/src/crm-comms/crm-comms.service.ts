@@ -59,6 +59,7 @@ export class CrmCommsService {
         to: dto.toAddress,
         subject: dto.subject,
         body: dto.body,
+        companyId,
       });
       if (result.sent) {
         status = CrmMessageStatus.SENT;

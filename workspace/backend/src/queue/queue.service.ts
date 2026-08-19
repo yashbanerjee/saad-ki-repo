@@ -10,8 +10,8 @@ export class QueueService {
     @InjectQueue(NOTIFICATION_QUEUE) private notificationQueue: Queue,
   ) {}
 
-  async enqueueEmail(to: string, subject: string, html: string) {
-    return this.emailQueue.add('send', { to, subject, html });
+  async enqueueEmail(to: string, subject: string, html: string, companyId?: string) {
+    return this.emailQueue.add('send', { to, subject, html, companyId });
   }
 
   async enqueueNotification(userId: string, title: string, body: string) {

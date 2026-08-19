@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
+import { isFirebaseAdminReady, isSmtpReady, parseCompanySettings } from '../common/workspace-settings';
 import {
   CrmActivityType,
   CrmCallStatus,
@@ -15,9 +17,10 @@ export class IntegrationsService {
   constructor(
     private config: ConfigService,
     private prisma: PrismaService,
+    private mail: MailService,
   ) {}
 
-  getFlags() {
+  async getFlags(companyId?: string | null) {
     const twilio =
       !!this.config.get('TWILIO_ACCOUNT_SID') &&
       !!this.config.get('TWILIO_AUTH_TOKEN') &&
@@ -29,14 +32,28 @@ export class IntegrationsService {
     const whatsapp =
       !!this.config.get('WHATSAPP_TOKEN') &&
       !!this.config.get('WHATSAPP_PHONE_NUMBER_ID');
-    const emailSmtp =
+    let emailSmtp =
       !!this.config.get('SMTP_HOST') && !!this.config.get('SMTP_USER');
+    let firebase = false;
+
+    if (companyId) {
+      const company = await this.prisma.company.findUnique({
+        where: { id: companyId },
+        select: { settings: true },
+      });
+      if (company) {
+        const settings = parseCompanySettings(company.settings);
+        emailSmtp = emailSmtp || isSmtpReady(settings.smtp);
+        firebase = isFirebaseAdminReady(settings.firebase);
+      }
+    }
 
     return {
       twilio,
       exotel,
       whatsapp,
       emailSmtp,
+      firebase,
       telephonyProvider: twilio ? 'twilio' : exotel ? 'exotel' : null,
     };
   }
@@ -45,21 +62,31 @@ export class IntegrationsService {
     to?: string;
     subject: string;
     body: string;
+    companyId?: string | null;
   }): Promise<{ sent: boolean; messageId?: string; reason?: string }> {
-    const flags = this.getFlags();
-    if (!flags.emailSmtp || !input.to) {
+    if (!input.to) {
       return { sent: false, reason: 'SMTP not configured or missing recipient' };
     }
-    // SMTP send is logged as queued; full nodemailer wiring can use MailModule later
-    this.logger.log(`SMTP email queued to ${input.to}: ${input.subject}`);
-    return { sent: true, messageId: `smtp-${Date.now()}` };
+    const html = /<[a-z][\s\S]*>/i.test(input.body)
+      ? input.body
+      : `<p>${input.body.replace(/\n/g, '<br/>')}</p>`;
+    try {
+      await this.mail.sendMail(input.to, input.subject, html, input.companyId);
+      return { sent: true, messageId: `smtp-${Date.now()}` };
+    } catch (error) {
+      this.logger.error(`SMTP send failed to ${input.to}`, error);
+      return {
+        sent: false,
+        reason: error instanceof Error ? error.message : 'SMTP send failed',
+      };
+    }
   }
 
   async placeCall(input: {
     to: string;
     from?: string;
   }): Promise<{ placed: boolean; provider: string; externalId?: string; reason?: string }> {
-    const flags = this.getFlags();
+    const flags = await this.getFlags();
 
     if (flags.twilio) {
       try {
@@ -147,7 +174,7 @@ export class IntegrationsService {
     to: string;
     body: string;
   }): Promise<{ sent: boolean; externalId?: string; reason?: string }> {
-    const flags = this.getFlags();
+    const flags = await this.getFlags();
     if (!flags.whatsapp) {
       return { sent: false, reason: 'WhatsApp not configured' };
     }

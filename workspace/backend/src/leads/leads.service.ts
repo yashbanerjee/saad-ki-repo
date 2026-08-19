@@ -394,6 +394,24 @@ export class LeadsService {
     return { message: 'Moved to trash' };
   }
 
+  async removeMany(companyId: string, ids: string[], userId?: string) {
+    const leads = await this.prisma.lead.findMany({
+      where: { companyId, id: { in: ids } },
+      select: { id: true, title: true, email: true },
+    });
+    for (const lead of leads) {
+      await this.trash.moveToTrash({
+        companyId,
+        userId,
+        entityType: 'lead',
+        entityId: lead.id,
+        title: lead.title || lead.email || 'Lead',
+        href: `/leads/${lead.id}`,
+      });
+    }
+    return { deleted: leads.length };
+  }
+
   async addActivity(
     id: string,
     companyId: string,
@@ -581,7 +599,11 @@ export class LeadsService {
 
     await this.prisma.lead.update({
       where: { id },
-      data: { status: LeadStatus.WON, convertedAt: lead.convertedAt ?? new Date() },
+      data: {
+        status: LeadStatus.WON,
+        convertedAt: lead.convertedAt ?? new Date(),
+        onBoard: false,
+      },
     });
 
     await this.prisma.crmActivity.create({

@@ -1,13 +1,26 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { NotificationType } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsGateway } from './notifications.gateway';
+import { MailService } from '../mail/mail.service';
+import { PushService } from '../push/push.service';
+import {
+  parseCompanySettings,
+  parseUserPreferences,
+  type NotificationPrefs,
+} from '../common/workspace-settings';
 
 @Injectable()
 export class NotificationsService {
+  private readonly logger = new Logger(NotificationsService.name);
+
   constructor(
     private prisma: PrismaService,
     private gateway: NotificationsGateway,
+    private mail: MailService,
+    private push: PushService,
+    private config: ConfigService,
   ) {}
 
   async findAll(
@@ -62,6 +75,27 @@ export class NotificationsService {
     body?: string,
     data?: Record<string, unknown>,
   ) {
+    const [user, company] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, preferences: true },
+      }),
+      this.prisma.company.findUnique({
+        where: { id: companyId },
+        select: { settings: true },
+      }),
+    ]);
+
+    const prefs = parseUserPreferences(user?.preferences);
+    const workspace = parseCompanySettings(company?.settings).workspace;
+    const category = categoryPref(type);
+    const categoryEnabled =
+      category === 'always' ? true : prefs.notifications[category];
+
+    if (!categoryEnabled) {
+      return null;
+    }
+
     const notification = await this.prisma.notification.create({
       data: {
         companyId,
@@ -74,6 +108,60 @@ export class NotificationsService {
     });
 
     this.gateway.sendToUser(userId, notification);
+
+    if (prefs.notifications.push) {
+      void this.push
+        .sendToUser(companyId, userId, title, body, {
+          type,
+          ...(data ?? {}),
+        })
+        .catch((error) => this.logger.error('Push delivery failed', error));
+    }
+
+    if (
+      workspace.sendNotificationEmails &&
+      prefs.notifications.emailReceive &&
+      user?.email
+    ) {
+      const origin = (this.config.get<string>('CORS_ORIGIN') || '').split(',')[0];
+      const html = `<p>${escapeHtml(body || title)}</p>${
+        origin ? `<p><a href="${origin}">Open TaskFlow</a></p>` : ''
+      }`;
+      void this.mail
+        .sendMail(user.email, title, html, companyId)
+        .catch((error) => this.logger.error('Notification email failed', error));
+    }
+
     return notification;
   }
+}
+
+function categoryPref(
+  type: NotificationType,
+): keyof NotificationPrefs | 'always' {
+  switch (type) {
+    case NotificationType.ASSIGNMENT:
+    case NotificationType.ISSUE:
+    case NotificationType.DUE_REMINDER:
+      return 'assignments';
+    case NotificationType.COMMENT:
+    case NotificationType.MENTION:
+      return 'comments';
+    case NotificationType.PROJECT:
+    case NotificationType.STATUS_CHANGE:
+      return 'projects';
+    case NotificationType.ONBOARDING:
+    case NotificationType.NDA:
+      return 'clientActivity';
+    default:
+      return 'always';
+  }
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }

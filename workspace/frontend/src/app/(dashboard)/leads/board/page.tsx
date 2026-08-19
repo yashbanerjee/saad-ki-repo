@@ -30,6 +30,7 @@ import { CrmKanbanBoard } from "@/components/crm/CrmKanbanBoard";
 import { LEAD_SOURCES, LEAD_STATUSES } from "@/components/crm/crm-constants";
 import { leadsApi } from "@/lib/api";
 import { toast } from "sonner";
+import { useConfirm, trashConfirm } from "@/providers/confirm-provider";
 
 interface Lead {
   id: string;
@@ -60,6 +61,7 @@ export default function LeadsBoardPage() {
   });
   const queryClient = useQueryClient();
   const router = useRouter();
+  const confirm = useConfirm();
 
   const { data, isLoading } = useQuery({
     queryKey: ["leads", "board", search],
@@ -116,6 +118,24 @@ export default function LeadsBoardPage() {
       leadsApi.update(id, { status }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["leads"] }),
     onError: () => toast.error("Could not update status"),
+  });
+
+  const toInboxMutation = useMutation({
+    mutationFn: (ids: string[]) => leadsApi.removeFromBoard(ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      toast.success("Lead moved back to Leads");
+    },
+    onError: () => toast.error("Could not move lead to inbox"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (ids: string[]) => leadsApi.bulkDelete(ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      toast.success("Lead moved to trash");
+    },
+    onError: () => toast.error("Could not delete lead"),
   });
 
   return (
@@ -286,6 +306,20 @@ export default function LeadsBoardPage() {
               notes: l._count?.crmNotes,
               tasks: l._count?.crmTasks,
             },
+            actions: [
+              {
+                label: "Move to leads",
+                onSelect: () => toInboxMutation.mutate([l.id]),
+              },
+              {
+                label: "Delete",
+                destructive: true,
+                onSelect: async () => {
+                  const ok = await confirm(trashConfirm("lead", l.title));
+                  if (ok) deleteMutation.mutate([l.id]);
+                },
+              },
+            ],
           }))}
           onMove={(id, status) => moveMutation.mutate({ id, status })}
         />

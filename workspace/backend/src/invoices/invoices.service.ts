@@ -7,6 +7,7 @@ import {
 import { InvoiceBillingType, InvoiceStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
+import { MailService } from '../mail/mail.service';
 import { AuthenticatedUser } from '../common/decorators';
 import {
   CreateInvoiceDto,
@@ -23,6 +24,7 @@ export class InvoicesService {
     private prisma: PrismaService,
     private storage: StorageService,
     private trash: TrashService,
+    private mail: MailService,
   ) {}
 
   private isClient(user: AuthenticatedUser) {
@@ -499,6 +501,22 @@ export class InvoicesService {
         project: { select: { id: true, name: true, key: true } },
       },
     });
+
+    if (invoice.client?.email) {
+      try {
+        await this.mail.sendMail(
+          invoice.client.email,
+          `Invoice ${invoice.number}${invoice.title ? ` — ${invoice.title}` : ''}`,
+          `<p>Hello ${invoice.client.name || ''},</p>
+           <p>An invoice has been sent to you${invoice.project?.name ? ` for <strong>${invoice.project.name}</strong>` : ''}.</p>
+           <p>Amount: <strong>${String(invoice.amount)} ${invoice.currency || ''}</strong></p>
+           <p>Please log in to TaskFlow to view and download it.</p>`,
+          user.companyId,
+        );
+      } catch {
+        // Invoice stays sent even if mail fails
+      }
+    }
 
     return this.serialize(invoice);
   }

@@ -358,6 +358,7 @@ export const leadsApi = {
   create: (data: Record<string, unknown>) => api.post("/leads", data),
   update: (id: string, data: Record<string, unknown>) => api.patch(`/leads/${id}`, data),
   remove: (id: string) => api.delete(`/leads/${id}`),
+  bulkDelete: (ids: string[]) => api.post("/leads/bulk-delete", { ids }),
   moveToBoard: (ids: string[]) => api.post("/leads/move-to-board", { ids }),
   removeFromBoard: (ids: string[]) => api.post("/leads/remove-from-board", { ids }),
   import: (file: File) => {
@@ -389,6 +390,8 @@ export const dealsApi = {
   create: (data: Record<string, unknown>) => api.post("/deals", data),
   update: (id: string, data: Record<string, unknown>) => api.patch(`/deals/${id}`, data),
   remove: (id: string) => api.delete(`/deals/${id}`),
+  revert: (id: string, destination: "board" | "leads") =>
+    api.post(`/deals/${id}/revert`, { destination }),
 };
 
 export const contactsApi = {
@@ -813,6 +816,26 @@ export const trashApi = {
   list: () => api.get("/trash"),
   restore: (id: string) => api.post(`/trash/${id}/restore`),
   purge: (id: string) => api.delete(`/trash/${id}`),
+};
+
+export const settingsApi = {
+  get: () => api.get("/settings"),
+  updateProfile: (data: { name?: string; firstName?: string; lastName?: string }) =>
+    api.patch("/settings/profile", data),
+  updatePreferences: (data: {
+    notifications?: Record<string, boolean>;
+    compactSidebar?: boolean;
+    theme?: "light" | "dark";
+  }) => api.patch("/settings/preferences", data),
+  updatePassword: (data: { currentPassword: string; newPassword: string }) =>
+    api.patch("/settings/password", data),
+  updateWorkspace: (data: Record<string, unknown>) =>
+    api.patch("/settings/workspace", data),
+  testSmtp: (to?: string) => api.post("/settings/smtp/test", to ? { to } : {}),
+  testPush: () => api.post("/settings/push/test"),
+  registerPush: (token: string) => api.post("/settings/push/register", { token }),
+  unregisterPush: (token?: string) =>
+    api.post("/settings/push/unregister", token ? { token } : {}),
 };
 
 export default api;

@@ -59,6 +59,12 @@ export class LeadsController {
     return this.leadsService.removeFromBoard(user.companyId!, dto);
   }
 
+  @Post('bulk-delete')
+  @Permissions('leads:manage')
+  removeMany(@CurrentUser() user: AuthenticatedUser, @Body() dto: MoveLeadsToBoardDto) {
+    return this.leadsService.removeMany(user.companyId!, dto.ids, user.id);
+  }
+
   @Post('import')
   @Permissions('leads:manage')
   @UseInterceptors(

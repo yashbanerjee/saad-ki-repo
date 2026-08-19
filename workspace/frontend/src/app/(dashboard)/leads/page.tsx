@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, LayoutGrid, Plus, Target, Upload } from "lucide-react";
+import { Download, LayoutGrid, Plus, Target, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -32,6 +32,7 @@ import { LEAD_SOURCES, LEAD_STATUSES } from "@/components/crm/crm-constants";
 import { leadsApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useConfirm, trashConfirm } from "@/providers/confirm-provider";
 
 interface Lead {
   id: string;
@@ -66,6 +67,7 @@ export default function LeadsPage() {
     notes: "",
   });
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
 
   const { data, isLoading } = useQuery({
     queryKey: ["leads", "inbox", search],
@@ -131,6 +133,21 @@ export default function LeadsPage() {
     onError: () => toast.error("Could not move leads to board"),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (ids: string[]) => leadsApi.bulkDelete(ids),
+    onSuccess: (res, ids) => {
+      const deleted = res?.data?.deleted ?? ids.length;
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      toast.success(`${deleted} lead(s) moved to trash`);
+      setSelected((prev) => {
+        const next = new Set(prev);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
+    },
+    onError: () => toast.error("Could not delete leads"),
+  });
+
   const importMutation = useMutation({
     mutationFn: (file: File) => leadsApi.import(file),
     onSuccess: (res) => {
@@ -187,6 +204,24 @@ export default function LeadsPage() {
             onClick={() => moveMutation.mutate([...selected])}
           >
             Move to board{someSelected ? ` (${selected.size})` : ""}
+          </Button>
+          <Button
+            variant="outline"
+            disabled={!someSelected || deleteMutation.isPending}
+            onClick={async () => {
+              const count = selected.size;
+              const ok = await confirm({
+                ...trashConfirm(count === 1 ? "lead" : "leads"),
+                description:
+                  count === 1
+                    ? "This lead will be moved to Trash. You can restore it later."
+                    : `${count} leads will be moved to Trash. You can restore them later.`,
+              });
+              if (ok) deleteMutation.mutate([...selected]);
+            }}
+          >
+            <Trash2 className="h-4 w-4 mr-1" />
+            Delete{someSelected ? ` (${selected.size})` : ""}
           </Button>
           <Dialog open={importOpen} onOpenChange={setImportOpen}>
             <DialogTrigger asChild>
@@ -419,6 +454,18 @@ export default function LeadsPage() {
                         ${Number(lead.estimatedValue).toLocaleString()}
                       </span>
                     )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      onClick={async () => {
+                        const ok = await confirm(trashConfirm("lead", lead.title || lead.name));
+                        if (ok) deleteMutation.mutate([lead.id]);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Delete {lead.title}</span>
+                    </Button>
                   </div>
                 </div>
               ))}

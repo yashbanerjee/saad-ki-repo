@@ -8,6 +8,7 @@ import {
   CalendarClock,
   DollarSign,
   Handshake,
+  MoreVertical,
   Plus,
   Target,
   TrendingUp,
@@ -38,12 +39,19 @@ import {
 import { CrmViewControls } from "@/components/crm/CrmViewControls";
 import { CrmKanbanBoard } from "@/components/crm/CrmKanbanBoard";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   DEAL_STAGE_PROBABILITY,
   DEAL_STATUSES,
 } from "@/components/crm/crm-constants";
 import { clientsApi, dealsApi } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
+import { useConfirm, trashConfirm } from "@/providers/confirm-provider";
 
 interface Deal {
   id: string;
@@ -81,6 +89,7 @@ export default function DealsPage() {
   const [form, setForm] = useState(emptyForm);
   const queryClient = useQueryClient();
   const router = useRouter();
+  const confirm = useConfirm();
 
   const { data, isLoading } = useQuery({
     queryKey: ["deals"],
@@ -182,6 +191,50 @@ export default function DealsPage() {
     },
     onError: () => toast.error("Could not update deal stage"),
   });
+
+  const revertMutation = useMutation({
+    mutationFn: ({
+      id,
+      destination,
+    }: {
+      id: string;
+      destination: "board" | "leads";
+    }) => dealsApi.revert(id, destination),
+    onSuccess: (_res, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["deals"] });
+      queryClient.invalidateQueries({ queryKey: ["deals", "pipeline"] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      toast.success(
+        vars.destination === "board"
+          ? "Deal moved to the lead board"
+          : "Deal moved to leads",
+      );
+    },
+    onError: () => toast.error("Could not move this deal"),
+  });
+
+  const dealActions = (deal: Deal) => [
+    {
+      label: "Move to board",
+      onSelect: () => revertMutation.mutate({ id: deal.id, destination: "board" }),
+    },
+    {
+      label: "Move to leads",
+      onSelect: () => revertMutation.mutate({ id: deal.id, destination: "leads" }),
+    },
+    {
+      label: "Delete",
+      destructive: true,
+      onSelect: async () => {
+        const ok = await confirm(trashConfirm("deal", deal.title));
+        if (!ok) return;
+        await dealsApi.remove(deal.id);
+        queryClient.invalidateQueries({ queryKey: ["deals"] });
+        queryClient.invalidateQueries({ queryKey: ["deals", "pipeline"] });
+        toast.success("Deal moved to trash");
+      },
+    },
+  ];
 
   return (
     <div className="space-y-5">
@@ -469,6 +522,7 @@ export default function DealsPage() {
               badge: `${prob}%`,
               href: `/deals/${d.id}`,
               status: d.status,
+              actions: dealActions(d),
             };
           })}
           onMove={(id, status) => moveMutation.mutate({ id, status })}
@@ -476,13 +530,14 @@ export default function DealsPage() {
       ) : (
         <Card>
           <CardContent className="p-0">
-            <div className="hidden sm:grid grid-cols-[1.5fr_1fr_0.8fr_1fr_0.7fr_0.9fr] gap-3 border-b px-4 py-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+            <div className="hidden sm:grid grid-cols-[1.5fr_1fr_0.8fr_1fr_0.7fr_0.9fr_auto] gap-3 border-b px-4 py-2 text-[11px] uppercase tracking-wide text-muted-foreground">
               <span>Deal</span>
               <span>Client</span>
               <span>Value</span>
               <span>Close date</span>
               <span>Likely</span>
               <span>Stage</span>
+              <span className="sr-only">Actions</span>
             </div>
             <div className="divide-y">
               {deals.map((deal) => {
@@ -490,7 +545,7 @@ export default function DealsPage() {
                 return (
                   <div
                     key={deal.id}
-                    className="grid gap-2 px-4 py-3 sm:grid-cols-[1.5fr_1fr_0.8fr_1fr_0.7fr_0.9fr] sm:items-center"
+                    className="grid gap-2 px-4 py-3 sm:grid-cols-[1.5fr_1fr_0.8fr_1fr_0.7fr_0.9fr_auto] sm:items-center"
                   >
                     <div>
                       <Link
@@ -537,6 +592,29 @@ export default function DealsPage() {
                         ))}
                       </SelectContent>
                     </Select>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreVertical className="h-4 w-4" />
+                          <span className="sr-only">Deal actions</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {dealActions(deal).map((action) => (
+                          <DropdownMenuItem
+                            key={action.label}
+                            className={
+                              action.destructive
+                                ? "text-destructive focus:text-destructive"
+                                : undefined
+                            }
+                            onSelect={action.onSelect}
+                          >
+                            {action.label}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 );
               })}

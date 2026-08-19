@@ -10,12 +10,15 @@ import {
   Calendar,
   CheckSquare,
   FileText,
+  LayoutGrid,
   Mail,
   MessageCircle,
   Paperclip,
   Phone,
   Send,
   StickyNote,
+  Target,
+  Trash2,
   User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -50,12 +53,14 @@ import {
   leadsApi,
 } from "@/lib/api";
 import { toast } from "sonner";
+import { useConfirm, trashConfirm } from "@/providers/confirm-provider";
 
 export default function LeadDetailPage() {
   const params = useParams();
   const id = String(params.id);
   const router = useRouter();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
 
   const [comment, setComment] = useState("");
   const [noteTitle, setNoteTitle] = useState("");
@@ -278,6 +283,26 @@ export default function LeadDetailPage() {
     onError: () => toast.error("Could not convert to deal"),
   });
 
+  const boardMutation = useMutation({
+    mutationFn: (onBoard: boolean) =>
+      onBoard ? leadsApi.moveToBoard([id]) : leadsApi.removeFromBoard([id]),
+    onSuccess: (_res, onBoard) => {
+      invalidate();
+      toast.success(onBoard ? "Moved to the board" : "Moved back to leads");
+      router.push(onBoard ? "/leads/board" : "/leads");
+    },
+    onError: () => toast.error("Could not move this lead"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => leadsApi.remove(id),
+    onSuccess: () => {
+      toast.success("Lead moved to trash");
+      router.push("/leads");
+    },
+    onError: () => toast.error("Could not delete lead"),
+  });
+
   if (isLoading || !lead) {
     return (
       <div className="space-y-4">
@@ -338,6 +363,22 @@ export default function LeadDetailPage() {
                 Convert to Deal
               </Button>
               <Button
+                variant="outline"
+                size="sm"
+                disabled={boardMutation.isPending}
+                onClick={() => boardMutation.mutate(!lead.onBoard)}
+              >
+                {lead.onBoard ? (
+                  <>
+                    <Target className="h-4 w-4 mr-1" /> Move to leads
+                  </>
+                ) : (
+                  <>
+                    <LayoutGrid className="h-4 w-4 mr-1" /> Move to board
+                  </>
+                )}
+              </Button>
+              <Button
                 size="sm"
                 disabled={converted}
                 onClick={() => {
@@ -346,6 +387,16 @@ export default function LeadDetailPage() {
                 }}
               >
                 Convert to Client
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={async () => {
+                  const ok = await confirm(trashConfirm("lead", lead.title));
+                  if (ok) deleteMutation.mutate();
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
               </Button>
             </div>
           </div>

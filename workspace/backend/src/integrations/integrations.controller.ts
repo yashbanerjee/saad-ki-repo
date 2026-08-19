@@ -13,8 +13,8 @@ export class IntegrationsController {
   @ApiBearerAuth()
   @UseGuards(PermissionsGuard)
   @Permissions('leads:read')
-  status(@CurrentUser() _user: AuthenticatedUser) {
-    return this.integrationsService.getFlags();
+  status(@CurrentUser() user: AuthenticatedUser) {
+    return this.integrationsService.getFlags(user.companyId);
   }
 
   @Public()

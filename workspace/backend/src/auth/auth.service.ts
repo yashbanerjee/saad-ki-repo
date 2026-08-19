@@ -147,7 +147,15 @@ export class AuthService {
       return { company, user, verifyToken };
     });
 
-    await this.mail.sendVerificationEmail(dto.email, result.verifyToken);
+    try {
+      await this.mail.sendVerificationEmail(
+        dto.email,
+        result.verifyToken,
+        result.company.id,
+      );
+    } catch {
+      // Account is created even if mail is not configured yet
+    }
 
     const tokens = await this.issueTokens(result.user.id, ip, userAgent);
     await this.audit.log({
@@ -463,7 +471,11 @@ export class AuthService {
       },
     });
 
-    await this.mail.sendPasswordResetEmail(email, token);
+    try {
+      await this.mail.sendPasswordResetEmail(email, token, user.companyId);
+    } catch {
+      // Don't leak whether mail was sent
+    }
     return { message: 'If the email exists, a reset link has been sent' };
   }
 

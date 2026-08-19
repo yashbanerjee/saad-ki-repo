@@ -37,6 +37,8 @@ import { QueueModule } from './queue/queue.module';
 import { HealthModule } from './health/health.module';
 import { InvoicesModule } from './invoices/invoices.module';
 import { TrashModule } from './trash/trash.module';
+import { PushModule } from './push/push.module';
+import { SettingsModule } from './settings/settings.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
@@ -54,6 +56,7 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     PrismaModule,
     StorageModule,
     MailModule,
+    PushModule,
     QueueModule.register(),
     AuditModule,
     AuthModule,
@@ -85,6 +88,7 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     InvoicesModule,
     HealthModule,
     TrashModule,
+    SettingsModule,
   ],
   controllers: [RootController],
   providers: [
