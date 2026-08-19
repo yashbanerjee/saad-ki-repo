@@ -308,12 +308,13 @@ export class CrmCommsService {
       file.buffer,
       file.mimetype || 'application/octet-stream',
     );
+    const fileUrl = url ?? key;
 
     return this.prisma.crmAttachment.create({
       data: {
         companyId,
         fileName: (meta.fileName || file.originalname || 'Upload').trim(),
-        fileUrl: url,
+        fileUrl,
         mimeType: file.mimetype || 'application/octet-stream',
         sizeBytes: file.size,
         leadId: meta.leadId,
