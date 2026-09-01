@@ -51,6 +51,7 @@ export class LeadsService {
 
     const where: Prisma.LeadWhereInput = {
       companyId,
+      deletedAt: null,
       archived: query.includeArchived ? undefined : false,
       ...(query.status ? { status: query.status } : {}),
       ...(query.ownerId ? { ownerId: query.ownerId } : {}),

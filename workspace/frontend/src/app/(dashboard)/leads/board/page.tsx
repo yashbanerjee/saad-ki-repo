@@ -89,9 +89,7 @@ export default function LeadsBoardPage() {
         notes: form.notes || undefined,
         onBoard: true,
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["leads"] });
-      toast.success("Lead added to board");
+    onSuccess: async () => {
       setOpen(false);
       setForm({
         title: "",
@@ -104,6 +102,9 @@ export default function LeadsBoardPage() {
         estimatedValue: "",
         notes: "",
       });
+      await queryClient.invalidateQueries({ queryKey: ["leads"] });
+      await queryClient.refetchQueries({ queryKey: ["leads", "board"] });
+      toast.success("Lead added to board");
     },
     onError: (err: unknown) => {
       const message =

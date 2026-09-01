@@ -15,10 +15,28 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ClientType, LeadStatus, LeadSource, CrmActivityType } from '@prisma/client';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 
-function toOptionalBoolean({ value }: { value: unknown }) {
-  if (value === undefined || value === null || value === '') return undefined;
-  if (value === true || value === 'true' || value === '1') return true;
-  if (value === false || value === 'false' || value === '0') return false;
+/**
+ * Parse optional booleans from query/body.
+ * With ValidationPipe `enableImplicitConversion`, query string "false" becomes
+ * Boolean("false") === true before @IsBoolean runs — so read the raw value
+ * from the plain object (`obj[key]`) when present.
+ */
+function toOptionalBoolean({
+  value,
+  obj,
+  key,
+}: {
+  value: unknown;
+  obj?: Record<string, unknown>;
+  key?: string;
+}) {
+  const raw =
+    obj && key !== undefined && Object.prototype.hasOwnProperty.call(obj, key)
+      ? obj[key]
+      : value;
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  if (raw === true || raw === 'true' || raw === '1' || raw === 1) return true;
+  if (raw === false || raw === 'false' || raw === '0' || raw === 0) return false;
   return undefined;
 }
 

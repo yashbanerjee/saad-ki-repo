@@ -98,9 +98,7 @@ export default function LeadsPage() {
         notes: form.notes || undefined,
         onBoard: false,
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["leads"] });
-      toast.success("Lead created — select it and move to Board when ready");
+    onSuccess: async () => {
       setOpen(false);
       setForm({
         title: "",
@@ -113,6 +111,9 @@ export default function LeadsPage() {
         estimatedValue: "",
         notes: "",
       });
+      await queryClient.invalidateQueries({ queryKey: ["leads"] });
+      await queryClient.refetchQueries({ queryKey: ["leads", "inbox"] });
+      toast.success("Lead created — select it and move to Board when ready");
     },
     onError: (err: unknown) => {
       const message =
