@@ -1,15 +1,25 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { ClientType, CrmActivityType, DealStatus, LeadSource, LeadStatus, Prisma } from '@prisma/client';
+import {
+  ClientType,
+  CrmActivityType,
+  DealStatus,
+  LeadSource,
+  LeadStatus,
+  NotificationType,
+  Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { paginate, paginatedResponse } from '../common/dto/pagination.dto';
 import { CreateDealDto, ListDealsQueryDto, RevertDealDto, UpdateDealDto } from './dto/deal.dto';
 import { TrashService } from '../trash/trash.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class DealsService {
   constructor(
     private prisma: PrismaService,
     private trash: TrashService,
+    private notifications: NotificationsService,
   ) {}
 
   async findAll(companyId: string, query: ListDealsQueryDto) {
@@ -19,6 +29,7 @@ export class DealsService {
 
     const where: Prisma.DealWhereInput = {
       companyId,
+      deletedAt: null,
       ...(query.status ? { status: query.status } : {}),
       ...(query.clientId ? { clientId: query.clientId } : {}),
       ...(query.leadId ? { leadId: query.leadId } : {}),
@@ -34,7 +45,7 @@ export class DealsService {
         include: {
           owner: { select: { id: true, firstName: true, lastName: true } },
           client: { select: { id: true, name: true, type: true } },
-          lead: { select: { id: true, title: true, status: true } },
+          lead: { select: { id: true, title: true, status: true, ownerId: true } },
         },
       }),
       this.prisma.deal.count({ where }),
@@ -65,7 +76,7 @@ export class DealsService {
   }
 
   async create(companyId: string, userId: string, dto: CreateDealDto) {
-    return this.prisma.deal.create({
+    const deal = await this.prisma.deal.create({
       data: {
         companyId,
         title: dto.title,
@@ -83,14 +94,38 @@ export class DealsService {
       include: {
         owner: { select: { id: true, firstName: true, lastName: true } },
         client: { select: { id: true, name: true, type: true } },
-        lead: { select: { id: true, title: true } },
+        lead: { select: { id: true, title: true, ownerId: true } },
       },
     });
+
+    if (deal.ownerId && deal.ownerId !== userId) {
+      const who = await this.actorLabel(userId);
+      void this.notifications.notifyRelated({
+        companyId,
+        actorId: userId,
+        userIds: [deal.ownerId, deal.lead?.ownerId],
+        type: NotificationType.ASSIGNMENT,
+        title: `${who} assigned you a deal`,
+        body: deal.title,
+        data: { dealId: deal.id, href: `/deals/${deal.id}` },
+      });
+    }
+
+    return deal;
   }
 
-  async update(id: string, companyId: string, dto: UpdateDealDto) {
-    await this.findOne(id, companyId);
-    return this.prisma.deal.update({
+  async update(id: string, companyId: string, userId: string, dto: UpdateDealDto) {
+    const existing = await this.findOne(id, companyId);
+    const statusChanged = dto.status !== undefined && dto.status !== existing.status;
+    const ownerChanged =
+      dto.ownerId !== undefined && dto.ownerId !== existing.ownerId;
+    const closeDateChanged =
+      dto.expectedCloseDate !== undefined &&
+      (dto.expectedCloseDate
+        ? new Date(dto.expectedCloseDate).getTime()
+        : null) !== (existing.expectedCloseDate?.getTime() ?? null);
+
+    const deal = await this.prisma.deal.update({
       where: { id },
       data: {
         ...(dto.title !== undefined ? { title: dto.title } : {}),
@@ -113,9 +148,48 @@ export class DealsService {
       include: {
         owner: { select: { id: true, firstName: true, lastName: true } },
         client: { select: { id: true, name: true, type: true } },
-        lead: { select: { id: true, title: true } },
+        lead: { select: { id: true, title: true, ownerId: true } },
       },
     });
+
+    const who = await this.actorLabel(userId);
+    const related = [deal.ownerId, existing.ownerId, deal.lead?.ownerId];
+
+    if (ownerChanged) {
+      void this.notifications.notifyRelated({
+        companyId,
+        actorId: userId,
+        userIds: related,
+        type: NotificationType.ASSIGNMENT,
+        title: `${who} reassigned deal`,
+        body: deal.title,
+        data: { dealId: deal.id, href: `/deals/${deal.id}` },
+      });
+    } else if (statusChanged) {
+      void this.notifications.notifyRelated({
+        companyId,
+        actorId: userId,
+        userIds: related,
+        type: NotificationType.STATUS_CHANGE,
+        title: `${who} changed deal status`,
+        body: `${deal.title}: ${existing.status} → ${dto.status}`,
+        data: { dealId: deal.id, href: `/deals/${deal.id}` },
+      });
+    } else if (closeDateChanged) {
+      void this.notifications.notifyRelated({
+        companyId,
+        actorId: userId,
+        userIds: related,
+        type: NotificationType.DUE_REMINDER,
+        title: `${who} updated deal close date`,
+        body: deal.expectedCloseDate
+          ? `${deal.title} closes ${deal.expectedCloseDate.toLocaleDateString()}`
+          : `${deal.title} — close date cleared`,
+        data: { dealId: deal.id, href: `/deals/${deal.id}` },
+      });
+    }
+
+    return deal;
   }
 
   async remove(id: string, companyId: string, userId?: string) {
@@ -197,6 +271,17 @@ export class DealsService {
       },
     });
 
+    const who = await this.actorLabel(userId);
+    void this.notifications.notifyRelated({
+      companyId,
+      actorId: userId,
+      userIds: [deal.ownerId],
+      type: NotificationType.STATUS_CHANGE,
+      title: `${who} moved deal back to leads`,
+      body: deal.title,
+      data: { leadId, dealId: id, href: `/leads/${leadId}` },
+    });
+
     await this.trash.moveToTrash({
       companyId,
       userId,
@@ -224,7 +309,7 @@ export class DealsService {
     ];
     const groups = await this.prisma.deal.groupBy({
       by: ['status'],
-      where: { companyId },
+      where: { companyId, deletedAt: null },
       _count: true,
       _sum: { amount: true },
     });
@@ -247,5 +332,14 @@ export class DealsService {
     const pipelineCount = openStatuses.reduce((sum, s) => sum + byStatus[s].count, 0);
 
     return { byStatus, pipelineValue, pipelineCount };
+  }
+
+  private async actorLabel(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { firstName: true, lastName: true },
+    });
+    if (!user) return 'Someone';
+    return [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Someone';
   }
 }

@@ -48,7 +48,7 @@ export class CrmTasksController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: UpdateCrmTaskDto,
   ) {
-    return this.crmTasksService.update(id, user.companyId!, dto);
+    return this.crmTasksService.update(id, user.companyId!, user.id, dto);
   }
 
   @Delete(':id')

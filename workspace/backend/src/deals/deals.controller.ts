@@ -54,7 +54,7 @@ export class DealsController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: UpdateDealDto,
   ) {
-    return this.dealsService.update(id, user.companyId!, dto);
+    return this.dealsService.update(id, user.companyId!, user.id, dto);
   }
 
   @Post(':id/revert')

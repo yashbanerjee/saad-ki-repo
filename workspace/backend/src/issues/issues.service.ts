@@ -676,6 +676,10 @@ export class IssuesService {
     const who = await this.actorLabel(userId);
     const assigned =
       dto.assigneeId && dto.assigneeId !== existing.assigneeId;
+    const dueChanged =
+      dto.dueDate !== undefined &&
+      (dto.dueDate ? new Date(dto.dueDate).getTime() : null) !==
+        (existing.dueDate?.getTime() ?? null);
     this.notifyIssueChange({
       companyId,
       actorId: userId,
@@ -683,11 +687,21 @@ export class IssuesService {
       issueId: id,
       assigneeId: issue.assigneeId,
       reporterId: existing.reporterId,
-      type: assigned ? NotificationType.ASSIGNMENT : NotificationType.ISSUE,
+      type: assigned
+        ? NotificationType.ASSIGNMENT
+        : dueChanged
+          ? NotificationType.DUE_REMINDER
+          : NotificationType.ISSUE,
       title: assigned
         ? `${who} assigned ${existing.key}`
-        : `${who} updated ${existing.key}`,
-      body: existing.title,
+        : dueChanged
+          ? `${who} changed due date on ${existing.key}`
+          : `${who} updated ${existing.key}`,
+      body: dueChanged
+        ? issue.dueDate
+          ? `${existing.title} due ${issue.dueDate.toLocaleString()}`
+          : `${existing.title} — due date cleared`
+        : existing.title,
     });
 
     return issue;

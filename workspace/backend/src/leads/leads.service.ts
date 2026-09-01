@@ -10,10 +10,12 @@ import {
   DealStatus,
   LeadSource,
   LeadStatus,
+  NotificationType,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { TrashService } from '../trash/trash.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { paginate, paginatedResponse } from '../common/dto/pagination.dto';
 import {
   ConvertLeadDto,
@@ -42,6 +44,7 @@ export class LeadsService {
   constructor(
     private prisma: PrismaService,
     private trash: TrashService,
+    private notifications: NotificationsService,
   ) {}
 
   async findAll(companyId: string, query: ListLeadsQueryDto) {
@@ -137,7 +140,7 @@ export class LeadsService {
   }
 
   async create(companyId: string, userId: string, dto: CreateLeadDto) {
-    return this.prisma.lead.create({
+    const lead = await this.prisma.lead.create({
       data: {
         companyId,
         title: dto.title,
@@ -164,6 +167,21 @@ export class LeadsService {
         owner: { select: { id: true, firstName: true, lastName: true, email: true } },
       },
     });
+
+    if (lead.ownerId && lead.ownerId !== userId) {
+      const who = await this.actorLabel(userId);
+      void this.notifications.notifyRelated({
+        companyId,
+        actorId: userId,
+        userIds: [lead.ownerId],
+        type: NotificationType.ASSIGNMENT,
+        title: `${who} assigned you a lead`,
+        body: lead.title,
+        data: { leadId: lead.id, href: `/leads/${lead.id}` },
+      });
+    }
+
+    return lead;
   }
 
   async moveToBoard(companyId: string, dto: MoveLeadsToBoardDto) {
@@ -343,6 +361,8 @@ export class LeadsService {
   async update(id: string, companyId: string, userId: string, dto: UpdateLeadDto) {
     const existing = await this.findOne(id, companyId);
     const statusChanged = dto.status && dto.status !== existing.status;
+    const ownerChanged =
+      dto.ownerId !== undefined && dto.ownerId !== existing.ownerId;
 
     const lead = await this.prisma.lead.update({
       where: { id },
@@ -376,6 +396,29 @@ export class LeadsService {
           type: CrmActivityType.STATUS_CHANGE,
           body: `Status changed from ${existing.status} to ${dto.status}`,
         },
+      });
+    }
+
+    const who = await this.actorLabel(userId);
+    if (ownerChanged) {
+      void this.notifications.notifyRelated({
+        companyId,
+        actorId: userId,
+        userIds: [lead.ownerId, existing.ownerId],
+        type: NotificationType.ASSIGNMENT,
+        title: `${who} reassigned lead`,
+        body: lead.title,
+        data: { leadId: lead.id, href: `/leads/${lead.id}` },
+      });
+    } else if (statusChanged) {
+      void this.notifications.notifyRelated({
+        companyId,
+        actorId: userId,
+        userIds: [lead.ownerId],
+        type: NotificationType.STATUS_CHANGE,
+        title: `${who} changed lead status`,
+        body: `${lead.title}: ${existing.status} → ${dto.status}`,
+        data: { leadId: lead.id, href: `/leads/${lead.id}` },
       });
     }
 
@@ -419,8 +462,8 @@ export class LeadsService {
     userId: string,
     dto: CreateLeadActivityDto,
   ) {
-    await this.findOne(id, companyId);
-    return this.prisma.crmActivity.create({
+    const lead = await this.findOne(id, companyId);
+    const activity = await this.prisma.crmActivity.create({
       data: {
         companyId,
         leadId: id,
@@ -432,6 +475,23 @@ export class LeadsService {
         createdBy: { select: { id: true, firstName: true, lastName: true } },
       },
     });
+
+    const who = await this.actorLabel(userId);
+    const type =
+      dto.type === CrmActivityType.COMMENT || dto.type === CrmActivityType.NOTE
+        ? NotificationType.COMMENT
+        : NotificationType.SYSTEM;
+    void this.notifications.notifyRelated({
+      companyId,
+      actorId: userId,
+      userIds: [lead.ownerId],
+      type,
+      title: `${who} added activity on ${lead.title}`,
+      body: dto.body.slice(0, 180),
+      data: { leadId: id, href: `/leads/${id}` },
+    });
+
+    return activity;
   }
 
   async convert(id: string, companyId: string, userId: string, dto: ConvertLeadDto) {
@@ -641,5 +701,14 @@ export class LeadsService {
       converted,
       conversionRate: total > 0 ? Math.round((converted / total) * 1000) / 10 : 0,
     };
+  }
+
+  private async actorLabel(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { firstName: true, lastName: true },
+    });
+    if (!user) return 'Someone';
+    return [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Someone';
   }
 }

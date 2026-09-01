@@ -41,3 +41,18 @@ export function truncate(str: string, length: number) {
   if (str.length <= length) return str;
   return str.slice(0, length) + "…";
 }
+
+/** Deep-link from notification payload data. */
+export function notificationHref(
+  data?: Record<string, unknown> | null,
+): string | null {
+  if (!data || typeof data !== "object") return null;
+  if (typeof data.href === "string" && data.href.startsWith("/")) return data.href;
+  if (typeof data.issueId === "string") return `/issues/${data.issueId}`;
+  if (typeof data.leadId === "string") return `/leads/${data.leadId}`;
+  if (typeof data.dealId === "string") return `/deals/${data.dealId}`;
+  if (typeof data.crmTaskId === "string") return "/crm/tasks";
+  if (typeof data.projectId === "string") return `/projects/${data.projectId}`;
+  if (typeof data.clientId === "string") return `/clients/${data.clientId}`;
+  return null;
+}

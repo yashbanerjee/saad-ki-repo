@@ -144,6 +144,8 @@ export class NotificationsService {
     title: string;
     body?: string;
     data?: Record<string, unknown>;
+    /** When false, only notify extraUserIds (related people). Default true. */
+    includeManagers?: boolean;
   }) {
     const ids = new Set<string>();
     for (const id of opts.extraUserIds ?? []) {
@@ -158,20 +160,22 @@ export class NotificationsService {
       for (const member of members) ids.add(member.userId);
     }
 
-    const admins = await this.prisma.user.findMany({
-      where: {
-        companyId: opts.companyId,
-        roles: {
-          some: {
-            role: {
-              slug: { in: ['company_admin', 'super_admin', 'project_manager'] },
+    if (opts.includeManagers !== false) {
+      const admins = await this.prisma.user.findMany({
+        where: {
+          companyId: opts.companyId,
+          roles: {
+            some: {
+              role: {
+                slug: { in: ['company_admin', 'super_admin', 'project_manager'] },
+              },
             },
           },
         },
-      },
-      select: { id: true },
-    });
-    for (const admin of admins) ids.add(admin.id);
+        select: { id: true },
+      });
+      for (const admin of admins) ids.add(admin.id);
+    }
 
     if (opts.actorId) ids.delete(opts.actorId);
 
@@ -187,6 +191,52 @@ export class NotificationsService {
         ),
       ),
     );
+  }
+
+  /** Notify only the given related people (excludes actor). */
+  async notifyRelated(opts: {
+    companyId: string;
+    actorId?: string | null;
+    userIds: Array<string | null | undefined>;
+    type: NotificationType;
+    title: string;
+    body?: string;
+    data?: Record<string, unknown>;
+  }) {
+    return this.notifyStakeholders({
+      ...opts,
+      extraUserIds: opts.userIds,
+      includeManagers: false,
+    });
+  }
+
+  /**
+   * True if we already sent a due reminder for this entity+user (+ optional kind).
+   * Kinds: "upcoming30" (30 min before) | "overdue"
+   */
+  async hasDueReminderToday(
+    userId: string,
+    entityKey: string,
+    entityId: string,
+    reminderKind?: string,
+  ): Promise<boolean> {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const rows = await this.prisma.notification.findMany({
+      where: {
+        userId,
+        type: NotificationType.DUE_REMINDER,
+        createdAt: { gte: start },
+      },
+      select: { data: true },
+      take: 200,
+    });
+    return rows.some((row) => {
+      const data = (row.data ?? {}) as Record<string, unknown>;
+      if (data[entityKey] !== entityId) return false;
+      if (reminderKind && data.reminderKind !== reminderKind) return false;
+      return true;
+    });
   }
 }
 

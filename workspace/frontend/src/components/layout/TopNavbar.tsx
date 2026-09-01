@@ -30,7 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthStore } from "@/lib/auth-store";
 import { useSidebarStore } from "@/lib/sidebar-store";
-import { cn, formatRelativeTime, getInitials } from "@/lib/utils";
+import { cn, formatRelativeTime, getInitials, notificationHref } from "@/lib/utils";
 import { authApi, notificationsApi } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -196,6 +196,7 @@ export function TopNavbar({ onOpenCommand }: TopNavbarProps) {
                     body?: string;
                     read?: boolean;
                     createdAt?: string;
+                    data?: Record<string, unknown> | null;
                   }) => (
                     <button
                       key={n.id}
@@ -206,6 +207,9 @@ export function TopNavbar({ onOpenCommand }: TopNavbarProps) {
                       )}
                       onClick={() => {
                         if (!n.read) markRead.mutate(n.id);
+                        const href = notificationHref(n.data);
+                        if (href) router.push(href);
+                        else router.push("/notifications");
                       }}
                     >
                       <div className="flex items-start justify-between gap-2">
