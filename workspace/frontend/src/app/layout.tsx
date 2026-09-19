@@ -44,19 +44,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} ${manrope.variable} font-sans antialiased bg-background text-foreground`}>
+      <body
+        className={`${inter.variable} ${manrope.variable} font-sans antialiased bg-background text-foreground`}
+      >
         <ThemeProvider>
           <QueryProvider>
             <ConfirmProvider>
               {children}
-              <Toaster
-                position="top-right"
-                toastOptions={{
-                  classNames: {
-                    toast: "border bg-background text-foreground shadow-lg",
-                  },
-                }}
-              />
+              <Toaster position="top-right" />
             </ConfirmProvider>
           </QueryProvider>
         </ThemeProvider>
