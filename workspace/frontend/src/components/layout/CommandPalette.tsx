@@ -11,6 +11,9 @@ import {
   Plus,
   Search,
   Trash2,
+  Sparkles,
+  CalendarDays,
+  Files,
 } from "lucide-react";
 import {
   CommandDialog,
@@ -69,12 +72,6 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               Clients
             </CommandItem>
           )}
-          {!isClient && (
-            <CommandItem onSelect={() => runCommand(() => router.push("/team"))}>
-              <Users className="mr-2 h-4 w-4" />
-              Team
-            </CommandItem>
-          )}
           <CommandItem onSelect={() => runCommand(() => router.push("/trash"))}>
             <Trash2 className="mr-2 h-4 w-4" />
             Trash
@@ -86,6 +83,25 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         </CommandGroup>
         {!isClient && (
           <>
+            <CommandSeparator />
+            <CommandGroup heading="Workspace">
+              <CommandItem onSelect={() => runCommand(() => router.push("/crm"))}>
+                <Sparkles className="mr-2 h-4 w-4" />
+                CRM
+              </CommandItem>
+              <CommandItem onSelect={() => runCommand(() => router.push("/calendar"))}>
+                <CalendarDays className="mr-2 h-4 w-4" />
+                Calendar
+              </CommandItem>
+              <CommandItem onSelect={() => runCommand(() => router.push("/documents"))}>
+                <Files className="mr-2 h-4 w-4" />
+                Docs
+              </CommandItem>
+              <CommandItem onSelect={() => runCommand(() => router.push("/team"))}>
+                <Users className="mr-2 h-4 w-4" />
+                Team
+              </CommandItem>
+            </CommandGroup>
             <CommandSeparator />
             <CommandGroup heading="Actions">
               <CommandItem

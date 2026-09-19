@@ -125,7 +125,6 @@ const mobileLinks = [
     icon: Users,
     roles: ["admin", "manager", "member"] as const,
   },
-  { href: "/team", label: "Team", icon: Users, roles: ["admin", "manager"] as const },
   {
     href: "/trash",
     label: "Trash",

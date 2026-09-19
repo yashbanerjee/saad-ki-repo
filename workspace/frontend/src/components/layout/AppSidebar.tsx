@@ -8,23 +8,15 @@ import {
   FolderKanban,
   Bug,
   Users,
-  BarChart3,
   Settings,
-  Building2,
   ChevronLeft,
   ChevronRight,
-  Sparkles,
   Plus,
   ChevronsUpDown,
   Search,
-  Target,
-  LayoutGrid,
-  Handshake,
-  Contact,
-  CheckSquare,
-  StickyNote,
   Receipt,
   Trash2,
+  LayoutGrid,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { VedhaMark } from "@/components/brand/VedhaMark";
@@ -49,26 +41,13 @@ interface NavItem {
   roles?: ("admin" | "manager" | "member" | "client")[];
 }
 
+/** Core delivery nav — CRM / Calendar / Docs / Team live in the Workspace launcher. */
 const mainNav: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { title: "Projects", href: "/projects", icon: FolderKanban },
-  // Issues list is client-facing; staff use project boards instead
   { title: "Issues", href: "/issues", icon: Bug, roles: ["client"] },
   { title: "Invoices", href: "/invoices", icon: Receipt, roles: ["admin", "manager", "member", "client"] },
   { title: "Clients", href: "/clients", icon: Users, roles: ["admin", "manager", "member"] },
-  { title: "Team", href: "/team", icon: Users, roles: ["admin", "manager"] },
-];
-
-const crmNav: NavItem[] = [
-  { title: "CRM Home", href: "/crm", icon: Sparkles, roles: ["admin", "manager", "member"] },
-  { title: "Leads", href: "/leads", icon: Target, roles: ["admin", "manager", "member"] },
-  { title: "Board", href: "/leads/board", icon: LayoutGrid, roles: ["admin", "manager", "member"] },
-  { title: "Deals", href: "/deals", icon: Handshake, roles: ["admin", "manager", "member"] },
-  { title: "Contacts", href: "/contacts", icon: Contact, roles: ["admin", "manager", "member"] },
-  { title: "Organizations", href: "/organizations", icon: Building2, roles: ["admin", "manager", "member"] },
-  { title: "Tasks", href: "/crm/tasks", icon: CheckSquare, roles: ["admin", "manager", "member"] },
-  { title: "Notes", href: "/crm/notes", icon: StickyNote, roles: ["admin", "manager", "member"] },
-  { title: "Reports", href: "/reports", icon: BarChart3, roles: ["admin", "manager"] },
 ];
 
 const secondaryNav: NavItem[] = [
@@ -78,12 +57,8 @@ const secondaryNav: NavItem[] = [
 
 function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
   const pathname = usePathname();
-  // Prefer exact / longer CRM paths so /leads does not steal /leads/board
   const isActive =
-    item.href === "/leads"
-      ? pathname === "/leads" ||
-        (pathname.startsWith("/leads/") && !pathname.startsWith("/leads/board"))
-      : pathname === item.href || pathname.startsWith(`${item.href}/`);
+    pathname === item.href || pathname.startsWith(`${item.href}/`);
   const Icon = item.icon;
 
   const link = (
@@ -106,9 +81,7 @@ function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
     return (
       <Tooltip delayDuration={0}>
         <TooltipTrigger asChild>{link}</TooltipTrigger>
-        <TooltipContent side="right">
-          {item.title}
-        </TooltipContent>
+        <TooltipContent side="right">{item.title}</TooltipContent>
       </Tooltip>
     );
   }
@@ -131,13 +104,10 @@ export function AppSidebar() {
       item.href === "/dashboard" ? { ...item, href: homeHref } : item,
     ),
   ).filter((item) => {
-    // Clients: focused nav + Issues for board/task access
     if (!isClient) return true;
     return ["Dashboard", "Projects", "Issues", "Invoices"].includes(item.title);
   });
 
-  // Clients must never see CRM or Client Portal
-  const visibleCrm = isClient ? [] : filterByRole(crmNav);
   const visibleSecondary = filterByRole(secondaryNav).filter((item) => {
     if (!isClient) return true;
     return ["Trash", "Settings"].includes(item.title);
@@ -154,11 +124,15 @@ export function AppSidebar() {
         <div
           className={cn(
             "flex h-16 items-center border-b border-border px-4 dark:border-white/[0.06]",
-            collapsed && "justify-center px-2"
+            collapsed && "justify-center px-2",
           )}
         >
           <Link href={homeHref} className="flex items-center gap-2.5">
-            <VedhaMark className="h-9 w-9" src={user?.companyLogo || user?.companyFavicon} alt={workspace} />
+            <VedhaMark
+              className="h-9 w-9"
+              src={user?.companyLogo || user?.companyFavicon}
+              alt={workspace}
+            />
             <AnimatePresence>
               {!collapsed && (
                 <motion.div
@@ -187,7 +161,7 @@ export function AppSidebar() {
                 >
                   <div className="min-w-0">
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                      Workspace
+                      Company
                     </p>
                     <p className="truncate font-medium">{workspace}</p>
                   </div>
@@ -195,7 +169,7 @@ export function AppSidebar() {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-56" align="start">
-                <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
+                <DropdownMenuLabel>Companies</DropdownMenuLabel>
                 <DropdownMenuItem disabled>{workspace}</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -227,19 +201,37 @@ export function AppSidebar() {
             ))}
           </nav>
 
-          {visibleCrm.length > 0 && (
+          {!isClient && (
             <>
               <Separator className="my-4 mx-3 bg-border dark:bg-white/[0.06]" />
-              <nav className={cn("space-y-0.5 px-3", collapsed && "px-2")}>
-                {!collapsed && (
-                  <p className="mb-2 px-3 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                    CRM
-                  </p>
+              <div className={cn("px-3", collapsed && "px-2")}>
+                {!collapsed ? (
+                  <div className="rounded-xl border border-border/80 bg-muted/30 p-3">
+                    <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+                      <LayoutGrid className="h-4 w-4" />
+                      Workspace apps
+                    </div>
+                    <p className="mb-3 text-[11px] leading-relaxed text-muted-foreground">
+                      CRM, Calendar, Docs, Team, and more — open the grid icon in the top bar.
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Look for <span className="font-medium text-foreground">⋮⋮⋮</span> next to
+                      notifications
+                    </p>
+                  </div>
+                ) : (
+                  <Tooltip delayDuration={0}>
+                    <TooltipTrigger asChild>
+                      <div className="flex justify-center py-2 text-muted-foreground">
+                        <LayoutGrid className="h-4 w-4" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      Workspace apps (top bar)
+                    </TooltipContent>
+                  </Tooltip>
                 )}
-                {visibleCrm.map((item) => (
-                  <NavLink key={item.href} item={item} collapsed={collapsed} />
-                ))}
-              </nav>
+              </div>
             </>
           )}
 

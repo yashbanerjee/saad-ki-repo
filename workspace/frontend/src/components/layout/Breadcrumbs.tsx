@@ -25,6 +25,7 @@ const routeLabels: Record<string, string> = {
   onboarding: "Onboarding",
   nda: "NDA",
   documents: "Documents",
+  calendar: "Calendar",
   invoices: "Invoices",
   trash: "Trash",
   team: "Team",
