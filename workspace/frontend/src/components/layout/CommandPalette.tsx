@@ -56,9 +56,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <LayoutDashboard className="mr-2 h-4 w-4" />
             Dashboard
           </CommandItem>
-          <CommandItem onSelect={() => runCommand(() => router.push("/projects"))}>
+          <CommandItem onSelect={() => runCommand(() => router.push("/spaces"))}>
             <FolderKanban className="mr-2 h-4 w-4" />
-            Projects
+            Spaces
           </CommandItem>
           {!isClient && (
             <CommandItem onSelect={() => runCommand(() => router.push("/issues"))}>
@@ -105,10 +105,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <CommandSeparator />
             <CommandGroup heading="Actions">
               <CommandItem
-                onSelect={() => runCommand(() => router.push("/projects?create=true"))}
+                onSelect={() => runCommand(() => router.push("/spaces?create=1"))}
               >
                 <Plus className="mr-2 h-4 w-4" />
-                Create Project
+                Create Space
                 <CommandShortcut>⌘N</CommandShortcut>
               </CommandItem>
               <CommandItem

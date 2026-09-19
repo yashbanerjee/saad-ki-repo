@@ -2,26 +2,31 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
-  FolderKanban,
-  Bug,
-  Users,
   Settings,
   ChevronLeft,
   ChevronRight,
   Plus,
   ChevronsUpDown,
   Search,
-  Receipt,
   Trash2,
+  Star,
+  Filter,
+  Users,
+  FolderKanban,
   LayoutGrid,
+  Receipt,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { VedhaMark } from "@/components/brand/VedhaMark";
 import { useSidebarStore } from "@/lib/sidebar-store";
-import { useAuthStore, hasRole, isClientUser } from "@/lib/auth-store";
+import { useAuthStore, isClientUser } from "@/lib/auth-store";
+import { projectsApi } from "@/lib/api";
+import { getRecentSpaces } from "@/lib/recent-spaces";
+import { spaceHref } from "@/lib/space-paths";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -33,47 +38,34 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useEffect, useState } from "react";
 
-interface NavItem {
-  title: string;
+function SideLink({
+  href,
+  label,
+  icon: Icon,
+  collapsed,
+  active,
+}: {
   href: string;
+  label: string;
   icon: React.ComponentType<{ className?: string }>;
-  roles?: ("admin" | "manager" | "member" | "client")[];
-}
-
-/** Core delivery nav — CRM / Calendar / Docs / Team live in the Workspace launcher. */
-const mainNav: NavItem[] = [
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { title: "Projects", href: "/projects", icon: FolderKanban },
-  { title: "Issues", href: "/issues", icon: Bug, roles: ["client"] },
-  { title: "Invoices", href: "/invoices", icon: Receipt, roles: ["admin", "manager", "member", "client"] },
-  { title: "Clients", href: "/clients", icon: Users, roles: ["admin", "manager", "member"] },
-];
-
-const secondaryNav: NavItem[] = [
-  { title: "Trash", href: "/trash", icon: Trash2 },
-  { title: "Settings", href: "/settings", icon: Settings },
-];
-
-function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
-  const pathname = usePathname();
-  const isActive =
-    pathname === item.href || pathname.startsWith(`${item.href}/`);
-  const Icon = item.icon;
-
+  collapsed: boolean;
+  active?: boolean;
+}) {
   const link = (
     <Link
-      href={item.href}
+      href={href}
       className={cn(
         "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-        isActive
+        active
           ? "bg-accent text-accent-foreground"
           : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
         collapsed && "justify-center px-2",
       )}
     >
       <Icon className="h-4 w-4 shrink-0" />
-      {!collapsed && <span>{item.title}</span>}
+      {!collapsed && <span className="truncate">{label}</span>}
     </Link>
   );
 
@@ -81,11 +73,58 @@ function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
     return (
       <Tooltip delayDuration={0}>
         <TooltipTrigger asChild>{link}</TooltipTrigger>
-        <TooltipContent side="right">{item.title}</TooltipContent>
+        <TooltipContent side="right">{label}</TooltipContent>
       </Tooltip>
     );
   }
+  return link;
+}
 
+function SpaceRow({
+  id,
+  name,
+  avatar,
+  collapsed,
+  active,
+}: {
+  id: string;
+  name: string;
+  avatar?: string | null;
+  collapsed: boolean;
+  active: boolean;
+}) {
+  const href = spaceHref(id);
+  const link = (
+    <Link
+      href={href}
+      className={cn(
+        "flex items-center gap-2.5 rounded-md px-3 py-1.5 text-sm transition-colors",
+        active
+          ? "bg-[#0C66E4]/12 text-foreground font-medium"
+          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+        collapsed && "justify-center px-2",
+      )}
+    >
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded bg-[#0C66E4]/15 text-[#0C66E4]">
+        {avatar ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={avatar} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <FolderKanban className="h-3.5 w-3.5" />
+        )}
+      </span>
+      {!collapsed && <span className="truncate">{name}</span>}
+    </Link>
+  );
+
+  if (collapsed) {
+    return (
+      <Tooltip delayDuration={0}>
+        <TooltipTrigger asChild>{link}</TooltipTrigger>
+        <TooltipContent side="right">{name}</TooltipContent>
+      </Tooltip>
+    );
+  }
   return link;
 }
 
@@ -95,23 +134,24 @@ export function AppSidebar() {
   const workspace = user?.companyName ?? "Workspace";
   const isClient = isClientUser(user);
   const homeHref = isClient ? "/client-portal" : "/dashboard";
+  const pathname = usePathname();
+  const [recent, setRecent] = useState<ReturnType<typeof getRecentSpaces>>([]);
 
-  const filterByRole = (items: NavItem[]) =>
-    items.filter((item) => !item.roles || hasRole(user, item.roles));
+  useEffect(() => {
+    setRecent(getRecentSpaces());
+  }, [pathname]);
 
-  const visibleMain = filterByRole(
-    mainNav.map((item) =>
-      item.href === "/dashboard" ? { ...item, href: homeHref } : item,
-    ),
-  ).filter((item) => {
-    if (!isClient) return true;
-    return ["Dashboard", "Projects", "Issues", "Invoices"].includes(item.title);
+  const { data: spacesData } = useQuery({
+    queryKey: ["spaces", "sidebar"],
+    queryFn: () => projectsApi.list({ limit: 20 }),
+    enabled: !isClient,
+    retry: false,
   });
 
-  const visibleSecondary = filterByRole(secondaryNav).filter((item) => {
-    if (!isClient) return true;
-    return ["Trash", "Settings"].includes(item.title);
-  });
+  const spacesRaw = spacesData?.data?.data ?? spacesData?.data ?? [];
+  const spaces = Array.isArray(spacesRaw) ? spacesRaw : [];
+
+  const activeSpaceId = pathname.match(/\/spaces\/([^/]+)/)?.[1];
 
   return (
     <TooltipProvider>
@@ -119,7 +159,7 @@ export function AppSidebar() {
         initial={false}
         animate={{ width: collapsed ? 76 : 272 }}
         transition={{ type: "spring", stiffness: 320, damping: 32 }}
-        className="chrome-sidebar hidden md:flex flex-col h-full shrink-0"
+        className="chrome-sidebar ads-sidebar hidden md:flex flex-col h-full shrink-0"
       >
         <div
           className={cn(
@@ -177,13 +217,16 @@ export function AppSidebar() {
 
           {!isClient && (
             <Button
-              className={cn("w-full justify-start gap-2", collapsed && "px-0 justify-center")}
+              className={cn(
+                "w-full justify-start gap-2 bg-[#0C66E4] text-white hover:bg-[#0055CC]",
+                collapsed && "px-0 justify-center",
+              )}
               size={collapsed ? "icon" : "default"}
               asChild
             >
-              <Link href="/projects">
+              <Link href="/spaces?create=1">
                 <Plus className="h-4 w-4" />
-                {!collapsed && "Quick create"}
+                {!collapsed && "Create"}
               </Link>
             </Button>
           )}
@@ -191,60 +234,144 @@ export function AppSidebar() {
 
         <ScrollArea className="flex-1 py-4">
           <nav className={cn("space-y-0.5 px-3", collapsed && "px-2")}>
-            {!collapsed && (
-              <p className="mb-2 px-3 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                Navigate
-              </p>
+            <SideLink
+              href={homeHref}
+              label="For you"
+              icon={LayoutDashboard}
+              collapsed={collapsed}
+              active={pathname === homeHref || pathname === "/dashboard"}
+            />
+            {!isClient && recent.length > 0 && (
+              <>
+                {!collapsed && (
+                  <p className="mb-1 mt-4 px-3 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                    Recent
+                  </p>
+                )}
+                {collapsed && <Separator className="my-2" />}
+                {recent.slice(0, 4).map((s) => (
+                  <SpaceRow
+                    key={`recent-${s.id}`}
+                    id={s.id}
+                    name={s.name}
+                    avatar={s.avatar}
+                    collapsed={collapsed}
+                    active={activeSpaceId === s.id}
+                  />
+                ))}
+              </>
             )}
-            {visibleMain.map((item) => (
-              <NavLink key={`${item.href}-${item.title}`} item={item} collapsed={collapsed} />
-            ))}
+
+            {!isClient && (
+              <>
+                {!collapsed && (
+                  <p className="mb-1 mt-4 px-3 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                    Spaces
+                  </p>
+                )}
+                {collapsed && <Separator className="my-2" />}
+                {spaces.slice(0, 8).map(
+                  (s: { id: string; name: string; avatar?: string | null }) => (
+                    <SpaceRow
+                      key={s.id}
+                      id={s.id}
+                      name={s.name}
+                      avatar={s.avatar}
+                      collapsed={collapsed}
+                      active={activeSpaceId === s.id}
+                    />
+                  ),
+                )}
+                <SideLink
+                  href="/spaces"
+                  label="More spaces"
+                  icon={LayoutGrid}
+                  collapsed={collapsed}
+                  active={pathname === "/spaces"}
+                />
+              </>
+            )}
+
+            {isClient && (
+              <>
+                <SideLink
+                  href="/spaces"
+                  label="Spaces"
+                  icon={FolderKanban}
+                  collapsed={collapsed}
+                  active={pathname.startsWith("/spaces") || pathname.startsWith("/projects")}
+                />
+                <SideLink
+                  href="/invoices"
+                  label="Invoices"
+                  icon={Receipt}
+                  collapsed={collapsed}
+                  active={pathname.startsWith("/invoices")}
+                />
+              </>
+            )}
           </nav>
 
           {!isClient && (
             <>
               <Separator className="my-4 mx-3 bg-border dark:bg-white/[0.06]" />
-              <div className={cn("px-3", collapsed && "px-2")}>
-                {!collapsed ? (
-                  <div className="rounded-xl border border-border/80 bg-muted/30 p-3">
-                    <div className="mb-2 flex items-center gap-2 text-sm font-medium">
-                      <LayoutGrid className="h-4 w-4" />
-                      Workspace apps
-                    </div>
-                    <p className="mb-3 text-[11px] leading-relaxed text-muted-foreground">
-                      CRM, Calendar, Docs, Team, and more — open the grid icon in the top bar.
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      Look for <span className="font-medium text-foreground">⋮⋮⋮</span> next to
-                      notifications
-                    </p>
-                  </div>
-                ) : (
-                  <Tooltip delayDuration={0}>
-                    <TooltipTrigger asChild>
-                      <div className="flex justify-center py-2 text-muted-foreground">
-                        <LayoutGrid className="h-4 w-4" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">
-                      Workspace apps (top bar)
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-              </div>
-            </>
-          )}
-
-          {visibleSecondary.length > 0 && (
-            <>
-              <Separator className="my-4 mx-3 bg-border dark:bg-white/[0.06]" />
               <nav className={cn("space-y-0.5 px-3", collapsed && "px-2")}>
-                {visibleSecondary.map((item) => (
-                  <NavLink key={`${item.href}-${item.title}`} item={item} collapsed={collapsed} />
-                ))}
+                <SideLink
+                  href="/search"
+                  label="Filters"
+                  icon={Filter}
+                  collapsed={collapsed}
+                  active={pathname.startsWith("/search")}
+                />
+                <SideLink
+                  href="/dashboard"
+                  label="Dashboards"
+                  icon={Star}
+                  collapsed={collapsed}
+                  active={false}
+                />
+                <SideLink
+                  href="/team"
+                  label="Teams"
+                  icon={Users}
+                  collapsed={collapsed}
+                  active={pathname.startsWith("/team")}
+                />
+                <SideLink
+                  href="/invoices"
+                  label="Invoices"
+                  icon={Receipt}
+                  collapsed={collapsed}
+                  active={pathname.startsWith("/invoices")}
+                />
+                <SideLink
+                  href="/clients"
+                  label="Clients"
+                  icon={Users}
+                  collapsed={collapsed}
+                  active={pathname.startsWith("/clients")}
+                />
               </nav>
             </>
           )}
+
+          <Separator className="my-4 mx-3 bg-border dark:bg-white/[0.06]" />
+          <nav className={cn("space-y-0.5 px-3", collapsed && "px-2")}>
+            <SideLink
+              href="/trash"
+              label="Trash"
+              icon={Trash2}
+              collapsed={collapsed}
+              active={pathname.startsWith("/trash")}
+            />
+            <SideLink
+              href="/settings"
+              label="Settings"
+              icon={Settings}
+              collapsed={collapsed}
+              active={pathname.startsWith("/settings")}
+            />
+          </nav>
         </ScrollArea>
 
         <div className="border-t border-border p-3 space-y-2 dark:border-white/[0.06]">

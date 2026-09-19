@@ -802,7 +802,7 @@ export default function ReportsPage() {
                       {projects.map((project) => (
                         <TableRow key={project.id}>
                           <TableCell>
-                            <Link href={`/projects/${project.id}`} className="font-medium hover:underline">
+                            <Link href={`/spaces/${project.id}`} className="font-medium hover:underline">
                               {project.name}
                             </Link>
                             <p className="text-xs text-muted-foreground">{project.key}</p>

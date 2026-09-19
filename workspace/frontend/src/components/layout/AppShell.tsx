@@ -107,12 +107,30 @@ const mobileLinks = [
     roles: ["client"] as const,
   },
   {
-    href: "/projects",
-    label: "Projects",
+    href: "/spaces",
+    label: "Spaces",
     icon: FolderKanban,
     roles: ["admin", "manager", "member", "client"] as const,
   },
+  {
+    href: "/calendar",
+    label: "Calendar",
+    icon: Bug,
+    roles: ["admin", "manager", "member"] as const,
+  },
+  {
+    href: "/documents",
+    label: "Docs",
+    icon: FolderKanban,
+    roles: ["admin", "manager", "member"] as const,
+  },
   { href: "/issues", label: "Issues", icon: Bug, roles: ["client"] as const },
+  {
+    href: "/team",
+    label: "Teams",
+    icon: Users,
+    roles: ["admin", "manager"] as const,
+  },
   {
     href: "/invoices",
     label: "Invoices",

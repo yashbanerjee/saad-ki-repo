@@ -382,3 +382,27 @@
   );
   background-size: 200% 100%;
 }
+
+/* Atlassian Design System–aligned chrome (Spaces / Create / tabs) */
+:root {
+  --ads-blue: #0c66e4;
+  --ads-blue-hover: #0055cc;
+  --ads-blue-pressed: #09326c;
+  --ads-navy: #1d7afc;
+}
+
+.ads-create-btn {
+  border-radius: 3px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.ads-sidebar .ads-space-tabs a,
+.ads-space-tabs a {
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.ads-sidebar a {
+  border-radius: 3px;
+}

@@ -5,16 +5,17 @@ import { usePathname } from "next/navigation";
 import {
   Breadcrumb,
   BreadcrumbItem,
-  BreadcrumbLink,
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { isClientUser, useAuthStore } from "@/lib/auth-store";
+import { cn } from "@/lib/utils";
 
 const routeLabels: Record<string, string> = {
   dashboard: "Dashboard",
-  projects: "Projects",
+  projects: "Spaces",
+  spaces: "Spaces",
   issues: "Issues",
   clients: "Clients",
   leads: "Leads",
@@ -26,16 +27,21 @@ const routeLabels: Record<string, string> = {
   nda: "NDA",
   documents: "Documents",
   calendar: "Calendar",
+  list: "List",
+  docs: "Docs",
+  timeline: "Timeline",
+  attachments: "Attachments",
   invoices: "Invoices",
   trash: "Trash",
   team: "Team",
   reports: "Reports",
+  board: "Board",
+  summary: "Summary",
   admin: "Admin",
   "client-portal": "Dashboard",
   notifications: "Notifications",
   settings: "Settings",
   search: "Search",
-  board: "Board",
   backlog: "Backlog",
   sprints: "Sprints",
   "client-progress": "Client Progress",
@@ -43,6 +49,8 @@ const routeLabels: Record<string, string> = {
   builder: "Form Builder",
   public: "Public Form",
 };
+
+const linkClass = "transition-colors hover:text-foreground";
 
 export function AppBreadcrumbs() {
   const pathname = usePathname();
@@ -56,14 +64,16 @@ export function AppBreadcrumbs() {
     <Breadcrumb className="mb-6">
       <BreadcrumbList>
         <BreadcrumbItem>
-          <BreadcrumbLink asChild>
-            <Link href={homeHref}>Home</Link>
-          </BreadcrumbLink>
+          <Link href={homeHref} className={cn(linkClass)}>
+            Home
+          </Link>
         </BreadcrumbItem>
         {segments.map((segment, index) => {
           const href = `/${segments.slice(0, index + 1).join("/")}`;
           const isLast = index === segments.length - 1;
-          const label = routeLabels[segment] || segment.charAt(0).toUpperCase() + segment.slice(1);
+          const label =
+            routeLabels[segment] ||
+            segment.charAt(0).toUpperCase() + segment.slice(1);
 
           return (
             <span key={href} className="contents">
@@ -72,9 +82,9 @@ export function AppBreadcrumbs() {
                 {isLast ? (
                   <BreadcrumbPage>{label}</BreadcrumbPage>
                 ) : (
-                  <BreadcrumbLink asChild>
-                    <Link href={href}>{label}</Link>
-                  </BreadcrumbLink>
+                  <Link href={href} className={cn(linkClass)}>
+                    {label}
+                  </Link>
                 )}
               </BreadcrumbItem>
             </span>

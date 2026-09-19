@@ -247,7 +247,7 @@ export default function ClientDetailPage() {
       setProjectOpen(false);
       setProjectName("");
       const projectId = res?.data?.id ?? res?.data?.data?.id;
-      if (projectId) router.push(`/projects/${projectId}`);
+      if (projectId) router.push(`/spaces/${projectId}`);
     },
     onError: () => toast.error("Could not create project"),
   });
@@ -716,7 +716,7 @@ export default function ClientDetailPage() {
                     {openClientTasks.map((t) => (
                       <Link
                         key={t.id}
-                        href={`/projects/${t.projectId}`}
+                        href={`/spaces/${t.projectId}`}
                         className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-muted/40"
                       >
                         <div>
@@ -766,7 +766,7 @@ export default function ClientDetailPage() {
                   {milestones.map((m) => (
                     <Link
                       key={m.id}
-                      href={`/projects/${m.projectId}`}
+                      href={`/spaces/${m.projectId}`}
                       className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-sm hover:bg-muted/40"
                     >
                       <div>
@@ -810,7 +810,7 @@ export default function ClientDetailPage() {
                       }) => (
                         <Link
                           key={p.id}
-                          href={`/projects/${p.id}`}
+                          href={`/spaces/${p.id}`}
                           className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-sm hover:bg-muted/40 transition-colors"
                         >
                           <div>

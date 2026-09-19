@@ -64,6 +64,8 @@ type DocItem = {
   signedAt?: string;
   contentPreview?: string;
   storageUrl?: string | null;
+  projectId?: string | null;
+  project?: { id: string; name: string } | null;
 };
 
 function formatBytes(size?: number) {
@@ -216,7 +218,7 @@ export default function DocumentsPage() {
           <p className="text-muted-foreground">
             {isClient
               ? "Your files and signed agreements"
-              : "Browse and manage project files"}
+              : "All workspace files — including docs uploaded inside Spaces"}
           </p>
         </div>
         <div>
@@ -337,6 +339,13 @@ export default function DocumentsPage() {
                               {isNda ? "Signed agreement" : formatBytes(doc.size)}
                             </p>
                           </div>
+                          {(doc.project?.name || doc.projectId) && (
+                            <Badge variant="outline" className="shrink-0 text-[10px]">
+                              {doc.project?.name
+                                ? `Space · ${doc.project.name}`
+                                : "From space"}
+                            </Badge>
+                          )}
                           {isNda && (
                             <Badge variant="success" className="shrink-0">
                               Signed
@@ -409,9 +418,16 @@ export default function DocumentsPage() {
                   />
                   <p className="text-sm font-medium truncate">{doc.name}</p>
                   <div className="flex items-center justify-between mt-2 gap-2">
-                    <Badge variant={isNda ? "success" : "outline"} className="text-[10px]">
-                      {isNda ? "Signed NDA" : formatBytes(doc.size)}
-                    </Badge>
+                    <div className="flex flex-wrap gap-1">
+                      <Badge variant={isNda ? "success" : "outline"} className="text-[10px]">
+                        {isNda ? "Signed NDA" : formatBytes(doc.size)}
+                      </Badge>
+                      {(doc.project?.name || doc.projectId) && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          {doc.project?.name || "Space"}
+                        </Badge>
+                      )}
+                    </div>
                     <span className="text-xs text-muted-foreground">
                       {formatDate(doc.signedAt || doc.updatedAt || doc.createdAt || "")}
                     </span>

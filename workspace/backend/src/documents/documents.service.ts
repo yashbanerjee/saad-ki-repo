@@ -138,6 +138,7 @@ export class DocumentsService {
         uploadedBy: { select: { id: true, firstName: true, lastName: true } },
         client: { select: { id: true, name: true } },
         folder: { select: { id: true, name: true } },
+        project: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: 'desc' },
     });

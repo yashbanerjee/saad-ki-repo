@@ -213,7 +213,7 @@ export default function DashboardPage() {
           </div>
           <div className="flex flex-wrap gap-3">
             <Button asChild>
-              <Link href="/projects">
+              <Link href="/spaces">
                 New project <ArrowUpRight className="h-4 w-4" />
               </Link>
             </Button>
@@ -425,7 +425,7 @@ export default function DashboardPage() {
                 <CardDescription>Based on completed board tasks</CardDescription>
               </div>
               <Button variant="ghost" size="sm" asChild>
-                <Link href="/projects">View all</Link>
+                <Link href="/spaces">View all</Link>
               </Button>
             </CardHeader>
             <CardContent>
@@ -441,7 +441,7 @@ export default function DashboardPage() {
                   title="No projects"
                   description="Create a project to see progress here."
                   actionLabel="New project"
-                  actionHref="/projects"
+                  actionHref="/spaces"
                   className="py-10"
                 />
               ) : (
@@ -449,7 +449,7 @@ export default function DashboardPage() {
                   {projectProgress.map((p) => (
                     <Link
                       key={p.id}
-                      href={`/projects/${p.id}`}
+                      href={`/spaces/${p.id}`}
                       className="block rounded-lg border bg-muted/40 p-4 transition-colors hover:bg-muted/70"
                     >
                       <div className="mb-3 flex items-center justify-between gap-2">

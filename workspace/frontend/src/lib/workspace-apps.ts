@@ -164,9 +164,9 @@ export const workspaceApps: WorkspaceApp[] = [
   },
   {
     id: "projects",
-    title: "Projects",
-    description: "Delivery work",
-    href: "/projects",
+    title: "Spaces",
+    description: "Delivery spaces",
+    href: "/spaces",
     icon: FolderKanban,
     tone: "bg-primary/10 text-foreground",
     roles: ["admin", "manager", "member"],

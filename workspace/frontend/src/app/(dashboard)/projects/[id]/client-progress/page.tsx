@@ -1,17 +1,10 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
-
-/** Client progress merged into project hub — redirect */
-export default function ClientProgressRedirect() {
-  const params = useParams();
-  const router = useRouter();
-  const id = params.id as string;
-
-  useEffect(() => {
-    router.replace(`/projects/${id}`);
-  }, [id, router]);
-
-  return null;
+export default async function ProjectClientProgressRedirect({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  redirect(`/spaces/${id}`);
 }

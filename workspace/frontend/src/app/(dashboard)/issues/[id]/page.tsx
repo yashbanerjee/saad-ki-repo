@@ -129,7 +129,7 @@ export default function IssueDetailPage() {
       toast.success("Moved to trash");
       if (projectId) {
         queryClient.invalidateQueries({ queryKey: ["project-board", projectId] });
-        router.push(`/projects/${projectId}/board`);
+        router.push(`/spaces/${projectId}/board`);
       } else {
         router.push("/issues");
       }
@@ -285,12 +285,12 @@ export default function IssueDetailPage() {
         title="Issue not found"
         description="This issue doesn't exist or you don't have access to it."
         actionLabel="Back to projects"
-        actionHref="/projects"
+        actionHref="/spaces"
       />
     );
   }
 
-  const backHref = projectId ? `/projects/${projectId}/board` : "/issues";
+  const backHref = projectId ? `/spaces/${projectId}/board` : "/issues";
   const boardColumnSelectValue = boardColumns.some((c) => c.id === currentColumn)
     ? currentColumn
     : boardColumns[0]?.id || "TODO";
@@ -339,7 +339,7 @@ export default function IssueDetailPage() {
             {issue.project?.name && (
               <>
                 <Link
-                  href={`/projects/${projectId}/board`}
+                  href={`/spaces/${projectId}/board`}
                   className="text-primary hover:underline"
                 >
                   {issue.project.name}
@@ -770,7 +770,7 @@ export default function IssueDetailPage() {
 
           {projectId && (
             <Button variant="outline" className="w-full" asChild>
-              <Link href={`/projects/${projectId}/board`}>Back to board</Link>
+              <Link href={`/spaces/${projectId}/board`}>Back to board</Link>
             </Button>
           )}
         </div>

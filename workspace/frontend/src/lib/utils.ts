@@ -52,7 +52,7 @@ export function notificationHref(
   if (typeof data.leadId === "string") return `/leads/${data.leadId}`;
   if (typeof data.dealId === "string") return `/deals/${data.dealId}`;
   if (typeof data.crmTaskId === "string") return "/crm/tasks";
-  if (typeof data.projectId === "string") return `/projects/${data.projectId}`;
+  if (typeof data.projectId === "string") return `/spaces/${data.projectId}`;
   if (typeof data.clientId === "string") return `/clients/${data.clientId}`;
   return null;
 }

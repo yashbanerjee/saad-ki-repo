@@ -114,7 +114,7 @@ export default function IssuesPage() {
           <p className="text-muted-foreground">Track bugs, features, and tasks</p>
         </div>
         <Button asChild>
-          <Link href="/projects">
+          <Link href="/spaces">
             <Plus className="h-4 w-4 mr-1" /> New Issue
           </Link>
         </Button>

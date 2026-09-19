@@ -34,6 +34,7 @@ import { cn, formatRelativeTime, getInitials, notificationHref } from "@/lib/uti
 import { authApi, notificationsApi } from "@/lib/api";
 import { toast } from "sonner";
 import { WorkspaceAppsLauncher } from "./WorkspaceAppsLauncher";
+import { GlobalCreateButton } from "./GlobalCreateButton";
 
 interface TopNavbarProps {
   onOpenCommand: () => void;
@@ -121,6 +122,8 @@ export function TopNavbar({ onOpenCommand }: TopNavbarProps) {
       </div>
 
       <div className="flex items-center gap-1.5">
+        <GlobalCreateButton />
+
         <Button
           variant="ghost"
           size="icon"
