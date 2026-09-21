@@ -34,6 +34,10 @@ import {
 } from "@/components/ui/select";
 import { issuesApi, projectsApi } from "@/lib/api";
 import { cn, formatDate, formatRelativeTime, getInitials } from "@/lib/utils";
+import {
+  fromDatetimeLocalValue,
+  toDatetimeLocalValue,
+} from "@/lib/calendar-events";
 import { hasRole, useAuthStore } from "@/lib/auth-store";
 import { toast } from "sonner";
 import { useConfirm, trashConfirm } from "@/providers/confirm-provider";
@@ -232,6 +236,23 @@ export default function IssueDetailPage() {
     },
     onError: (err: { response?: { data?: { message?: string } } }) => {
       toast.error(err?.response?.data?.message || "Failed to update assignee");
+    },
+  });
+
+  const dueDateMutation = useMutation({
+    mutationFn: (nextDue: string | null) =>
+      issuesApi.update(id, { dueDate: nextDue }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["issue", id] });
+      queryClient.invalidateQueries({ queryKey: ["calendar"] });
+      queryClient.invalidateQueries({ queryKey: ["issues"] });
+      if (projectId) {
+        queryClient.invalidateQueries({ queryKey: ["project-board", projectId] });
+      }
+      toast.success("Due date updated — shown on calendar");
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err?.response?.data?.message || "Failed to update due date");
     },
   });
 
@@ -739,6 +760,31 @@ export default function IssueDetailPage() {
               <div className="flex justify-between gap-2">
                 <span className="text-muted-foreground">Milestone</span>
                 <span className="text-right">{issue.milestone?.name || "—"}</span>
+              </div>
+              <div className="space-y-1.5">
+                <span className="text-muted-foreground text-sm">Due date & time</span>
+                {canFullyEdit ? (
+                  <Input
+                    type="datetime-local"
+                    className="h-9"
+                    defaultValue={toDatetimeLocalValue(issue.dueDate)}
+                    key={issue.dueDate || "no-due"}
+                    onBlur={(e) => {
+                      const next = fromDatetimeLocalValue(e.target.value) || null;
+                      const prev = issue.dueDate
+                        ? new Date(issue.dueDate).toISOString()
+                        : null;
+                      if (next !== prev) dueDateMutation.mutate(next);
+                    }}
+                    disabled={dueDateMutation.isPending}
+                  />
+                ) : (
+                  <p className="text-sm text-right">
+                    {issue.dueDate
+                      ? new Date(issue.dueDate).toLocaleString()
+                      : "—"}
+                  </p>
+                )}
               </div>
               {issue.type && (
                 <div className="flex justify-between">

@@ -7,34 +7,40 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
-  CheckSquare,
   Bug,
+  CheckSquare,
+  Receipt,
+  Handshake,
+  Flag,
+  FolderKanban,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
-import { crmTasksApi, issuesApi } from "@/lib/api";
+import {
+  crmTasksApi,
+  issuesApi,
+  invoicesApi,
+  dealsApi,
+  projectsApi,
+} from "@/lib/api";
+import {
+  CALENDAR_KIND_STYLE,
+  type CalendarEvent,
+  type CalendarKind,
+  unwrapList,
+} from "@/lib/calendar-events";
 import { cn, formatDate } from "@/lib/utils";
-
-type CalItem = {
-  id: string;
-  title: string;
-  due: Date;
-  kind: "crm" | "issue";
-  href: string;
-  meta?: string;
-};
+import { spaceHref } from "@/lib/space-paths";
 
 function startOfMonth(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), 1);
 }
-
 function addMonths(d: Date, n: number) {
   return new Date(d.getFullYear(), d.getMonth() + n, 1);
 }
-
 function sameDay(a: Date, b: Date) {
   return (
     a.getFullYear() === b.getFullYear() &&
@@ -42,10 +48,9 @@ function sameDay(a: Date, b: Date) {
     a.getDate() === b.getDate()
   );
 }
-
 function daysInMonthGrid(cursor: Date) {
   const first = startOfMonth(cursor);
-  const startWeekday = first.getDay(); // 0 Sun
+  const startWeekday = first.getDay();
   const days: (Date | null)[] = [];
   for (let i = 0; i < startWeekday; i++) days.push(null);
   const count = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
@@ -56,74 +61,262 @@ function daysInMonthGrid(cursor: Date) {
   return days;
 }
 
+function parseDue(value?: string | null): Date | null {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+const KIND_ICON: Record<CalendarKind, typeof Bug> = {
+  issue: Bug,
+  crm: CheckSquare,
+  invoice: Receipt,
+  deal: Handshake,
+  milestone: Flag,
+  space: FolderKanban,
+  sprint: Flag,
+};
+
 export default function CalendarPage() {
   const [cursor, setCursor] = useState(() => startOfMonth(new Date()));
   const [selected, setSelected] = useState(() => new Date());
 
   const { data: crmData, isLoading: crmLoading } = useQuery({
-    queryKey: ["crm-tasks", "calendar"],
-    queryFn: () => crmTasksApi.list({ limit: 100 }),
+    queryKey: ["calendar", "crm-tasks"],
+    queryFn: () => crmTasksApi.list({ limit: 200 }),
     retry: false,
   });
 
   const { data: issuesData, isLoading: issuesLoading } = useQuery({
-    queryKey: ["issues", "calendar"],
-    queryFn: () => issuesApi.list({ limit: 100 }),
+    queryKey: ["calendar", "issues"],
+    queryFn: () => issuesApi.list({ limit: 200 }),
     retry: false,
   });
 
-  const items: CalItem[] = useMemo(() => {
-    const out: CalItem[] = [];
-    const crmRaw = crmData?.data?.data ?? crmData?.data ?? [];
-    const crmList = Array.isArray(crmRaw) ? crmRaw : Array.isArray(crmRaw?.data) ? crmRaw.data : [];
-    for (const t of crmList as Array<{
+  const { data: invoicesData, isLoading: invoicesLoading } = useQuery({
+    queryKey: ["calendar", "invoices"],
+    queryFn: () => invoicesApi.list({ limit: 200 }),
+    retry: false,
+  });
+
+  const { data: dealsData, isLoading: dealsLoading } = useQuery({
+    queryKey: ["calendar", "deals"],
+    queryFn: () => dealsApi.list({ limit: 200 }),
+    retry: false,
+  });
+
+  const { data: spacesData, isLoading: spacesLoading } = useQuery({
+    queryKey: ["calendar", "spaces"],
+    queryFn: () => projectsApi.list({ limit: 100 }),
+    retry: false,
+  });
+
+  const spaces = useMemo(() => {
+    return unwrapList(spacesData) as Array<{
+      id: string;
+      name: string;
+      startDate?: string | null;
+      endDate?: string | null;
+      createdAt?: string | null;
+    }>;
+  }, [spacesData]);
+
+  const { data: milestonesData, isLoading: milestonesLoading } = useQuery({
+    queryKey: ["calendar", "milestones", spaces.map((s) => s.id).join(",")],
+    queryFn: async () => {
+      const results = await Promise.all(
+        spaces.slice(0, 30).map(async (s) => {
+          try {
+            const res = await projectsApi.listMilestones(s.id);
+            const list = unwrapList(res) as Array<{
+              id: string;
+              name: string;
+              dueDate?: string | null;
+              status?: string;
+            }>;
+            return list.map((m) => ({ ...m, projectId: s.id, projectName: s.name }));
+          } catch {
+            return [];
+          }
+        }),
+      );
+      return results.flat();
+    },
+    enabled: spaces.length > 0,
+    retry: false,
+  });
+
+  const items: CalendarEvent[] = useMemo(() => {
+    const out: CalendarEvent[] = [];
+
+    for (const t of unwrapList(crmData) as Array<{
       id: string;
       title: string;
       dueDate?: string | null;
       status?: string;
     }>) {
-      if (!t.dueDate) continue;
+      const due = parseDue(t.dueDate);
+      if (!due) continue;
       if (t.status === "DONE" || t.status === "CANCELLED") continue;
       out.push({
         id: `crm-${t.id}`,
         title: t.title,
-        due: new Date(t.dueDate),
+        due,
         kind: "crm",
         href: "/crm/tasks",
         meta: "CRM task",
       });
     }
 
-    const issueRaw = issuesData?.data?.data ?? issuesData?.data ?? [];
-    const issueList = Array.isArray(issueRaw)
-      ? issueRaw
-      : Array.isArray(issueRaw?.data)
-        ? issueRaw.data
-        : [];
-    for (const issue of issueList as Array<{
+    for (const issue of unwrapList(issuesData) as Array<{
       id: string;
       title: string;
       key?: string;
       dueDate?: string | null;
+      createdAt?: string | null;
       status?: string;
       project?: { id?: string; name?: string } | null;
       projectId?: string;
     }>) {
-      if (!issue.dueDate) continue;
-      if (issue.status === "DONE" || issue.status === "CANCELLED") continue;
+      if (issue.status === "CANCELLED") continue;
       const spaceName = issue.project?.name;
+      const spaceId = issue.project?.id || issue.projectId;
+      const label = issue.key ? `${issue.key}: ${issue.title}` : issue.title;
+      const href = `/issues/${issue.id}`;
+
+      const created = parseDue(issue.createdAt);
+      if (created) {
+        out.push({
+          id: `issue-created-${issue.id}`,
+          title: label,
+          due: created,
+          kind: "issue",
+          href,
+          meta: spaceName ? `Task created · ${spaceName}` : "Task created",
+          spaceId,
+        });
+      }
+
+      if (issue.status === "DONE") continue;
+      const due = parseDue(issue.dueDate);
+      if (due) {
+        out.push({
+          id: `issue-due-${issue.id}`,
+          title: label,
+          due,
+          kind: "issue",
+          href,
+          meta: spaceName ? `Due · ${spaceName}` : "Due",
+          spaceId,
+        });
+      }
+    }
+
+    for (const inv of unwrapList(invoicesData) as Array<{
+      id: string;
+      number?: string;
+      invoiceNumber?: string;
+      dueDate?: string | null;
+      status?: string;
+      client?: { name?: string } | null;
+    }>) {
+      const due = parseDue(inv.dueDate);
+      if (!due) continue;
+      if (inv.status === "PAID" || inv.status === "CANCELLED") continue;
       out.push({
-        id: `issue-${issue.id}`,
-        title: issue.key ? `${issue.key}: ${issue.title}` : issue.title,
-        due: new Date(issue.dueDate),
-        kind: "issue",
-        href: `/issues/${issue.id}`,
-        meta: spaceName ? `Space · ${spaceName}` : "Work item",
+        id: `invoice-${inv.id}`,
+        title: `Invoice ${inv.number || inv.invoiceNumber || inv.id.slice(0, 6)}`,
+        due,
+        kind: "invoice",
+        href: `/invoices/${inv.id}`,
+        meta: inv.client?.name ? `Invoice · ${inv.client.name}` : "Invoice due",
+      });
+    }
+
+    for (const deal of unwrapList(dealsData) as Array<{
+      id: string;
+      name?: string;
+      title?: string;
+      expectedCloseDate?: string | null;
+      stage?: string;
+      status?: string;
+    }>) {
+      const due = parseDue(deal.expectedCloseDate);
+      if (!due) continue;
+      if (deal.stage === "CLOSED_LOST" || deal.status === "LOST") continue;
+      out.push({
+        id: `deal-${deal.id}`,
+        title: deal.name || deal.title || "Deal",
+        due,
+        kind: "deal",
+        href: `/deals/${deal.id}`,
+        meta: "Expected close",
+      });
+    }
+
+    for (const space of spaces) {
+      const created = parseDue(space.createdAt);
+      if (created) {
+        out.push({
+          id: `space-created-${space.id}`,
+          title: space.name,
+          due: created,
+          kind: "space",
+          href: spaceHref(space.id),
+          meta: "Space created",
+          spaceId: space.id,
+        });
+      }
+      const end = parseDue(space.endDate);
+      if (end) {
+        out.push({
+          id: `space-end-${space.id}`,
+          title: space.name,
+          due: end,
+          kind: "space",
+          href: spaceHref(space.id),
+          meta: "Space target end",
+          spaceId: space.id,
+        });
+      }
+      const start = parseDue(space.startDate);
+      if (start) {
+        out.push({
+          id: `space-start-${space.id}`,
+          title: space.name,
+          due: start,
+          kind: "space",
+          href: spaceHref(space.id),
+          meta: "Space start",
+          spaceId: space.id,
+        });
+      }
+    }
+
+    for (const m of (milestonesData || []) as Array<{
+      id: string;
+      name: string;
+      dueDate?: string | null;
+      status?: string;
+      projectId: string;
+      projectName: string;
+    }>) {
+      const due = parseDue(m.dueDate);
+      if (!due) continue;
+      if (m.status === "COMPLETED" || m.status === "CANCELLED") continue;
+      out.push({
+        id: `ms-${m.id}`,
+        title: m.name,
+        due,
+        kind: "milestone",
+        href: spaceHref(m.projectId, "board"),
+        meta: `Milestone · ${m.projectName}`,
+        spaceId: m.projectId,
       });
     }
 
     return out.sort((a, b) => a.due.getTime() - b.due.getTime());
-  }, [crmData, issuesData]);
+  }, [crmData, issuesData, invoicesData, dealsData, spaces, milestonesData]);
 
   const grid = daysInMonthGrid(cursor);
   const selectedItems = items.filter((i) => sameDay(i.due, selected));
@@ -131,7 +324,13 @@ export default function CalendarPage() {
     month: "long",
     year: "numeric",
   });
-  const isLoading = crmLoading || issuesLoading;
+  const isLoading =
+    crmLoading ||
+    issuesLoading ||
+    invoicesLoading ||
+    dealsLoading ||
+    spacesLoading ||
+    milestonesLoading;
   const today = new Date();
 
   return (
@@ -143,7 +342,7 @@ export default function CalendarPage() {
           </p>
           <h1 className="font-display text-2xl font-bold">Global calendar</h1>
           <p className="text-sm text-muted-foreground">
-            CRM deadlines and space work-item due dates across the workspace
+            Space created dates, every task created, task due times, CRM, invoices, deals, and milestones
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -153,8 +352,7 @@ export default function CalendarPage() {
           <Button
             variant="outline"
             onClick={() => {
-              const now = startOfMonth(new Date());
-              setCursor(now);
+              setCursor(startOfMonth(new Date()));
               setSelected(new Date());
             }}
           >
@@ -164,6 +362,17 @@ export default function CalendarPage() {
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
+      </div>
+
+      <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+        {(Object.keys(CALENDAR_KIND_STYLE) as CalendarKind[])
+          .filter((k) => k !== "sprint")
+          .map((k) => (
+            <span key={k} className="inline-flex items-center gap-1.5">
+              <span className={cn("h-2 w-2 rounded-full", CALENDAR_KIND_STYLE[k].dot)} />
+              {CALENDAR_KIND_STYLE[k].label}
+            </span>
+          ))}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1.4fr_0.9fr]">
@@ -207,26 +416,23 @@ export default function CalendarPage() {
                       )}
                     >
                       <span
-                        className={cn(
-                          "text-xs font-medium",
-                          isToday && "text-primary",
-                        )}
+                        className={cn("text-xs font-medium", isToday && "text-primary")}
                       >
                         {day.getDate()}
                       </span>
                       <div className="mt-auto flex flex-wrap gap-0.5">
-                        {dayItems.slice(0, 3).map((i) => (
+                        {dayItems.slice(0, 4).map((i) => (
                           <span
                             key={i.id}
                             className={cn(
                               "h-1.5 w-1.5 rounded-full",
-                              i.kind === "crm" ? "bg-orange-500" : "bg-sky-500",
+                              CALENDAR_KIND_STYLE[i.kind].dot,
                             )}
                           />
                         ))}
-                        {dayItems.length > 3 && (
+                        {dayItems.length > 4 && (
                           <span className="text-[9px] text-muted-foreground">
-                            +{dayItems.length - 3}
+                            +{dayItems.length - 4}
                           </span>
                         )}
                       </div>
@@ -235,14 +441,6 @@ export default function CalendarPage() {
                 })}
               </div>
             )}
-            <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-orange-500" /> CRM tasks
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-sky-500" /> Issues
-              </span>
-            </div>
           </CardContent>
         </Card>
 
@@ -256,46 +454,44 @@ export default function CalendarPage() {
             {selectedItems.length === 0 ? (
               <EmptyState
                 icon={CalendarDays}
-                title="Nothing due"
-                description="No open CRM tasks or issues due on this day."
+                title="Nothing scheduled"
+                description="No dated items on this day. Create work with a due date & time to track it here."
               />
             ) : (
-              selectedItems.map((item) => (
-                <Link
-                  key={item.id}
-                  href={item.href}
-                  className="flex items-start gap-3 rounded-xl border border-border/80 bg-card p-3 transition hover:bg-muted/50"
-                >
-                  <span
-                    className={cn(
-                      "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
-                      item.kind === "crm"
-                        ? "bg-orange-500/15 text-orange-600"
-                        : "bg-sky-500/15 text-sky-600",
-                    )}
+              selectedItems.map((item) => {
+                const Icon = KIND_ICON[item.kind];
+                const style = CALENDAR_KIND_STYLE[item.kind];
+                return (
+                  <Link
+                    key={item.id}
+                    href={item.href}
+                    className="flex items-start gap-3 rounded-xl border border-border/80 bg-card p-3 transition hover:bg-muted/50"
                   >
-                    {item.kind === "crm" ? (
-                      <CheckSquare className="h-4 w-4" />
-                    ) : (
-                      <Bug className="h-4 w-4" />
-                    )}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{item.title}</p>
-                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                      <Badge variant="outline" className="text-[10px]">
-                        {item.meta}
-                      </Badge>
-                      <span className="text-[11px] text-muted-foreground">
-                        {item.due.toLocaleTimeString(undefined, {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
+                    <span
+                      className={cn(
+                        "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                        style.badge,
+                      )}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{item.title}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <Badge variant="outline" className="text-[10px]">
+                          {item.meta || style.label}
+                        </Badge>
+                        <span className="text-[11px] text-muted-foreground">
+                          {item.due.toLocaleTimeString(undefined, {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                </Link>
-              ))
+                  </Link>
+                );
+              })
             )}
           </CardContent>
         </Card>

@@ -368,7 +368,7 @@ export class IssuesService {
         creatorKind: kind,
         creatorLabel: CREATOR_KIND_LABEL[kind],
         labels: i.labels.map((l) => l.label.name),
-        dueDate: i.dueDate ? i.dueDate.toISOString().slice(0, 10) : undefined,
+        dueDate: i.dueDate ? i.dueDate.toISOString() : undefined,
         canEditStatus,
         canDelete,
       };

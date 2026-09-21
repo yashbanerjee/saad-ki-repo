@@ -39,6 +39,10 @@ import {
 } from "@/components/features/KanbanBoard";
 import { issuesApi, projectsApi } from "@/lib/api";
 import { hasRole, useAuthStore } from "@/lib/auth-store";
+import {
+  defaultDueDatetimeLocal,
+  fromDatetimeLocalValue,
+} from "@/lib/calendar-events";
 import { toast } from "sonner";
 import { useConfirm, trashConfirm } from "@/providers/confirm-provider";
 
@@ -88,6 +92,7 @@ export default function ProjectBoardPage() {
   const [createStatus, setCreateStatus] = useState("TODO");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [dueDate, setDueDate] = useState(defaultDueDatetimeLocal());
   const [priority, setPriority] = useState("MEDIUM");
   const [type, setType] = useState("TASK");
   const [milestoneId, setMilestoneId] = useState<string>("none");
@@ -175,6 +180,8 @@ export default function ProjectBoardPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
+      const due = fromDatetimeLocalValue(dueDate);
+      if (!due) throw new Error("Due date and time are required");
       const res = await issuesApi.create({
         projectId,
         title: title.trim(),
@@ -182,6 +189,7 @@ export default function ProjectBoardPage() {
         priority,
         type,
         status: createStatus,
+        dueDate: due,
         milestoneId: milestoneId !== "none" ? milestoneId : undefined,
         estimatedHours: estimatedHours ? Number(estimatedHours) : undefined,
         ...(canManageColumns && assigneeId !== "default"
@@ -198,9 +206,12 @@ export default function ProjectBoardPage() {
     },
     onSuccess: ({ filesResult }) => {
       invalidate();
+      queryClient.invalidateQueries({ queryKey: ["calendar"] });
+      queryClient.invalidateQueries({ queryKey: ["issues"] });
       setCreateOpen(false);
       setTitle("");
       setDescription("");
+      setDueDate(defaultDueDatetimeLocal());
       setEstimatedHours("");
       setCreateFiles([]);
       if (filesResult.uploaded && !filesResult.failed) {
@@ -214,11 +225,15 @@ export default function ProjectBoardPage() {
       } else if (filesResult.failed && !filesResult.uploaded) {
         toast.warning("Task created, but document upload failed");
       } else {
-        toast.success("Task created");
+        toast.success("Task created — visible on calendar");
       }
     },
-    onError: (err: { response?: { data?: { message?: string } } }) => {
-      toast.error(err?.response?.data?.message || "Failed to create task");
+    onError: (err: { message?: string; response?: { data?: { message?: string } } }) => {
+      toast.error(
+        err?.message === "Due date and time are required"
+          ? err.message
+          : err?.response?.data?.message || "Failed to create task",
+      );
     },
   });
 
@@ -226,7 +241,7 @@ export default function ProjectBoardPage() {
     mutationFn: () =>
       projectsApi.createMilestone(projectId, {
         name: msName.trim(),
-        dueDate: msDue || undefined,
+        dueDate: fromDatetimeLocalValue(msDue) || msDue || undefined,
         status: "PLANNED",
       }),
     onSuccess: (res) => {
@@ -347,6 +362,7 @@ export default function ProjectBoardPage() {
   const resetCreateForm = () => {
     setTitle("");
     setDescription("");
+    setDueDate(defaultDueDatetimeLocal());
     setEstimatedHours("");
     setAssigneeId("default");
     setCreateFiles([]);
@@ -458,6 +474,18 @@ export default function ProjectBoardPage() {
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Due date & time</Label>
+              <Input
+                type="datetime-local"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                required
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Required — shows on space and global calendars.
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
@@ -640,7 +668,7 @@ export default function ProjectBoardPage() {
               Cancel
             </Button>
             <Button
-              disabled={!title.trim() || createMutation.isPending}
+              disabled={!title.trim() || !dueDate || createMutation.isPending}
               onClick={() => createMutation.mutate()}
             >
               {createMutation.isPending
@@ -671,7 +699,7 @@ export default function ProjectBoardPage() {
             </div>
             <div className="space-y-2">
               <Label>Due date (optional)</Label>
-              <Input type="date" value={msDue} onChange={(e) => setMsDue(e.target.value)} />
+              <Input type="datetime-local" value={msDue} onChange={(e) => setMsDue(e.target.value)} />
             </div>
           </div>
           <DialogFooter>

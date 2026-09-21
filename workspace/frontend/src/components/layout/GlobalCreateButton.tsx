@@ -33,6 +33,10 @@ import {
 import { documentsApi, issuesApi, projectsApi } from "@/lib/api";
 import { getRecentSpaces } from "@/lib/recent-spaces";
 import { spaceHref } from "@/lib/space-paths";
+import {
+  defaultDueDatetimeLocal,
+  fromDatetimeLocalValue,
+} from "@/lib/calendar-events";
 import { isClientUser, useAuthStore } from "@/lib/auth-store";
 import { toast } from "sonner";
 
@@ -49,6 +53,9 @@ export function GlobalCreateButton() {
   const [spaceId, setSpaceId] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [dueDate, setDueDate] = useState(defaultDueDatetimeLocal());
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   const pathSpaceId = pathname.match(/\/spaces\/([^/]+)/)?.[1] ?? "";
 
@@ -68,47 +75,65 @@ export function GlobalCreateButton() {
     if (kind === null) return;
     const recent = getRecentSpaces()[0]?.id;
     setSpaceId(pathSpaceId || recent || spaces[0]?.id || "");
+    if (kind === "work") setDueDate(defaultDueDatetimeLocal());
   }, [kind, pathSpaceId, spaces]);
 
   const createWork = useMutation({
-    mutationFn: () =>
-      issuesApi.create({
+    mutationFn: () => {
+      const due = fromDatetimeLocalValue(dueDate);
+      if (!due) throw new Error("Due date and time are required");
+      return issuesApi.create({
         title,
         description: description || undefined,
         projectId: spaceId,
         type: "TASK",
         priority: "MEDIUM",
         status: "TODO",
-      }),
+        dueDate: due,
+      });
+    },
     onSuccess: (res) => {
       const issue = res.data?.data ?? res.data;
       queryClient.invalidateQueries({ queryKey: ["issues"] });
       queryClient.invalidateQueries({ queryKey: ["project-board", spaceId] });
-      toast.success("Work item created");
+      queryClient.invalidateQueries({ queryKey: ["calendar"] });
+      toast.success("Work item created — visible on calendar");
       setKind(null);
       setTitle("");
       setDescription("");
+      setDueDate(defaultDueDatetimeLocal());
       if (issue?.id) router.push(`/issues/${issue.id}`);
       else router.push(spaceHref(spaceId, "board"));
     },
     onError: (err: unknown) => {
       const message =
-        (err as { response?: { data?: { message?: string } } })?.response?.data
-          ?.message || "Could not create";
+        err instanceof Error && err.message === "Due date and time are required"
+          ? err.message
+          : (err as { response?: { data?: { message?: string } } })?.response
+              ?.data?.message || "Could not create";
       toast.error(Array.isArray(message) ? message.join(", ") : message);
     },
   });
 
   const createSpace = useMutation({
-    mutationFn: () => projectsApi.create({ name: title, description }),
+    mutationFn: () =>
+      projectsApi.create({
+        name: title,
+        description,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+      }),
     onSuccess: (res) => {
       const project = res.data?.data ?? res.data;
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       queryClient.invalidateQueries({ queryKey: ["spaces"] });
+      queryClient.invalidateQueries({ queryKey: ["calendar"] });
       toast.success("Space created");
       setKind(null);
       setTitle("");
       setDescription("");
+      setStartDate("");
+      setEndDate("");
       if (project?.id) router.push(spaceHref(project.id));
       else router.push("/spaces");
     },
@@ -214,6 +239,19 @@ export function GlobalCreateButton() {
                   />
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="create-due">Due date & time</Label>
+                  <Input
+                    id="create-due"
+                    type="datetime-local"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    required
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Required so this item appears on the calendar.
+                  </p>
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="create-desc">Description</Label>
                   <Textarea
                     id="create-desc"
@@ -235,6 +273,26 @@ export function GlobalCreateButton() {
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="Space name"
                   />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="space-start">Start date</Label>
+                    <Input
+                      id="space-start"
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="space-end">Target end</Label>
+                    <Input
+                      id="space-end"
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                    />
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="space-desc">Description</Label>
@@ -283,7 +341,7 @@ export function GlobalCreateButton() {
                 disabled={
                   pending ||
                   !title.trim() ||
-                  (kind === "work" && !spaceId)
+                  (kind === "work" && (!spaceId || !dueDate))
                 }
                 onClick={() => {
                   if (kind === "work") createWork.mutate();

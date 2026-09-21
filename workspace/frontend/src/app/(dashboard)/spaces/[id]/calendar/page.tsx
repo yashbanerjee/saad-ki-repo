@@ -4,21 +4,27 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Bug, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Bug,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Flag,
+  FolderKanban,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
-import { issuesApi } from "@/lib/api";
+import { issuesApi, projectsApi } from "@/lib/api";
+import {
+  CALENDAR_KIND_STYLE,
+  type CalendarEvent,
+  unwrapList,
+} from "@/lib/calendar-events";
 import { cn, formatDate } from "@/lib/utils";
-
-type CalItem = {
-  id: string;
-  title: string;
-  due: Date;
-  href: string;
-};
+import { spaceHref } from "@/lib/space-paths";
 
 function startOfMonth(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -45,6 +51,11 @@ function daysInMonthGrid(cursor: Date) {
   while (days.length % 7 !== 0) days.push(null);
   return days;
 }
+function parseDue(value?: string | null): Date | null {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
 
 export default function SpaceCalendarPage() {
   const params = useParams();
@@ -52,34 +63,129 @@ export default function SpaceCalendarPage() {
   const [cursor, setCursor] = useState(() => startOfMonth(new Date()));
   const [selected, setSelected] = useState(() => new Date());
 
-  const { data: issuesData, isLoading } = useQuery({
-    queryKey: ["issues", "space-cal", projectId],
-    queryFn: () => issuesApi.list({ projectId, limit: 100 }),
+  const { data: issuesData, isLoading: issuesLoading } = useQuery({
+    queryKey: ["calendar", "space-issues", projectId],
+    queryFn: () => issuesApi.list({ projectId, limit: 200 }),
     retry: false,
   });
 
-  const items: CalItem[] = useMemo(() => {
-    const out: CalItem[] = [];
-    const issueRaw = issuesData?.data?.data ?? issuesData?.data ?? [];
-    const issueList = Array.isArray(issueRaw) ? issueRaw : [];
-    for (const issue of issueList as Array<{
+  const { data: projectData, isLoading: projectLoading } = useQuery({
+    queryKey: ["space", projectId],
+    queryFn: () => projectsApi.get(projectId),
+  });
+
+  const { data: milestonesData, isLoading: msLoading } = useQuery({
+    queryKey: ["calendar", "space-milestones", projectId],
+    queryFn: () => projectsApi.listMilestones(projectId),
+    retry: false,
+  });
+
+  const space = projectData?.data?.data ?? projectData?.data;
+
+  const items: CalendarEvent[] = useMemo(() => {
+    const out: CalendarEvent[] = [];
+
+    for (const issue of unwrapList(issuesData) as Array<{
       id: string;
       title: string;
       key?: string;
       dueDate?: string | null;
+      createdAt?: string | null;
       status?: string;
     }>) {
-      if (!issue.dueDate) continue;
-      if (issue.status === "DONE" || issue.status === "CANCELLED") continue;
+      if (issue.status === "CANCELLED") continue;
+      const label = issue.key ? `${issue.key}: ${issue.title}` : issue.title;
+      const href = `/issues/${issue.id}`;
+
+      const created = parseDue(issue.createdAt);
+      if (created) {
+        out.push({
+          id: `issue-created-${issue.id}`,
+          title: label,
+          due: created,
+          kind: "issue",
+          href,
+          meta: "Task created",
+          spaceId: projectId,
+        });
+      }
+
+      if (issue.status === "DONE") continue;
+      const due = parseDue(issue.dueDate);
+      if (due) {
+        out.push({
+          id: `issue-due-${issue.id}`,
+          title: label,
+          due,
+          kind: "issue",
+          href,
+          meta: "Due",
+          spaceId: projectId,
+        });
+      }
+    }
+
+    for (const m of unwrapList(milestonesData) as Array<{
+      id: string;
+      name: string;
+      dueDate?: string | null;
+      status?: string;
+    }>) {
+      const due = parseDue(m.dueDate);
+      if (!due) continue;
+      if (m.status === "COMPLETED" || m.status === "CANCELLED") continue;
       out.push({
-        id: issue.id,
-        title: issue.key ? `${issue.key}: ${issue.title}` : issue.title,
-        due: new Date(issue.dueDate),
-        href: `/issues/${issue.id}`,
+        id: `ms-${m.id}`,
+        title: m.name,
+        due,
+        kind: "milestone",
+        href: spaceHref(projectId, "board"),
+        meta: "Milestone",
+        spaceId: projectId,
       });
     }
+
+    if (space) {
+      const created = parseDue(space.createdAt);
+      if (created) {
+        out.push({
+          id: `space-created-${projectId}`,
+          title: space.name || "Space created",
+          due: created,
+          kind: "space",
+          href: spaceHref(projectId),
+          meta: "Space created",
+          spaceId: projectId,
+        });
+      }
+      const end = parseDue(space.endDate);
+      if (end) {
+        out.push({
+          id: `space-end-${projectId}`,
+          title: space.name || "Space end",
+          due: end,
+          kind: "space",
+          href: spaceHref(projectId),
+          meta: "Target end",
+          spaceId: projectId,
+        });
+      }
+      const start = parseDue(space.startDate);
+      if (start) {
+        out.push({
+          id: `space-start-${projectId}`,
+          title: space.name || "Space start",
+          due: start,
+          kind: "space",
+          href: spaceHref(projectId),
+          meta: "Start",
+          spaceId: projectId,
+        });
+      }
+    }
+
     return out.sort((a, b) => a.due.getTime() - b.due.getTime());
-  }, [issuesData]);
+  }, [issuesData, milestonesData, space, projectId]);
 
   const grid = daysInMonthGrid(cursor);
   const selectedItems = items.filter((i) => sameDay(i.due, selected));
@@ -87,17 +193,18 @@ export default function SpaceCalendarPage() {
     month: "long",
     year: "numeric",
   });
+  const isLoading = issuesLoading || projectLoading || msLoading;
   const today = new Date();
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          Due dates in this space also appear in the{" "}
+          Dates in this space also appear in the{" "}
           <Link href="/calendar" className="text-[#0C66E4] hover:underline">
             global calendar
           </Link>
-          .
+          : space created, each task created, and each task due date & time.
         </p>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="icon" onClick={() => setCursor(addMonths(cursor, -1))}>
@@ -165,7 +272,13 @@ export default function SpaceCalendarPage() {
                       </span>
                       <div className="mt-auto flex flex-wrap gap-0.5">
                         {dayItems.slice(0, 3).map((i) => (
-                          <span key={i.id} className="h-1.5 w-1.5 rounded-full bg-sky-500" />
+                          <span
+                            key={i.id}
+                            className={cn(
+                              "h-1.5 w-1.5 rounded-full",
+                              CALENDAR_KIND_STYLE[i.kind].dot,
+                            )}
+                          />
                         ))}
                       </div>
                     </button>
@@ -173,6 +286,17 @@ export default function SpaceCalendarPage() {
                 })}
               </div>
             )}
+            <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-sky-500" /> Work items
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-amber-500" /> Milestones
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-indigo-500" /> Space dates
+              </span>
+            </div>
           </CardContent>
         </Card>
 
@@ -187,26 +311,48 @@ export default function SpaceCalendarPage() {
               <EmptyState
                 icon={CalendarDays}
                 title="Nothing due"
-                description="No open work items due on this day."
+                description="No dated work items or milestones on this day."
               />
             ) : (
-              selectedItems.map((item) => (
-                <Link
-                  key={item.id}
-                  href={item.href}
-                  className="flex items-start gap-3 rounded-xl border border-border/80 bg-card p-3 transition hover:bg-muted/50"
-                >
-                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-500/15 text-sky-600">
-                    <Bug className="h-4 w-4" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{item.title}</p>
-                    <Badge variant="outline" className="mt-1 text-[10px]">
-                      Work item
-                    </Badge>
-                  </div>
-                </Link>
-              ))
+              selectedItems.map((item) => {
+                const Icon =
+                  item.kind === "milestone"
+                    ? Flag
+                    : item.kind === "space"
+                      ? FolderKanban
+                      : Bug;
+                const style = CALENDAR_KIND_STYLE[item.kind];
+                return (
+                  <Link
+                    key={item.id}
+                    href={item.href}
+                    className="flex items-start gap-3 rounded-xl border border-border/80 bg-card p-3 transition hover:bg-muted/50"
+                  >
+                    <span
+                      className={cn(
+                        "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                        style.badge,
+                      )}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{item.title}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <Badge variant="outline" className="text-[10px]">
+                          {item.meta}
+                        </Badge>
+                        <span className="text-[11px] text-muted-foreground">
+                          {item.due.toLocaleTimeString(undefined, {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })
             )}
           </CardContent>
         </Card>
